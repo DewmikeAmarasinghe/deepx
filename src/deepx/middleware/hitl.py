@@ -10,10 +10,10 @@ from deepx.context import AgentContext
 class HumanInTheLoopHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
     def __init__(
         self,
-        sensitive_tools: set[str],
+        sensitive_tools: list[str],
         approval_fn: Callable[[str, str], bool] | None = None,
     ) -> None:
-        self._sensitive = sensitive_tools
+        self._sensitive = set(sensitive_tools)
         self._approval_fn = approval_fn or self._cli_approval
 
     @staticmethod

@@ -9,7 +9,7 @@ def setup_observability() -> None:
     base_url = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
 
     if not public_key or not secret_key:
-        print("[deepx] Langfuse not configured — tracing disabled. Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY to enable.")
+        print("[deepx] Langfuse not configured — set LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY to enable tracing.")
         return
 
     auth = base64.b64encode(f"{public_key}:{secret_key}".encode()).decode()
@@ -21,4 +21,4 @@ def setup_observability() -> None:
         OpenAIAgentsInstrumentor().instrument()
         print(f"[deepx] Langfuse tracing enabled → {base_url}")
     except ImportError:
-        print("[deepx] Langfuse env vars set but openinference-instrumentation-openai-agents is not installed.")
+        print("[deepx] openinference-instrumentation-openai-agents not installed — tracing disabled.")
