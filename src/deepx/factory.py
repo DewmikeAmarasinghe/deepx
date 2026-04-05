@@ -5,7 +5,11 @@ import dataclasses
 import os
 from pathlib import Path
 
-from agents import Agent, RunContextWrapper, RunHooks, Runner
+from agents import Agent, RunContextWrapper, Runner
+from agents.lifecycle import RunHooksBase
+from agents.run_context import AgentHookContext
+from agents.tool import Tool
+from agents.agent import Agent as AgentType
 
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.memory_backend import InMemoryBackend
@@ -24,7 +28,7 @@ setup_observability()
 
 def create_deep_agent(
     *,
-    model: str = "gpt-4o",
+    model: str = "gpt-4o-mini",
     tools: list | None = None,
     subagents: list[tuple[Agent, str]] | None = None,
     system_prompt: str = "",
@@ -33,7 +37,7 @@ def create_deep_agent(
     workspace_path: str | None = None,
     db_path: str | None = None,
     max_turns: int = 200,
-    hitl_hooks: RunHooks | None = None,
+    hitl_hooks: RunHooksBase | None = None,
 ) -> "DeepAgent":
     workspace_root = workspace_path or os.getenv("DEEPX_WORKSPACE", ".deepx")
     backend: WorkspaceBackend = (
@@ -59,6 +63,9 @@ def create_deep_agent(
 
     base_tools = [*WORKSPACE_TOOLS, *PLANNING_TOOLS, *MEMORY_TOOLS]
     all_tools = base_tools + subagent_tools + (tools or [])
+
+    spawn_tool = _make_spawn_task_tool(model=model, tools=all_tools)
+    all_tools = all_tools + [spawn_tool]
 
     def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
         return build_instructions(ctx, agent, custom_prompt=system_prompt)
@@ -88,7 +95,7 @@ class DeepAgent:
         backend: WorkspaceBackend,
         db_path: str | None,
         max_turns: int,
-        hitl_hooks: RunHooks | None,
+        hitl_hooks: RunHooksBase | None,
         skills_info: str,
         memory: str,
     ) -> None:
@@ -114,6 +121,8 @@ class DeepAgent:
         ctx.memory = self._memory
         ctx.skills_info = self._skills_info
 
+        self._backend.write(session_id, "../task.md", task)
+
         if resume:
             saved_plan = self._backend.load_plan(session_id)
             if saved_plan:
@@ -121,7 +130,7 @@ class DeepAgent:
 
         session = create_session(session_id, self._db_path)
 
-        hooks_list: list[RunHooks] = [WorkspaceHooks(self._backend)]
+        hooks_list: list[RunHooksBase] = [WorkspaceHooks(self._backend)]
         if self._hitl_hooks:
             hooks_list.append(self._hitl_hooks)
 
@@ -186,22 +195,60 @@ def _make_subagent_tool(sub_agent: Agent, description: str):
     return dataclasses.replace(run_subagent, name=sub_agent.name, description=description)
 
 
-class _CombinedHooks(RunHooks):
-    def __init__(self, hooks: list[RunHooks]) -> None:
+def _make_spawn_task_tool(model: str, tools: list):
+    from agents import function_tool
+
+    @function_tool
+    async def spawn_task(ctx: RunContextWrapper[AgentContext], instructions: str) -> str:
+        """Spawn an isolated general-purpose subagent to handle a self-contained task.
+        The subagent has access to all the same tools as the orchestrator.
+        Use this to delegate work that would produce large outputs or run independently.
+        Pass file paths rather than raw content in the instructions.
+        Returns only the subagent's final output — its conversation history is discarded."""
+        from deepx.instructions import BASE_PROMPT
+        sub = Agent(
+            name="general-purpose",
+            instructions=BASE_PROMPT,
+            model=model,
+            tools=tools,
+        )
+        result = await Runner.run(sub, input=instructions, context=ctx.context)
+        return result.final_output
+
+    return spawn_task
+
+
+class _CombinedHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
+    def __init__(self, hooks: list[RunHooksBase]) -> None:
         self._hooks = hooks
 
-    async def on_agent_start(self, ctx, agent) -> None:
+    async def on_agent_start(
+        self, context: AgentHookContext[AgentContext], agent: Agent[AgentContext]
+    ) -> None:
         for h in self._hooks:
-            await h.on_agent_start(ctx, agent)
+            await h.on_agent_start(context, agent)
 
-    async def on_agent_end(self, ctx, agent, output) -> None:
+    async def on_agent_end(
+        self, context: AgentHookContext[AgentContext], agent: Agent[AgentContext], output
+    ) -> None:
         for h in self._hooks:
-            await h.on_agent_end(ctx, agent, output)
+            await h.on_agent_end(context, agent, output)
 
-    async def on_tool_start(self, ctx, agent, tool) -> None:
+    async def on_tool_start(
+        self,
+        context: RunContextWrapper[AgentContext],
+        agent: Agent[AgentContext],
+        tool: Tool,
+    ) -> None:
         for h in self._hooks:
-            await h.on_tool_start(ctx, agent, tool)
+            await h.on_tool_start(context, agent, tool)
 
-    async def on_tool_end(self, ctx, agent, tool, result) -> None:
+    async def on_tool_end(
+        self,
+        context: RunContextWrapper[AgentContext],
+        agent: Agent[AgentContext],
+        tool: Tool,
+        result: str,
+    ) -> None:
         for h in self._hooks:
-            await h.on_tool_end(ctx, agent, tool, result)
+            await h.on_tool_end(context, agent, tool, result)

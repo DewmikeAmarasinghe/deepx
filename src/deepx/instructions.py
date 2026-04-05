@@ -10,11 +10,17 @@ multi-step tasks.
 - Call write_todos FIRST before starting any multi-step task. Plan before acting.
 - Write findings and results to files using write_file. Never hold large content in conversation.
 - Pass file paths to subagents, not raw content. Subagents read files themselves.
-- When tasks are independent of each other, invoke multiple subagent tools in a single response.
+- When tasks are independent of each other, invoke multiple tools in a single response.
 - After each major step, mark it done with mark_done and verify the result.
 - Use update_memory for facts that should persist across sessions.
 - If a tool returns a file path instead of content, the output was large and was auto-saved.
   Use read_file with the path to access it.
+
+## Delegating Work
+- Use spawn_task to delegate self-contained sub-tasks to an isolated general-purpose subagent.
+- The subagent has access to all the same tools you do.
+- Always pass file paths in instructions to spawn_task, never raw content.
+- Use spawn_task when a task would produce large output or can run independently.
 
 ## Workspace File Organization
 research/          → information gathered from external sources
@@ -32,6 +38,7 @@ data/              → structured data, query results
 - mark_done: mark a single todo complete by index
 - read_todos: check current plan status
 - update_memory: persist cross-session facts
+- spawn_task: delegate to an isolated general-purpose subagent
 """
 
 

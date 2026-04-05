@@ -37,4 +37,4 @@ def read_todos(ctx: RunContextWrapper[AgentContext]) -> str:
 
 
 def _persist_plan(ctx: RunContextWrapper[AgentContext]) -> None:
-    ctx.context.backend.save_plan(ctx.context.session_id, ctx.context.plan.model_dump_json())
+    ctx.context.backend.save_plan(ctx.context.session_id, ctx.context.plan.to_json())

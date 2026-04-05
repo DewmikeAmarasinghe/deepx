@@ -35,6 +35,10 @@ class Plan(BaseModel):
     def completed(self) -> list[Todo]:
         return [t for t in self.todos if t.status == TodoStatus.completed]
 
+    def to_json(self) -> str:
+        import json
+        return json.dumps(self.model_dump(), indent=2)
+
 
 class ToolLog(BaseModel):
     call_id: str
@@ -42,7 +46,7 @@ class ToolLog(BaseModel):
     agent_name: str
     session_id: str
     timestamp: str
-    input_preview: str
-    output_preview: str
+    input: dict
+    output: str
     output_chars: int
     saved_to: str | None = None

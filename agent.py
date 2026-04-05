@@ -3,8 +3,9 @@ import os
 import httpx
 from dotenv import load_dotenv
 from agents import RunContextWrapper, function_tool
-from deepx import create_deep_agent
+from deepx import create_deep_agent, HumanInTheLoopHooks
 from deepx.backends.filesystem import FilesystemBackend
+
 load_dotenv()
 
 TAVILY_KEY = os.environ["TAVILY_API_KEY"]
@@ -48,7 +49,7 @@ async def web_extract(ctx: RunContextWrapper, url: str) -> str:
 
 
 agent = create_deep_agent(
-    model="gpt-4o",
+    model="gpt-4o-mini",
     tools=[web_search, web_extract],
     workspace_path=".deepx",
     system_prompt=(
@@ -103,7 +104,6 @@ for i, todo in enumerate(result.plan.todos, 1):
 print("\n" + "=" * 60)
 print("WORKSPACE FILES")
 print("=" * 60)
-
 backend = FilesystemBackend(".deepx")
 for f in backend.list_files("kyoto_hunt_001"):
     print(f)

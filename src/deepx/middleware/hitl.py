@@ -1,10 +1,13 @@
 from __future__ import annotations
 from collections.abc import Callable
-from agents import RunHooks, RunContextWrapper, Agent
+from agents.lifecycle import RunHooksBase
+from agents.run_context import RunContextWrapper
+from agents.tool import Tool
+from agents.agent import Agent
 from deepx.context import AgentContext
 
 
-class HumanInTheLoopHooks(RunHooks[AgentContext]):
+class HumanInTheLoopHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
     def __init__(
         self,
         sensitive_tools: set[str],
@@ -19,7 +22,10 @@ class HumanInTheLoopHooks(RunHooks[AgentContext]):
         return response.strip().lower() == "y"
 
     async def on_tool_start(
-        self, ctx: RunContextWrapper[AgentContext], agent: Agent, tool
+        self,
+        context: RunContextWrapper[AgentContext],
+        agent: Agent[AgentContext],
+        tool: Tool,
     ) -> None:
         if tool.name in self._sensitive:
             approved = self._approval_fn(agent.name, tool.name)

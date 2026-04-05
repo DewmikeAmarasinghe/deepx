@@ -1,20 +1,25 @@
 from __future__ import annotations
-
 from deepx.backends.protocol import WorkspaceBackend
 
 
 class InMemoryBackend(WorkspaceBackend):
     def __init__(self) -> None:
         self._files: dict[str, dict[str, str]] = {}
+        self._session: dict[str, dict[str, str]] = {}
         self._shared: dict[str, str] = {}
         self._tools: dict[str, list] = {}
         self._plans: dict[str, str] = {}
 
     def read(self, session_id: str, path: str) -> str | None:
+        if path.startswith("../"):
+            return self._session.get(session_id, {}).get(path[3:])
         return self._files.get(session_id, {}).get(path)
 
     def write(self, session_id: str, path: str, content: str) -> None:
-        self._files.setdefault(session_id, {})[path] = content
+        if path.startswith("../"):
+            self._session.setdefault(session_id, {})[path[3:]] = content
+        else:
+            self._files.setdefault(session_id, {})[path] = content
 
     def append(self, session_id: str, path: str, content: str) -> None:
         existing = self._files.get(session_id, {}).get(path, "")
@@ -24,9 +29,7 @@ class InMemoryBackend(WorkspaceBackend):
         return path in self._files.get(session_id, {})
 
     def list_files(self, session_id: str, prefix: str = "") -> list[str]:
-        return sorted(
-            k for k in self._files.get(session_id, {}) if k.startswith(prefix)
-        )
+        return sorted(k for k in self._files.get(session_id, {}) if k.startswith(prefix))
 
     def read_shared(self, path: str) -> str | None:
         return self._shared.get(path)

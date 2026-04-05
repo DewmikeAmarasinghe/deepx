@@ -11,6 +11,9 @@ class FilesystemBackend(WorkspaceBackend):
     def _files_path(self, session_id: str, path: str) -> Path:
         return self._root / "sessions" / session_id / "files" / path
 
+    def _session_path(self, session_id: str, path: str) -> Path:
+        return self._root / "sessions" / session_id / path
+
     def _tools_path(self, session_id: str, tool_name: str, call_id: str) -> Path:
         return self._root / "sessions" / session_id / "tools" / tool_name / f"{call_id}.json"
 
@@ -21,11 +24,17 @@ class FilesystemBackend(WorkspaceBackend):
         return self._root / "memory" / path
 
     def read(self, session_id: str, path: str) -> str | None:
-        p = self._files_path(session_id, path)
+        if path.startswith("../"):
+            p = self._session_path(session_id, path[3:])
+        else:
+            p = self._files_path(session_id, path)
         return p.read_text() if p.exists() else None
 
     def write(self, session_id: str, path: str, content: str) -> None:
-        p = self._files_path(session_id, path)
+        if path.startswith("../"):
+            p = self._session_path(session_id, path[3:])
+        else:
+            p = self._files_path(session_id, path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content)
 
@@ -42,12 +51,11 @@ class FilesystemBackend(WorkspaceBackend):
         base = self._root / "sessions" / session_id / "files"
         if not base.exists():
             return []
-        results = [
+        return [
             str(p.relative_to(base))
             for p in sorted(base.rglob("*"))
             if p.is_file() and str(p.relative_to(base)).startswith(prefix)
         ]
-        return results
 
     def read_shared(self, path: str) -> str | None:
         p = self._shared_path(path)
