@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "deepx"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "openai-agents>=0.0.19",
+    "aiosqlite>=0.19",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+redis = ["openai-agents[redis]"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
