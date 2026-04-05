@@ -1,117 +1,269 @@
-# deepx
+# deepx — Agent Harness Built on OpenAI Agents SDK
 
-a minimal agent harness built on [openai-agents SDK](https://github.com/openai/openai-agents-python). inspired by [deepagents](https://github.com/langchain-ai/deepagents), no langchain dependency.
+`deepx` is a generic Python agent harness, inspired by `langchain/deepagents`, built on top of the
+`openai-agents` SDK. It gives any agent built with this framework:
 
-gives any agent:
-- planning (`write_todos`)
-- virtual filesystem (`write_file`, `read_file`, `ls`, ...)
-- persistent memory across sessions
-- automatic tool output interception — large results saved to VFS, agent gets a path + preview
-- observability — every tool call logged to `/obs/*.json` automatically
-- subagent delegation — any `Agent` becomes a callable tool
-- skills loading from SKILL.md files
-- context compaction via OpenAI Responses API
+- A planning tool (write_todos, mark_done, read_todos)
+- A workspace filesystem (read_file, write_file, edit_file, list_files, append_to_file)
+- Shared memory across agents (AGENTS.md loaded at startup)
+- Skills (SKILL.md files discovered at startup, read on demand by the agent)
+- Automatic tool I/O logging for observability
+- Automatic large-output eviction (replaces large results with file reference + preview)
+- Automatic context compaction via OpenAI Responses API
+- Langfuse tracing via OTEL (automatic, zero decoration needed)
+- Swappable session storage (in-memory default, SQLite for persistence)
+- Human-in-the-loop hook
 
-## install
-
-```bash
-uv add deepx
-# or
-pip install deepx
-```
-
-## usage
+## Quick Start
 
 ```python
+import os
 import asyncio
 from agents import Agent, function_tool
-from deepx import create_agent, as_tool
+from deepx import create_deep_agent, HumanInTheLoopHooks
+
 
 @function_tool
-async def search_web(ctx, query: str) -> str:
-    # your implementation
-    return f"results for: {query}"
+def sql_query(ctx, query: str) -> str:
+    """Execute a read-only SQL SELECT query and return results as a formatted table."""
+    ...
+
+
+@function_tool
+def web_search(ctx, query: str) -> str:
+    """Search the web for current information. Returns a summary of top results."""
+    ...
+
 
 sql_agent = Agent(
     name="sql_agent",
-    instructions="You write SQL queries. Read /db/schema.md for the schema first.",
-    model="gpt-4o-mini",
+    instructions="You write and execute SQL queries against a database.",
+    tools=[sql_query],
 )
 
-runner = create_agent(
+agent = create_deep_agent(
     model="gpt-4o",
-    tools=[search_web],
-    subagents=[
-        (sql_agent, "query the database for structured records"),
-    ],
+    tools=[web_search],
+    subagents=[(sql_agent, "Query a relational database using natural language")],
+    system_prompt="You are a research assistant that combines web and database information.",
     skills_path="./skills/",
-    memory_path="./memory/AGENTS.md",
-    system_prompt="You are a research assistant.",
+    workspace_path=".deepx/",
     db_path="agent.db",
 )
 
-async def main():
-    result = await runner.run(
-        task="research competitor pricing and compare with our database records",
-        session_id="session_001",
-        resume=False,
-    )
-    print(result.output)
-    print(f"tokens used: {result.token_usage}")
-    print(f"files created: {list(result.vfs.keys())}")
-
-asyncio.run(main())
-```
-
-## resuming a session
-
-```python
-result = await runner.run(
-    task="continue the research",
-    session_id="session_001",
-    resume=True,
+result = agent.run_sync(
+    "Compare pricing from competitor websites with our internal database",
+    session_id="research_001",
 )
+print(result.output)
 ```
 
-## human in the loop
+## Installation
 
-```python
-runner = create_agent(
-    model="gpt-4o",
-    tools=[...],
-    hitl_tools={"write_file", "execute_command"},
-)
+```bash
+pip install deepx
 ```
 
-this pauses before any call to `write_file` or `execute_command` and prompts for CLI approval. pass `hitl_approval_fn=your_async_fn` to use a custom approval flow (webhook, queue, etc).
+### Optional Dependencies
 
-## skills
+```bash
+# For Redis session storage
+pip install deepx[redis]
 
-create a directory structure:
+# For development
+pip install deepx[dev]
+```
+
+## Configuration
+
+### Environment Variables
+
+```
+OPENAI_API_KEY          required — OpenAI API key
+DEEPX_WORKSPACE         optional — workspace root path (default: .deepx/)
+LANGFUSE_PUBLIC_KEY     optional — enables Langfuse tracing
+LANGFUSE_SECRET_KEY     optional — enables Langfuse tracing
+LANGFUSE_BASE_URL       optional — Langfuse endpoint (default: https://cloud.langfuse.com)
+```
+
+### Workspace Structure
+
+```
+.deepx/                              ← workspace root (DEEPX_WORKSPACE or .deepx/)
+├── memory/
+│   └── AGENTS.md                    ← shared memory loaded at startup for all agents
+├── skills/
+│   └── {skill-name}/
+│       └── SKILL.md                 ← skill definition with YAML frontmatter
+└── sessions/
+    └── {session_id}/                ← per-session isolation
+        ├── plan.json                ← Pydantic Plan model (todos + metadata)
+        ├── files/                   ← files written by the agent via write_file
+        │   └── ...user-created files
+        └── tools/                   ← auto-logged tool call I/O for observability
+            └── {tool_name}/
+                └── {call_id}.json   ← {input, output, timestamp, agent_name, chars}
+```
+
+## Skills
+
+Create a `skills/` folder alongside your agent code. Each skill is a subfolder with `SKILL.md`:
+
 ```
 skills/
-└── my-skill/
+└── query-writing/
     └── SKILL.md
 ```
 
-SKILL.md format:
+`SKILL.md` format:
 ```markdown
 ---
-name: my-skill
-description: what this skill does and when to use it
+name: query-writing
+description: For writing and executing SQL queries against relational databases
 ---
-# instructions
-...
+
+# Query Writing Skill
+
+## When to Use
+Use this skill when...
+
+## Workflow
+1. ...
 ```
 
-the agent sees skill names and descriptions in its system prompt. it reads the full SKILL.md on demand using `read_file`.
+## Shared Memory
 
-## what gets stored where
+Create `memory/AGENTS.md` in the workspace root for persistent cross-session memory:
 
-| data | where |
-|---|---|
-| conversation history | SQLite `agent_messages` table (managed by openai-agents) |
-| VFS files | SQLite `vfs_files` table (managed by deepx) |
-| tool call log | SQLite `step_log` table + in-memory `result.step_log` |
-| persistent memory | disk file at `memory_path` |
-| skills | disk files, read-only |
+```markdown
+# Agent Memory
+
+- The user prefers concise responses
+- The database is PostgreSQL running on localhost:5432
+- Primary contact: user@example.com
+```
+
+## Human-in-the-Loop
+
+```python
+from deepx import HumanInTheLoopHooks
+
+hitl = HumanInTheLoopHooks(
+    sensitive_tools={"execute_payment", "delete_data"},
+    approval_fn=lambda agent, tool: input(f"Allow {agent} to call {tool}? [y/n]: ").lower() == "y"
+)
+
+agent = create_deep_agent(
+    # ... other args
+    hitl_hooks=hitl,
+)
+```
+
+## API Reference
+
+### create_deep_agent
+
+Main entry point for creating agents.
+
+```python
+def create_deep_agent(
+    *,
+    model: str = "gpt-4o",
+    tools: list | None = None,
+    subagents: list[tuple[Agent, str]] | None = None,
+    system_prompt: str = "",
+    skills_path: str | None = None,
+    memory_path: str | None = None,
+    workspace_path: str | None = None,
+    db_path: str | None = None,
+    max_turns: int = 200,
+    hitl_hooks: RunHooks | None = None,
+) -> DeepAgent
+```
+
+### DeepAgent
+
+The main agent class.
+
+```python
+class DeepAgent:
+    async def run(self, task: str, *, session_id: str, resume: bool = False) -> DeepRunResult
+    def run_sync(self, task: str, *, session_id: str, resume: bool = False) -> DeepRunResult
+```
+
+### DeepRunResult
+
+Result of running an agent.
+
+```python
+class DeepRunResult:
+    output: str
+    session_id: str
+    plan: Plan
+```
+
+## Built-in Tools
+
+### Planning Tools
+- `write_todos(todos: list[str])` - Create a new plan
+- `mark_done(index: int)` - Mark a todo as completed
+- `read_todos()` - Read current plan status
+
+### Workspace Tools
+- `write_file(path: str, content: str)` - Write a new file
+- `read_file(path: str, offset: int = 0, limit: int = 100)` - Read file with pagination
+- `edit_file(path: str, old_string: str, new_string: str)` - Edit file by string replacement
+- `append_to_file(path: str, content: str)` - Append to existing file
+- `list_files(prefix: str = "")` - List files in workspace
+
+### Memory Tools
+- `update_memory(note: str)` - Add persistent note to shared memory
+- `read_memory()` - Read all shared memory notes
+
+## Backend Options
+
+### FilesystemBackend (default)
+Persistent storage using the filesystem. Use for production.
+
+```python
+from deepx import FilesystemBackend
+
+agent = create_deep_agent(
+    workspace_path="/path/to/workspace",
+)
+```
+
+### InMemoryBackend
+Ephemeral storage in memory. Use for testing.
+
+```python
+from deepx import InMemoryBackend
+
+agent = create_deep_agent(
+    workspace_path="",  # Empty string triggers InMemoryBackend
+)
+```
+
+## Observability
+
+When `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set, deepx automatically enables Langfuse tracing via OpenTelemetry. No additional configuration needed.
+
+## Development
+
+```bash
+# Install development dependencies
+pip install -e .[dev]
+
+# Run tests
+pytest
+
+# Type checking
+pyright src/
+
+# Linting
+ruff check src/
+```
+
+## License
+
+MIT

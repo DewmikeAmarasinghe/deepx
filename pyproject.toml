@@ -4,24 +4,31 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deepx"
-version = "0.1.0"
+dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
     "openai-agents>=0.0.19",
+    "pydantic>=2.0",
     "aiosqlite>=0.19",
     "pyyaml>=6.0",
+    "openinference-instrumentation-openai-agents>=0.1.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.0.0",
 ]
 
 [project.optional-dependencies]
 redis = ["openai-agents[redis]"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff", "pyright"]
+
+[tool.hatch.version]
+path = "src/deepx/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deepx"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
-[tool.ruff]
-line-length = 100
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E", "F", "I"]
+[tool.uv.workspace]
+members = [
+    "a",
+]

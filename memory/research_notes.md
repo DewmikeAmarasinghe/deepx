@@ -1,1 +1,0 @@
-- Comprehensive research and report on AI coding assistants in 2025, covering major players like Cursor, GitHub Copilot, Windsurf, and Claude Code. Key insights include market share, pricing models, unique features, ethical considerations, and future trends. The landscape emphasizes security, transparency, and specialized workflows.
