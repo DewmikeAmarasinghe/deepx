@@ -1,8 +1,11 @@
 from __future__ import annotations
-from enum import Enum
-from pydantic import BaseModel, Field
+
+import json
 import uuid
 from datetime import datetime, timezone
+from enum import Enum
+
+from pydantic import BaseModel, Field
 
 
 class TodoStatus(str, Enum):
@@ -20,6 +23,8 @@ class Todo(BaseModel):
 
 
 class Plan(BaseModel):
+    """The agent's execution plan, persisted to disk after every mutation."""
+
     session_id: str
     todos: list[Todo] = Field(default_factory=list)
     updated_at: str = Field(
@@ -36,17 +41,4 @@ class Plan(BaseModel):
         return [t for t in self.todos if t.status == TodoStatus.completed]
 
     def to_json(self) -> str:
-        import json
         return json.dumps(self.model_dump(), indent=2)
-
-
-class ToolLog(BaseModel):
-    call_id: str
-    tool_name: str
-    agent_name: str
-    session_id: str
-    timestamp: str
-    input: dict
-    output: str
-    output_chars: int
-    saved_to: str | None = None

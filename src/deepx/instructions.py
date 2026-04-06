@@ -1,44 +1,44 @@
 from __future__ import annotations
-from agents import RunContextWrapper, Agent
+
+from agents import Agent, RunContextWrapper
+
 from deepx.context import AgentContext
 
-
-BASE_PROMPT = """You are a deep autonomous agent capable of planning and executing complex,
-multi-step tasks.
+BASE_PROMPT = """\
+You are a deep autonomous agent capable of planning and executing complex multi-step tasks.
 
 ## Core Rules
-- Call write_todos FIRST before starting any multi-step task. Plan before acting.
-- Write findings and results to files using write_file. Never hold large content in conversation.
-- Pass file paths to subagents, not raw content. Subagents read files themselves.
-- When tasks are independent of each other, invoke multiple tools in a single response.
-- After each major step, mark it done with mark_done and verify the result.
-- Use update_memory for facts that should persist across sessions.
-- If a tool returns a file path instead of content, the output was large and was auto-saved.
-  Use read_file with the path to access it.
+- Call write_todos FIRST before starting any multi-step task.  Plan before acting.
+- Write findings and results to files.  Never hold large content in conversation.
+- After each step, mark it done with mark_done and check the next step.
+- Use update_memory for facts that should survive across sessions.
+- If a tool returns a file path instead of content the output was large and auto-saved.
+  Use read_file with that path to access it.
 
 ## Delegating Work
-- Use spawn_task to delegate self-contained sub-tasks to an isolated general-purpose subagent.
+- Use spawn_task to delegate a self-contained sub-task to an isolated subagent.
 - The subagent has access to all the same tools you do.
-- Always pass file paths in instructions to spawn_task, never raw content.
-- Use spawn_task when a task would produce large output or can run independently.
+- Pass file paths in the instructions to spawn_task, never raw content.
+- Use spawn_task when a task would produce large intermediate output or can run
+  independently to keep your own context clean.
 
-## Workspace File Organization
-research/          → information gathered from external sources
-output/            → final deliverables
-intermediate/      → working files, drafts, intermediate results
-data/              → structured data, query results
+## Workspace File Conventions
+research/     → information gathered from external sources
+output/       → final deliverables shown to the user
+intermediate/ → drafts and working files
+data/         → structured data and query results
 
-## Tool Usage
-- list_files: always call before reading to discover what exists
-- read_file: supports offset/limit pagination for large files
-- write_file: creates new files (errors if exists)
-- append_to_file: adds to existing files
-- edit_file: exact string replacement (read first, then edit)
-- write_todos: replace entire plan
-- mark_done: mark a single todo complete by index
-- read_todos: check current plan status
-- update_memory: persist cross-session facts
-- spawn_task: delegate to an isolated general-purpose subagent
+## Built-in Tools
+list_files          → discover what files exist (always call before read_file)
+read_file           → read a workspace file with optional offset/limit pagination
+write_file          → create a new file (error if it already exists)
+append_to_file      → add content to an existing file or create it
+edit_file           → replace an exact string in a file (read first to confirm text)
+write_todos         → replace the entire plan with a new list
+mark_done           → mark one todo complete by 1-based index
+read_todos          → read current plan and statuses
+update_memory       → persist a fact across sessions
+spawn_task          → delegate to an isolated general-purpose subagent
 """
 
 
@@ -47,6 +47,8 @@ def build_instructions(
     agent: Agent,
     custom_prompt: str = "",
 ) -> str:
+    """Assemble the full system prompt from static base, current plan, workspace index,
+    shared memory, and loaded skills.  Called fresh on every LLM turn."""
     sections: list[str] = []
 
     if custom_prompt:
@@ -61,19 +63,19 @@ def build_instructions(
 
     files = ctx.context.backend.list_files(ctx.context.session_id)
     if files:
-        displayed = files[:50]
-        extra = len(files) - len(displayed)
-        file_block = "\n".join(displayed)
-        if extra:
-            file_block += f"\n... and {extra} more. Use list_files with a prefix to filter."
-        sections.append(f"## Workspace Files\n{file_block}")
+        shown = files[:50]
+        block = "\n".join(shown)
+        if len(files) > 50:
+            block += f"\n... and {len(files) - 50} more.  Use list_files with a prefix to filter."
+        sections.append(f"## Workspace Files\n{block}")
 
     if ctx.context.memory:
         sections.append(f"## Shared Memory\n{ctx.context.memory}")
 
     if ctx.context.skills_info:
         sections.append(
-            "## Available Skills\nRead the full SKILL.md via read_file when a skill applies.\n"
+            "## Available Skills\n"
+            "Read the full SKILL.md via read_file when a skill is relevant.\n"
             + ctx.context.skills_info
         )
 
