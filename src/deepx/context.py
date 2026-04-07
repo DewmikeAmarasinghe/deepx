@@ -8,14 +8,16 @@ from deepx.models import Plan
 
 @dataclass
 class AgentContext:
-    """Shared state threaded through every tool call and lifecycle hook within a run."""
-
     session_id: str
     backend: WorkspaceBackend
+    agent_name: str = ""
     plan: Plan = field(init=False)
     memory: str = ""
     skills_info: str = ""
     approved_tools: set[str] = field(default_factory=set)
+    debug: bool = False
+    hitl_tools: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.plan = Plan(session_id=self.session_id)
+        an = self.agent_name or "agent"
+        self.plan = Plan(session_id=self.session_id, agent_name=an)

@@ -88,10 +88,11 @@ agent = create_deep_agent(
     system_prompt=(
         "You are an orchestrator. Delegate research to the researcher subagent "
         "and report writing to the writer subagent. "
-        "Keep your own context clean — pass file paths, not raw content."
+        "Keep your own context clean — pass file paths, not raw content. "
+        "Use the task tool with subagent_type researcher or writer."
     ),
-    require_approval=["web_search"],
-    log_tools=True,
+    interrupt_on=["web_search"],
+    debug=True,
     db_path="agent.db",
 )
 
@@ -102,7 +103,7 @@ TASK = (
     "Save notes to research/ as you go, final report to output/comparison.md."
 )
 
-result = agent.run_sync(TASK, session_id="inference_001", log_tools=True)
+result = agent.run_sync(TASK, session_id="inference_001")
 
 print("\n" + "=" * 60)
 print(result.output)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -23,9 +22,9 @@ class Todo(BaseModel):
 
 
 class Plan(BaseModel):
-    """The agent's execution plan, persisted to disk after every mutation."""
-
     session_id: str
+    agent_name: str
+    tasks: list[str] = Field(default_factory=list)
     todos: list[Todo] = Field(default_factory=list)
     updated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -41,4 +40,4 @@ class Plan(BaseModel):
         return [t for t in self.todos if t.status == TodoStatus.completed]
 
     def to_json(self) -> str:
-        return json.dumps(self.model_dump(), indent=2)
+        return self.model_dump_json(indent=2)
