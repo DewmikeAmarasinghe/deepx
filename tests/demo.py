@@ -12,6 +12,7 @@ Demonstrates:
 Usage:
     OPENAI_API_KEY=... TAVILY_API_KEY=... python tests/demo.py
 """
+
 from __future__ import annotations
 
 import os
@@ -51,7 +52,11 @@ THINK_TOOL_DESCRIPTION = (
 @function_tool(description_override=THINK_TOOL_DESCRIPTION)
 def think_tool(reflection: str) -> str:
     """Record structured reflection (no side effects beyond returning confirmation)."""
-    return f"Reflection recorded: {reflection}"
+    return (
+        f"Reflection: {reflection}. \n\n"
+        "Now update your plan:"
+        "call list_todos to review progress, then write_todos if anything needs updating."
+    )
 
 
 @function_tool
@@ -98,7 +103,7 @@ web_agent_spec = {
     "description": (
         "Web research specialist with web_search and web_extract. "
         "Give it a complete list of topics or questions to investigate. "
-        "It writes distilled findings (not raw tool dumps) to research/*.md and returns those paths."
+        "It writes distilled findings (not raw tool dumps) to research/`file_name`.md and returns those paths."
     ),
     "system_prompt": (
         "You are a web research specialist. You have web_search, web_extract, and think_tool.\n"
@@ -147,6 +152,7 @@ agent = create_deep_agent(
 
 TASK = """
 Investigate the long-term viability of sodium-ion batteries as a sustainable alternative to lithium-ion technology in the electric vehicle market. The research should analyze current energy density limitations, the geopolitical stability of the raw material supply chain, and the existing manufacturing hurdles for large-scale adoption. Additionally, the agent should identify key startups leading the sector and provide a cost-benefit analysis comparing the lifecycle environmental impact of sodium versus lithium extraction.
+After investigating write a report.
 """
 
 if __name__ == "__main__":
@@ -156,4 +162,6 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print(result.output)
     print("=" * 70)
-    print(f"\nSession: {result.session_id}  (resume with SESSION_ID={result.session_id})")
+    print(
+        f"\nSession: {result.session_id}  (resume with SESSION_ID={result.session_id})"
+    )

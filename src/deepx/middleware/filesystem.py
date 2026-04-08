@@ -8,7 +8,7 @@ from typing import Any
 
 from agents.agent import Agent
 from agents.lifecycle import RunHooksBase
-from agents.run_context import AgentHookContext, RunContextWrapper
+from agents.run_context import AgentHookContext
 from agents.tool import FunctionTool, Tool
 
 from deepx.backends.protocol import BackendProtocol
