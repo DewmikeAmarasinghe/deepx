@@ -14,15 +14,11 @@ from agents.run_context import AgentHookContext
 from agents.tool import Tool
 
 from deepx.backends.filesystem import FilesystemBackend
-from deepx.backends.memory import InMemoryBackend
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
+from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
 from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.middleware.observability import setup_observability
-from deepx.middleware.workspace import (
-    WorkspaceHooks,
-    apply_tool_pipeline,
-)
 from deepx.models import Plan
 from deepx.sessions import create_session
 from deepx.system_prompt import (
@@ -30,7 +26,7 @@ from deepx.system_prompt import (
     discover_skills,
     format_skills_for_prompt,
 )
-from deepx.tools import MEMORY_TOOLS, PLANNING_TOOLS, WORKSPACE_TOOLS
+from deepx.tools import FILESYSTEM_TOOLS, PLANNING_TOOLS
 
 _HookList = list[RunHooksBase[AgentContext, AgentType[AgentContext]]]
 
@@ -54,7 +50,7 @@ def create_deep_agent(
     skills: list[str] | None = None,
     memory: list[str] | None = None,
     response_format: type | None = None,
-    backend: WorkspaceBackend | None = None,
+    backend: BackendProtocol | None = None,
     db_path: str = ":memory:",
     interrupt_on: list[str] | None = None,
     debug: bool = False,
@@ -129,6 +125,12 @@ def create_deep_agent(
         descriptions=descriptions,
     )
 
+    for an, ag in registry.items():
+        if not isinstance(ag.tools, list):
+            continue
+        if not any(getattr(t, "name", None) == "task" for t in ag.tools):
+            registry[an] = dataclasses.replace(ag, tools=list(ag.tools) + [task_tool])
+
     def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
         return build_system_prompt(ctx, agent, custom_prompt=system_prompt)
 
@@ -188,7 +190,7 @@ def _make_task_tool(
     registry: dict[str, Agent],
     db_path: str,
     max_turns: int,
-    backend: WorkspaceBackend,
+    backend: BackendProtocol,
     hitl: HumanInTheLoopHooks | None,
     debug: bool,
     memory_default: str,
@@ -196,15 +198,31 @@ def _make_task_tool(
     interrupt_tools: list[str],
     descriptions: dict[str, str],
 ) -> Tool:
-    lines = [
-        "Run a sub-agent in an isolated conversation. "
-        "Provide subagent_type and a concise task description.",
-        "Available subagent_type values:",
-    ]
-    for k in sorted(registry):
-        d = descriptions.get(k, "")
-        lines.append(f"- {k}: {d}")
-    doc = "\n".join(lines)
+    available_agents = "\n".join(
+        f'- "{k}": {descriptions.get(k, "")}' for k in sorted(registry)
+    )
+    doc = (
+        "Launch an ephemeral subagent to handle complex, multi-step independent tasks "
+        "with isolated context windows.\n\n"
+        f"Available agent types and the tools they have access to:\n{available_agents}\n\n"
+        "When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.\n\n"
+        "## Usage notes:\n"
+        "1. Launch multiple agents concurrently whenever possible, to maximize performance; "
+        "to do that, use a single message with multiple tool uses\n"
+        "2. When the agent is done, it will return a single message back to you. The result returned "
+        "by the agent is not visible to the user. To show the user the result, you should send a text "
+        "message back to the user with a concise summary of the result.\n"
+        "3. Each agent invocation is stateless. You will not be able to send additional messages to the agent, "
+        "nor will the agent be able to communicate with you outside of its final report. Therefore, your prompt "
+        "should contain a highly detailed task description for the agent to perform autonomously and you should "
+        "specify exactly what information the agent should return back to you in its final and only message to you.\n"
+        "4. The agent's outputs should generally be trusted\n"
+        "5. Clearly tell the agent whether you expect it to create content, perform analysis, or just do research, "
+        "since it is not aware of the user's intent\n"
+        "6. When only the general-purpose agent is provided, you should use it for all tasks. It is great for "
+        "isolating context and token usage, and completing specific, complex tasks, as it has all the same "
+        "capabilities as the main agent."
+    )
 
     async def run_subagent_task(
         ctx: RunContextWrapper[AgentContext],
@@ -226,7 +244,7 @@ def _make_task_tool(
         )
         sub_session_id = f"{parent_sid}:{subagent_type}:{uuid.uuid4().hex[:12]}"
         session = create_session(sub_session_id, db_path)
-        hooks: _HookList = [WorkspaceHooks(backend)]
+        hooks: _HookList = [FilesystemHooks(backend)]
         if hitl:
             hooks.append(hitl)
         combined = _CombinedHooks(hooks) if len(hooks) > 1 else hooks[0]
@@ -259,7 +277,7 @@ class DeepAgentRunner:
     def __init__(
         self,
         agent: Agent,
-        backend: WorkspaceBackend,
+        backend: BackendProtocol,
         db_path: str,
         max_turns: int,
         hitl: HumanInTheLoopHooks | None,
@@ -297,7 +315,7 @@ class DeepAgentRunner:
         return ctx
 
     def _make_hooks(self) -> RunHooksBase[AgentContext, AgentType[AgentContext]]:
-        hooks: _HookList = [WorkspaceHooks(self._backend)]
+        hooks: _HookList = [FilesystemHooks(self._backend)]
         if self._hitl:
             hooks.append(self._hitl)
         return _CombinedHooks(hooks) if len(hooks) > 1 else hooks[0]
@@ -320,7 +338,6 @@ class DeepAgentRunner:
     ) -> DeepRunResult:
         sid = session_id or uuid.uuid4().hex
         ctx = self._make_ctx(sid, resume)
-        ctx.plan.tasks.append(task)
         if self._debug:
             self._backend.append_task_log(sid, task)
         session = create_session(sid, self._db_path)
@@ -347,11 +364,11 @@ class DeepAgentRunner:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(coro)
+            return asyncio.run(coro)  # type: ignore[return-value]
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()
+            return pool.submit(asyncio.run, coro).result()  # type: ignore[return-value]
 
     async def run_stream(
         self,
@@ -362,7 +379,6 @@ class DeepAgentRunner:
     ):
         sid = session_id or uuid.uuid4().hex
         ctx = self._make_ctx(sid, resume)
-        ctx.plan.tasks.append(task)
         if self._debug:
             self._backend.append_task_log(sid, task)
         session = create_session(sid, self._db_path)
@@ -435,10 +451,10 @@ class _CombinedHooks(RunHooksBase[AgentContext, AgentType[AgentContext]]):
 
 
 def _build_base_tools() -> list:
-    return [*WORKSPACE_TOOLS, *PLANNING_TOOLS, *MEMORY_TOOLS]
+    return [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
 
 
-def _load_memory(memory: list[str] | None, backend: WorkspaceBackend) -> str:
+def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
     if not memory:
         return ""
     parts: list[str] = []

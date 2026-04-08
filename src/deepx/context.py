@@ -2,19 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 from deepx.models import Plan
 
 
 @dataclass
 class AgentContext:
     session_id: str
-    backend: WorkspaceBackend
+    backend: BackendProtocol
     agent_name: str = ""
     plan: Plan = field(init=False)
     memory: str = ""
     skills_info: str = ""
-    approved_tools: set[str] = field(default_factory=set)
     debug: bool = False
     hitl_tools: list[str] = field(default_factory=list)
 

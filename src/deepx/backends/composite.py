@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 
 
-class CompositeBackend(WorkspaceBackend):
+class CompositeBackend(BackendProtocol):
     def __init__(
         self,
-        default: WorkspaceBackend,
-        routes: dict[str, WorkspaceBackend],
+        default: BackendProtocol,
+        routes: dict[str, BackendProtocol],
     ) -> None:
         self._default = default
         self._routes = sorted(
@@ -15,7 +15,7 @@ class CompositeBackend(WorkspaceBackend):
             key=lambda x: -len(x[0]),
         )
 
-    def _pick(self, path: str) -> tuple[WorkspaceBackend, str]:
+    def _pick(self, path: str) -> tuple[BackendProtocol, str]:
         for prefix, backend in self._routes:
             if path.startswith(prefix):
                 return backend, path[len(prefix) :].lstrip("/")
@@ -64,6 +64,9 @@ class CompositeBackend(WorkspaceBackend):
 
     def save_tool_log(self, session_id: str, log_data: dict) -> None:
         self._default.save_tool_log(session_id, log_data)
+
+    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None:
+        self._default.append_system_prompt_log(session_id, agent_name, prompt)
 
     @property
     def supports_execution(self) -> bool:

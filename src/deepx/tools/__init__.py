@@ -1,33 +1,26 @@
-from deepx.tools.memory import read_memory, read_store, update_memory, write_store
-from deepx.tools.planning import mark_done, read_todos, write_todos
-from deepx.tools.workspace import (
-    append_to_file,
-    edit_file,
-    execute,
-    glob,
-    grep,
-    list_files,
-    ls,
-    read_file,
-    write_file,
-)
+from deepx.tools.filesystem import edit_file, execute, glob, grep, ls, read_file, write_file
+from deepx.tools.planning import write_todos
 
-WORKSPACE_TOOLS = [
+FILESYSTEM_TOOLS = [
     ls,
     read_file,
     write_file,
     edit_file,
-    append_to_file,
     glob,
     grep,
-    list_files,
     execute,
 ]
-PLANNING_TOOLS = [write_todos, mark_done, read_todos]
-MEMORY_TOOLS = [update_memory, read_memory, read_store, write_store]
+PLANNING_TOOLS = [write_todos]
 
 __all__ = [
-    "WORKSPACE_TOOLS",
+    "FILESYSTEM_TOOLS",
     "PLANNING_TOOLS",
-    "MEMORY_TOOLS",
+    "ls",
+    "read_file",
+    "write_file",
+    "edit_file",
+    "glob",
+    "grep",
+    "execute",
+    "write_todos",
 ]

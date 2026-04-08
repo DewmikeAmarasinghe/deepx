@@ -3,7 +3,7 @@ from __future__ import annotations
 import abc
 
 
-class WorkspaceBackend(abc.ABC):
+class BackendProtocol(abc.ABC):
     @abc.abstractmethod
     def read(self, session_id: str, path: str) -> str | None: ...
 
@@ -42,6 +42,9 @@ class WorkspaceBackend(abc.ABC):
 
     @abc.abstractmethod
     def save_tool_log(self, session_id: str, log_data: dict) -> None: ...
+
+    @abc.abstractmethod
+    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None: ...
 
     @property
     def supports_execution(self) -> bool:

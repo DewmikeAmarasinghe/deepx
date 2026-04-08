@@ -1,10 +1,10 @@
 from deepx.backends.composite import CompositeBackend
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.memory import InMemoryBackend
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 
 __all__ = [
-    "WorkspaceBackend",
+    "BackendProtocol",
     "FilesystemBackend",
     "InMemoryBackend",
     "CompositeBackend",

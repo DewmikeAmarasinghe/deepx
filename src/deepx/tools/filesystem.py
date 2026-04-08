@@ -56,7 +56,7 @@ def _child_map(all_rels: list[str], base_prefix: str) -> dict[str, bool]:
                 continue
             if not rel.startswith(pfx):
                 continue
-            rest = rel[len(pfx) :]
+            rest = rel[len(pfx):]
         else:
             rest = rel
         if not rest:
@@ -126,7 +126,10 @@ def _run_ls(ctx: RunContextWrapper[AgentContext], path: str) -> str:
 
 @function_tool
 def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
-    """List files and directories for the session filesystem or /store/ memory."""
+    """Lists all files in a directory.
+
+    This is useful for exploring the filesystem and finding the right file to read or edit.
+    You should almost ALWAYS use this tool before using the read_file or edit_file tools."""
     return _run_ls(ctx, path)
 
 
@@ -137,7 +140,23 @@ def read_file(
     offset: int = 0,
     limit: int = 100,
 ) -> str:
-    """Read a file from the session or /store/ with line offset and limit."""
+    """Reads a file from the filesystem.
+
+    Assume this tool is able to read all files. If the User provides a path to a file assume that path is valid. It is okay to read a file that does not exist; an error will be returned.
+
+    Usage:
+    - By default, it reads up to 100 lines starting from the beginning of the file
+    - **IMPORTANT for large files and codebase exploration**: Use pagination with offset and limit parameters to avoid context overflow
+      - First scan: read_file(path, limit=100) to see file structure
+      - Read more sections: read_file(path, offset=100, limit=200) for next 200 lines
+      - Only omit limit (read full file) when necessary for editing
+    - Specify offset and limit: read_file(path, offset=0, limit=100) reads first 100 lines
+    - Results are returned using cat -n format, with line numbers starting at 1
+    - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
+    - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
+    - Image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) are returned as base64-encoded data.
+
+    - You should ALWAYS make sure a file has been read before editing it."""
     kind, rel = _route_path(path)
     b = ctx.context.backend
     sid = ctx.context.session_id
@@ -163,8 +182,11 @@ def read_file(
     if content is None:
         return f"Error: '{path}' not found."
 
+    if not content.strip():
+        return "System reminder: File exists but has empty contents"
+
     lines = content.splitlines()
-    selected = lines[offset : offset + limit]
+    selected = lines[offset: offset + limit]
     if not selected and lines:
         return f"Error: offset {offset} exceeds file length ({len(lines)} lines)."
     numbered = "\n".join(
@@ -179,7 +201,11 @@ def read_file(
 def write_file(
     ctx: RunContextWrapper[AgentContext], path: str, content: str
 ) -> str:
-    """Create a new file. Fails if the file already exists."""
+    """Writes to a new file in the filesystem.
+
+    Usage:
+    - The write_file tool will create a new file.
+    - Prefer to edit existing files (with the edit_file tool) over creating new ones when possible."""
     kind, rel = _route_path(path)
     b = ctx.context.backend
     sid = ctx.context.session_id
@@ -197,7 +223,7 @@ def write_file(
                 "Read and then make an edit, or write to a new path."
             )
         b.write(sid, rel, content)
-    return f"Written: {path} ({len(content)} chars)"
+    return f"Updated file {path}"
 
 
 @function_tool
@@ -208,7 +234,13 @@ def edit_file(
     new_string: str,
     replace_all: bool = False,
 ) -> str:
-    """Replace old_string with new_string in a file (session or /store/)."""
+    """Performs exact string replacements in files.
+
+    Usage:
+    - You must read the file before editing. This tool will error if you attempt an edit without reading the file first.
+    - When editing, preserve the exact indentation (tabs/spaces) from the read output. Never include line number prefixes in old_string or new_string.
+    - ALWAYS prefer editing existing files over creating new ones.
+    - Only use emojis if the user explicitly requests it."""
     kind, rel = _route_path(path)
     b = ctx.context.backend
     sid = ctx.context.session_id
@@ -236,30 +268,22 @@ def edit_file(
         b.write_store(rel, new_content)
     else:
         b.write(sid, rel, new_content)
-    return f"Edited: {path}"
-
-
-@function_tool
-def append_to_file(
-    ctx: RunContextWrapper[AgentContext], path: str, content: str
-) -> str:
-    """Append to a file, creating it if missing."""
-    kind, rel = _route_path(path)
-    b = ctx.context.backend
-    sid = ctx.context.session_id
-    if kind == "store":
-        prev = b.read_store(rel) or ""
-        b.write_store(rel, prev + content)
-    else:
-        b.append(sid, rel, content)
-    return f"Appended to: {path}"
+    return f"Successfully replaced {count if replace_all else 1} instance(s) of the string in '{path}'"
 
 
 @function_tool
 def glob(
     ctx: RunContextWrapper[AgentContext], pattern: str, path: str = "/"
 ) -> str:
-    """Find files matching a glob pattern under path (session or /store/)."""
+    """Find files matching a glob pattern.
+
+    Supports standard glob patterns: `*` (any characters), `**` (any directories), `?` (single character).
+    Returns a list of file paths that match the pattern.
+
+    Examples:
+    - `**/*.py` - Find all Python files
+    - `*.txt` - Find all text files in root
+    - `/subdir/**/*.md` - Find all markdown files under /subdir"""
     kind, rel = _route_path(path)
     base_prefix = rel.strip("/")
     pfx = f"{base_prefix}/" if base_prefix else ""
@@ -286,7 +310,16 @@ def grep(
     glob_pattern: str | None = None,
     output_mode: Literal["files_with_matches", "content", "count"] = "files_with_matches",
 ) -> str:
-    """Literal substring search (not regex). Session files or /store/ path."""
+    """Search for a text pattern across files.
+
+    Searches for literal text (not regex) and returns matching files or content based on output_mode.
+    Special characters like parentheses, brackets, pipes, etc. are treated as literal characters, not regex operators.
+
+    Examples:
+    - Search all files: `grep(pattern="TODO")`
+    - Search Python files only: `grep(pattern="import", glob_pattern="*.py")`
+    - Show matching lines: `grep(pattern="error", output_mode="content")`
+    - Search for code with special chars: `grep(pattern="def __init__(self):")`"""
     sid = ctx.context.session_id
     b = ctx.context.backend
 
@@ -334,14 +367,23 @@ def grep(
 
 
 @function_tool
-def list_files(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
-    """Deprecated alias for ls."""
-    return _run_ls(ctx, path)
-
-
-@function_tool
 def execute(ctx: RunContextWrapper[AgentContext], command: str) -> str:
-    """Run a shell command when execution is enabled on the backend."""
+    """Executes a shell command in an isolated sandbox environment.
+
+    Usage:
+    Executes a given command in the sandbox environment with proper handling and security measures.
+    Before executing the command, please follow these steps:
+    1. Directory Verification:
+       - If the command will create new directories or files, first use the ls tool to verify the parent directory exists and is the correct location
+    2. Command Execution:
+       - Always quote file paths that contain spaces with double quotes
+       - When issuing multiple commands, use the ';' or '&&' operator to separate them. DO NOT use newlines
+    Usage notes:
+      - Commands run in an isolated sandbox environment
+      - Returns combined stdout/stderr output with exit code
+      - VERY IMPORTANT: You MUST avoid using search commands like find and grep. Instead use the grep, glob tools to search. You MUST avoid read tools like cat, head, tail, and use read_file to read files.
+
+    Note: This tool is only available if the backend supports execution."""
     b = ctx.context.backend
     if not b.supports_execution:
         return (

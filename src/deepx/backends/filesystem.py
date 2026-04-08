@@ -4,14 +4,14 @@ import json
 import re
 from pathlib import Path
 
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 
 
 def _safe_agent_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]+", "_", name) or "agent"
 
 
-class FilesystemBackend(WorkspaceBackend):
+class FilesystemBackend(BackendProtocol):
     def __init__(self, root: str | Path = ".deepx") -> None:
         self._root = Path(root)
 
@@ -143,3 +143,23 @@ class FilesystemBackend(WorkspaceBackend):
         path = self._tool_log_path(session_id, tool_name, call_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(log_data, indent=2))
+
+    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None:
+        from datetime import datetime, timezone
+        p = self._logs_dir(session_id) / "system_prompts.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists():
+            try:
+                arr = json.loads(p.read_text())
+                if not isinstance(arr, list):
+                    arr = []
+            except json.JSONDecodeError:
+                arr = []
+        else:
+            arr = []
+        arr.append({
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "agent": agent_name,
+            "prompt": prompt,
+        })
+        p.write_text(json.dumps(arr, indent=2))

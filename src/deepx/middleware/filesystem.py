@@ -11,15 +11,15 @@ from agents.lifecycle import RunHooksBase
 from agents.run_context import AgentHookContext, RunContextWrapper
 from agents.tool import FunctionTool, Tool
 
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.models import Plan
 
 LARGE_OUTPUT_THRESHOLD = 80_000
 
 
-class WorkspaceHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
-    def __init__(self, backend: WorkspaceBackend) -> None:
+class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
+    def __init__(self, backend: BackendProtocol) -> None:
         self._backend = backend
 
     async def on_agent_start(
@@ -38,7 +38,7 @@ class WorkspaceHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
                 context.context.memory = raw
 
 
-def _make_evicting_invoke(original_invoke: Any, backend: WorkspaceBackend) -> Any:
+def _make_evicting_invoke(original_invoke: Any, backend: BackendProtocol) -> Any:
     async def invoke(ctx: Any, args_json: str) -> Any:
         result = await original_invoke(ctx, args_json)
         text = str(result)
@@ -59,7 +59,7 @@ def _make_evicting_invoke(original_invoke: Any, backend: WorkspaceBackend) -> An
 
 def wrap_tools_with_large_output_eviction(
     tools: list[Tool],
-    backend: WorkspaceBackend,
+    backend: BackendProtocol,
 ) -> list[Tool]:
     out: list[Tool] = []
     for tool in tools:
@@ -75,7 +75,7 @@ def _make_logged_invoke(
     original_invoke: Any,
     tool_name: str,
     agent_name: str,
-    backend: WorkspaceBackend,
+    backend: BackendProtocol,
 ) -> Any:
     async def logged_invoke(ctx: Any, args_json: str) -> Any:
         result = await original_invoke(ctx, args_json)
@@ -101,7 +101,7 @@ def _make_logged_invoke(
 
 def wrap_tools_for_logging(
     tools: list[Tool],
-    backend: WorkspaceBackend,
+    backend: BackendProtocol,
     agent_name: str,
 ) -> list[Tool]:
     out: list[Tool] = []
@@ -118,7 +118,7 @@ def wrap_tools_for_logging(
 
 def apply_tool_pipeline(
     tools: list[Tool],
-    backend: WorkspaceBackend,
+    backend: BackendProtocol,
     *,
     agent_name: str,
     debug: bool,

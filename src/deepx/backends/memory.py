@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 
-from deepx.backends.protocol import WorkspaceBackend
+from deepx.backends.protocol import BackendProtocol
 
 
-class InMemoryBackend(WorkspaceBackend):
+class InMemoryBackend(BackendProtocol):
     def __init__(self) -> None:
         self._files: dict[tuple[str, str], str] = {}
         self._store: dict[str, str] = {}
@@ -63,3 +63,6 @@ class InMemoryBackend(WorkspaceBackend):
 
     def save_tool_log(self, session_id: str, log_data: dict) -> None:
         self._tool_logs.setdefault(session_id, []).append(log_data)
+
+    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None:
+        pass

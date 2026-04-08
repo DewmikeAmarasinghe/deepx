@@ -1,6 +1,7 @@
 from deepx.backends.composite import CompositeBackend
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.memory import InMemoryBackend
+from deepx.backends.protocol import BackendProtocol
 from deepx.factory import (
     DeepAgent,
     DeepAgentRunner,
@@ -17,6 +18,7 @@ __all__ = [
     "DeepRunResult",
     "SubAgentDict",
     "HumanInTheLoopHooks",
+    "BackendProtocol",
     "FilesystemBackend",
     "InMemoryBackend",
     "CompositeBackend",

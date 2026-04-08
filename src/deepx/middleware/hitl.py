@@ -14,10 +14,11 @@ from deepx.context import AgentContext
 class HumanInTheLoopHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
     """Pauses before sensitive tool calls and prompts for human approval.
 
-    Approval is remembered for the lifetime of the run — once a tool is
-    approved it will not be asked again in the same session.  Uses
-    ``run_in_executor`` so the blocking ``input()`` call does not stall the
-    async event loop.
+    Approval is remembered for the lifetime of the hooks instance — once a
+    tool is approved it will not be asked again, even across parallel subagent
+    runs that share this hooks object. An asyncio.Lock serializes the
+    check-and-add so concurrent tool calls cannot both slip through before
+    the first approval is recorded.
 
     Args:
         sensitive_tools: Tool names that require approval before execution.
@@ -32,6 +33,8 @@ class HumanInTheLoopHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
         approval_fn: Callable[[str, str], bool] | None = None,
     ) -> None:
         self._sensitive = set(sensitive_tools)
+        self._approved: set[str] = set()
+        self._lock = asyncio.Lock()
         self._approval_fn = approval_fn or self._cli_approval
 
     @staticmethod
@@ -49,14 +52,15 @@ class HumanInTheLoopHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
     ) -> None:
         if tool.name not in self._sensitive:
             return
-        if tool.name in context.context.approved_tools:
-            return
-        loop = asyncio.get_event_loop()
-        approved = await loop.run_in_executor(
-            None, self._approval_fn, agent.name, tool.name
-        )
-        if not approved:
-            raise RuntimeError(
-                f"Human rejected tool call: {tool.name}. Do not retry this tool."
+        async with self._lock:
+            if tool.name in self._approved:
+                return
+            loop = asyncio.get_event_loop()
+            approved = await loop.run_in_executor(
+                None, self._approval_fn, agent.name, tool.name
             )
-        context.context.approved_tools.add(tool.name)
+            if not approved:
+                raise RuntimeError(
+                    f"Human rejected tool call: {tool.name}. Do not retry this tool."
+                )
+            self._approved.add(tool.name)
