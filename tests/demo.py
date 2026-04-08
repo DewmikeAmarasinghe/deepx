@@ -3,10 +3,11 @@
 Demonstrates:
 - write_todos for structured planning
 - Parallel task delegation via the task tool
-- Researcher subagent doing deep web research (only agent with web tools)
-- Writer subagent producing a polished ADR from research files
-- HITL session approval (approve once, not again)
+- web_agent subagent (web_search, web_extract, think_tool)
+- Writer subagent producing a polished document from research files
+- HITL session approval (approve once per tool name; declines return tool messages)
 - Debug tool logging
+- Skills from tests/skills (deep_researcher orchestration)
 
 Usage:
     OPENAI_API_KEY=... TAVILY_API_KEY=... python tests/demo.py
@@ -25,6 +26,32 @@ from deepx import create_deep_agent
 load_dotenv()
 
 TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
+
+THINK_TOOL_DESCRIPTION = (
+    "Tool for strategic reflection on research progress and decision-making.\n\n"
+    "Use this tool after each web_search or web_extract to analyze results and plan next steps.\n\n"
+    "When to use:\n"
+    "- After search or extract results: what key information did you find?\n"
+    "- Before deciding next steps: do you have enough to answer comprehensively?\n"
+    "- Update mental model of todos / gaps in the research.\n"
+    "- When assessing gaps: what specific information is still missing?\n"
+    "- Before concluding: can you provide a complete answer now?\n\n"
+    "Reflection should address:\n"
+    "1. Analysis of current findings — what concrete information have you gathered?\n"
+    "2. Gap assessment — what crucial information is still missing?\n"
+    "3. Quality evaluation — sufficient evidence/examples for a good write-up?\n"
+    "4. Strategic decision — continue searching or finalize findings to files?\n\n"
+    "Args:\n"
+    "- reflection: Your detailed reflection on progress, findings, gaps, and next steps.\n\n"
+    "Returns:\n"
+    "- Confirmation that reflection was recorded for decision-making."
+)
+
+
+@function_tool(description_override=THINK_TOOL_DESCRIPTION)
+def think_tool(reflection: str) -> str:
+    """Record structured reflection (no side effects beyond returning confirmation)."""
+    return f"Reflection recorded: {reflection}"
 
 
 @function_tool
@@ -66,23 +93,25 @@ async def web_extract(ctx: RunContextWrapper, url: str) -> str:
     return results[0].get("raw_content", "No content extracted.")
 
 
-researcher = {
-    "name": "researcher",
+web_agent_spec = {
+    "name": "web_agent",
     "description": (
-        "Deep research specialist with web search access. "
-        "Give it a complete list of topics to research. "
-        "It will search the web, extract key sources, and save all findings to "
-        "research/ files in the session. Returns the paths to the saved research files."
+        "Web research specialist with web_search and web_extract. "
+        "Give it a complete list of topics or questions to investigate. "
+        "It writes distilled findings (not raw tool dumps) to research/*.md and returns those paths."
     ),
     "system_prompt": (
-        "You are a thorough research specialist. "
-        "For each topic you are given: search for the latest information, "
-        "extract full page content for the most relevant sources, "
-        "and save structured findings to research/<topic-slug>.md. "
-        "Once all topics are researched, return a message listing the file paths "
-        "where you saved your findings, e.g.: 'Saved research to: research/ollama.md, research/vllm.md'"
+        "You are a web research specialist. You have web_search, web_extract, and think_tool.\n"
+        "**CRITICAL: Call think_tool after each web_search or web_extract** to reflect on results "
+        "and plan next steps.\n"
+        "For each topic: search, extract the most relevant URLs as needed, then write a **synthesized** "
+        "markdown file at research/<topic-slug>.md with clear headings, bullet summaries, inline citations "
+        "[1], [2] mapping to sources, and only short quoted excerpts — do **not** paste full raw search "
+        "or extract payloads into files.\n"
+        "When done, return a message listing every file path you wrote, e.g.: "
+        "'Saved research to: research/foo.md, research/bar.md'."
     ),
-    "tools": [web_search, web_extract],
+    "tools": [think_tool, web_search, web_extract],
 }
 
 writer = {
@@ -101,17 +130,15 @@ writer = {
 
 agent = create_deep_agent(
     model="gpt-4o-mini",
-    name="orchestrator",
-    subagents=[researcher, writer],
+    name="deep_researcher",
+    subagents=[web_agent_spec, writer],
+    tools=[think_tool],
+    skills=["tests/skills"],
     system_prompt=(
-        "You are a research orchestrator. Follow this workflow:\n"
-        "1. Use write_todos to plan your steps before starting.\n"
-        "2. Delegate ALL research topics to the researcher subagent in a single task call "
-        "(not one call per topic). The researcher will save its findings to research/ files "
-        "and tell you which files it saved.\n"
-        "3. Once you have the research file paths, pass them to the writer subagent along "
-        "with the user's request and exact output format required.\n"
-        "4. Return the writer's output directly to the user — do not save to a file."
+        "You are the deep_researcher: coordinate multi-step web research and writing for the user.\n"
+        "Follow the deep_researcher skill (read its SKILL.md when the task matches). "
+        "Use write_todos immediately to plan, then delegate research to web_agent and writing to writer. "
+        "Use think_tool after major delegations or when you need to reason about gaps before the next step."
     ),
     interrupt_on=["web_search"],
     debug=True,
@@ -119,7 +146,7 @@ agent = create_deep_agent(
 )
 
 TASK = """
-One compelling task for a research agent is to investigate the long-term viability of sodium-ion batteries as a sustainable alternative to lithium-ion technology in the electric vehicle market. The research should analyze current energy density limitations, the geopolitical stability of the raw material supply chain, and the existing manufacturing hurdles for large-scale adoption. Additionally, the agent should identify key startups leading the sector and provide a cost-benefit analysis comparing the lifecycle environmental impact of sodium versus lithium extraction.
+Investigate the long-term viability of sodium-ion batteries as a sustainable alternative to lithium-ion technology in the electric vehicle market. The research should analyze current energy density limitations, the geopolitical stability of the raw material supply chain, and the existing manufacturing hurdles for large-scale adoption. Additionally, the agent should identify key startups leading the sector and provide a cost-benefit analysis comparing the lifecycle environmental impact of sodium versus lithium extraction.
 """
 
 if __name__ == "__main__":
@@ -127,11 +154,6 @@ if __name__ == "__main__":
     result = agent.run_sync(TASK, session_id=session_id)
 
     print("\n" + "=" * 70)
-    print("FINAL OUTPUT:")
-    print("=" * 70)
     print(result.output)
     print("=" * 70)
     print(f"\nSession: {result.session_id}  (resume with SESSION_ID={result.session_id})")
-    print("\nPlan:")
-    for i, todo in enumerate(result.plan.todos, 1):
-        print(f"  [{i}] ({todo.status.value}) {todo.title}")

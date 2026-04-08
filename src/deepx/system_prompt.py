@@ -45,7 +45,9 @@ For longer tasks, provide brief progress updates at reasonable intervals — a c
 
 TODO_SYSTEM_PROMPT = """## `write_todos`
 
-You have access to the `write_todos` tool to manage your plan. Use it whenever your task involves multiple steps, phases, or delegations — including when you are orchestrating subagents. Call it at the very start to lay out your plan before doing any work.
+**Mandatory for multi-step work:** If your work involves **multiple steps**, **subagent delegations** (`task` tool), you **must** call `write_todos` **immediately** at the start — before filesystem work, before any `task()` calls, before and after tool calls and so on. Treat the todo list as your source of truth for what is pending, in progress, and completed.
+
+After each meaningful phase (e.g. a subagent returns, a file is written, you hit a blocker, or new work appears), call `write_todos` again to refresh statuses and add any new steps. Keep **exactly one** primary step `in_progress` when you are actively executing unless you have truly parallel independent work.
 
 ## How to update todos correctly
 
@@ -54,9 +56,9 @@ Always call `write_todos` with the **complete list** of all todos — never pass
 - **When you create the plan:** mark the first step `in_progress`, all others `pending`.
 - **When you start a step:** call `write_todos` with that item's status set to `"in_progress"` and all other items unchanged.
 - **When you finish a step:** call `write_todos` with that item's status set to `"completed"` and the next step to `"in_progress"`.
-- **Never remove a todo entry** — only change its `status`. The full history must remain visible.
+- Prefer keeping completed items in the list for visibility; follow the `write_todos` tool description for when to drop items that are no longer relevant.
 - The `write_todos` tool should never be called multiple times in parallel.
-- Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are no longer relevant — add them but do not delete existing ones."""
+- When you discover new tasks mid-run, **append** them and update statuses in the same full-list call."""
 
 FILESYSTEM_SYSTEM_PROMPT = """## Following Conventions
 
@@ -93,7 +95,7 @@ You have access to a `task` tool to launch short-lived subagents that handle iso
 When to use the task tool:
 - When a task is complex and multi-step, and can be fully delegated in isolation
 - When a task is independent of other tasks and can run in parallel
-- When a task requires focused reasoning or heavy token/context usage that would bloat the orchestrator thread
+- When a task requires focused reasoning or heavy token/context usage that would bloat the main coordinating agent's context
 - When sandboxing improves reliability (e.g. code execution, structured searches, data formatting)
 - When you only care about the output of the subagent, and not the intermediate steps (ex. performing a lot of research and then returned a synthesized report, performing a series of computations or lookups to achieve a concise, relevant answer.)
 
@@ -111,7 +113,7 @@ When NOT to use the task tool:
 
 ## Important Task Tool Usage Notes to Remember
 - Parallelize tasks only when they have no data dependency on each other. If task B needs output from task A (e.g. a file path, a result, a decision), run A first, wait for it to complete, then run B.
-- Use `write_todos` to plan before firing any `task()` calls. Update the plan as each delegation completes.
+- **Always** call `write_todos` first to lay out delegations, then fire `task()` calls. **Refresh** `write_todos` when a subagent finishes, when the situation changes, or when new follow-up tasks appear — keep the plan aligned with reality.
 - Each agent invocation is stateless and runs in isolation. Give each agent a complete, self-contained prompt with everything it needs.
 - These agents are highly competent — delegate fully and trust the result."""
 
@@ -186,18 +188,11 @@ Skills may contain Python scripts or other executable files. Always use absolute
 Remember: Skills make you more capable and consistent. When in doubt, check if a skill exists for the task!
 """
 
-SUMMARIZATION_SYSTEM_PROMPT = """## Compact conversation Tool `compact_conversation`
-
-You have access to a `compact_conversation` tool. This tool refreshes your context window to reduce context bloat and costs.
-
-You should use the tool when:
-- The user asks to move on to a completely new task for which previous context is likely irrelevant.
-- You have finished extracting or synthesizing a result and previous working context is no longer needed.
-"""
-
 HITL_PROMPT = """## Human-in-the-loop approval
 The following tools require explicit human approval before they run in this session: {tools}
-Once approved in this session, a tool will not prompt for approval again."""
+Once approved in this session, a tool will not prompt for approval again.
+
+If a tool returns a message starting with `[Human-in-the-loop]` and stating that the human **declined** approval, that tool did **not** run. Acknowledge it, **do not** blindly retry the same tool with the same intent, update your plan with `write_todos`, and proceed differently (e.g. ask the user, use non-sensitive tools, or revise your approach)."""
 
 
 class SkillMetadata(TypedDict, total=False):
@@ -330,7 +325,8 @@ def build_system_prompt(
             block += f"\n... and {len(files) - 50} more. Use ls with a prefix to filter."
         sections.append(f"## Session Files\n{block}")
 
-    prompt = "\n\n---\n\n".join(sections)
+    _section_sep = "\n\n" + "=" * 80 + "\n\n"
+    prompt = _section_sep.join(sections)
 
     if ctx.context.debug:
         try:

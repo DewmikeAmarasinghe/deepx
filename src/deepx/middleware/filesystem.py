@@ -13,6 +13,7 @@ from agents.tool import FunctionTool, Tool
 
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
+from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.models import Plan
 
 LARGE_OUTPUT_THRESHOLD = 80_000
@@ -117,14 +118,48 @@ def wrap_tools_for_logging(
     return out
 
 
+def wrap_tools_for_hitl(
+    tools: list[Tool],
+    hitl: HumanInTheLoopHooks,
+) -> list[Tool]:
+    """Wrap sensitive FunctionTools so approval runs before invoke; declines become tool output."""
+    out: list[Tool] = []
+    for tool in tools:
+        if isinstance(tool, FunctionTool) and tool.name in hitl._sensitive:
+            inner = tool.on_invoke_tool
+            name = tool.name
+
+            async def hitl_invoke(
+                ctx: Any,
+                args_json: str,
+                *,
+                _inner: Any = inner,
+                _hitl: HumanInTheLoopHooks = hitl,
+                _name: str = name,
+            ) -> Any:
+                agent_name = getattr(ctx.context, "agent_name", "") or "agent"
+                msg = await _hitl.gate_tool(agent_name, _name)
+                if msg is not None:
+                    return msg
+                return await _inner(ctx, args_json)
+
+            out.append(dataclasses.replace(tool, on_invoke_tool=hitl_invoke))
+        else:
+            out.append(tool)
+    return out
+
+
 def apply_tool_pipeline(
     tools: list[Tool],
     backend: BackendProtocol,
     *,
     agent_name: str,
     debug: bool,
+    hitl: HumanInTheLoopHooks | None = None,
 ) -> list[Tool]:
     wrapped = wrap_tools_with_large_output_eviction(tools, backend)
     if debug:
         wrapped = wrap_tools_for_logging(wrapped, backend, agent_name)
+    if hitl is not None:
+        wrapped = wrap_tools_for_hitl(wrapped, hitl)
     return wrapped

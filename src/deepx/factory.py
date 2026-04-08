@@ -245,14 +245,13 @@ def _make_task_tool(
         sub_session_id = f"{parent_sid}:{subagent_type}:{uuid.uuid4().hex[:12]}"
         session = create_session(sub_session_id, db_path)
         hooks: _HookList = [FilesystemHooks(backend)]
-        if hitl:
-            hooks.append(hitl)
         combined = _CombinedHooks(hooks) if len(hooks) > 1 else hooks[0]
         wrapped_tools = apply_tool_pipeline(
             list(agent.tools),
             backend,
             agent_name=agent.name,
             debug=debug,
+            hitl=hitl,
         )
         run_agent = dataclasses.replace(agent, tools=wrapped_tools)
         result = await Runner.run(
@@ -311,10 +310,7 @@ class DeepAgentRunner:
         )
 
     def _make_hooks(self) -> RunHooksBase[AgentContext, AgentType[AgentContext]]:
-        hooks: _HookList = [FilesystemHooks(self._backend)]
-        if self._hitl:
-            hooks.append(self._hitl)
-        return _CombinedHooks(hooks) if len(hooks) > 1 else hooks[0]
+        return FilesystemHooks(self._backend)
 
     def _prepare_agent(self, ctx: AgentContext) -> Agent:
         wrapped = apply_tool_pipeline(
@@ -322,6 +318,7 @@ class DeepAgentRunner:
             self._backend,
             agent_name=self._agent.name,
             debug=self._debug,
+            hitl=self._hitl,
         )
         return dataclasses.replace(self._agent, tools=wrapped)
 
