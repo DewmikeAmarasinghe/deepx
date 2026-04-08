@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import os
+import uuid
 
 import httpx
 from agents import RunContextWrapper, function_tool
@@ -118,29 +119,19 @@ agent = create_deep_agent(
 )
 
 TASK = """
-Research the current state of open-source LLM inference engines for production deployment.
-Cover these four engines: Ollama, vLLM, llama.cpp, TensorRT-LLM.
-
-For each engine research:
-1. Latest stable release and release date
-2. Throughput benchmarks on consumer hardware (RTX 3090 or RTX 4090) if available
-3. Deployment complexity (single-command vs. complex setup)
-4. One known production limitation
-
-Then produce an Architecture Decision Record (ADR) recommending ONE engine for a startup
-serving 100 concurrent users on a budget.
-The ADR should include: context, options considered, decision, rationale, and migration path.
+One compelling task for a research agent is to investigate the long-term viability of sodium-ion batteries as a sustainable alternative to lithium-ion technology in the electric vehicle market. The research should analyze current energy density limitations, the geopolitical stability of the raw material supply chain, and the existing manufacturing hurdles for large-scale adoption. Additionally, the agent should identify key startups leading the sector and provide a cost-benefit analysis comparing the lifecycle environmental impact of sodium versus lithium extraction.
 """
 
 if __name__ == "__main__":
-    result = agent.run_sync(TASK, session_id="adr_inference_001")
+    session_id = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
+    result = agent.run_sync(TASK, session_id=session_id)
 
     print("\n" + "=" * 70)
     print("FINAL OUTPUT:")
     print("=" * 70)
     print(result.output)
     print("=" * 70)
-    print(f"\nSession: {result.session_id}")
+    print(f"\nSession: {result.session_id}  (resume with SESSION_ID={result.session_id})")
     print("\nPlan:")
     for i, todo in enumerate(result.plan.todos, 1):
         print(f"  [{i}] ({todo.status.value}) {todo.title}")

@@ -29,9 +29,10 @@ class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
     ) -> None:
         context.context.agent_name = agent.name
         context.context.plan.agent_name = agent.name
-        saved = self._backend.load_plan(context.context.session_id, agent.name)
-        if saved:
-            context.context.plan = Plan.model_validate_json(saved)
+        if context.context.resume:
+            saved = self._backend.load_plan(context.context.session_id, agent.name)
+            if saved:
+                context.context.plan = Plan.model_validate_json(saved)
         if not context.context.memory:
             raw = self._backend.read_store("AGENTS.md")
             if raw:

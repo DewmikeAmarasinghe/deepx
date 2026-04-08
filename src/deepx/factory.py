@@ -299,7 +299,7 @@ class DeepAgentRunner:
         self._interrupt_tools = interrupt_tools
 
     def _make_ctx(self, session_id: str, resume: bool) -> AgentContext:
-        ctx = AgentContext(
+        return AgentContext(
             session_id=session_id,
             backend=self._backend,
             agent_name=self._agent_name,
@@ -307,12 +307,8 @@ class DeepAgentRunner:
             skills_info=self._skills_info,
             debug=self._debug,
             hitl_tools=self._interrupt_tools,
+            resume=resume,
         )
-        if resume:
-            saved = self._backend.load_plan(session_id, self._agent_name)
-            if saved:
-                ctx.plan = Plan.model_validate_json(saved)
-        return ctx
 
     def _make_hooks(self) -> RunHooksBase[AgentContext, AgentType[AgentContext]]:
         hooks: _HookList = [FilesystemHooks(self._backend)]

@@ -45,19 +45,15 @@ For longer tasks, provide brief progress updates at reasonable intervals — a c
 
 TODO_SYSTEM_PROMPT = """## `write_todos`
 
-You have access to the `write_todos` tool to help you manage and plan complex objectives.
-Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
-This tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.
-
-For simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.
-Writing todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.
+You have access to the `write_todos` tool to manage your plan. Use it whenever your task involves multiple steps, phases, or delegations — including when you are orchestrating subagents. Call it at the very start to lay out your plan before doing any work.
 
 ## How to update todos correctly
 
 Always call `write_todos` with the **complete list** of all todos — never pass a partial list or omit existing entries.
 
+- **When you create the plan:** mark the first step `in_progress`, all others `pending`.
 - **When you start a step:** call `write_todos` with that item's status set to `"in_progress"` and all other items unchanged.
-- **When you finish a step:** call `write_todos` with that item's status set to `"completed"` and all other items unchanged.
+- **When you finish a step:** call `write_todos` with that item's status set to `"completed"` and the next step to `"in_progress"`.
 - **Never remove a todo entry** — only change its `status`. The full history must remain visible.
 - The `write_todos` tool should never be called multiple times in parallel.
 - Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are no longer relevant — add them but do not delete existing ones."""
@@ -114,9 +110,10 @@ When NOT to use the task tool:
 - If splitting would add latency without benefit
 
 ## Important Task Tool Usage Notes to Remember
-- Whenever possible, parallelize the work that you do. This is true for both tool_calls, and for tasks. Whenever you have independent steps to complete - make tool_calls, or kick off tasks (subagents) in parallel to accomplish them faster. This saves time for the user, which is incredibly important.
-- Remember to use the `task` tool to silo independent tasks within a multi-part objective.
-- You should use the `task` tool whenever you have a complex task that will take multiple steps, and is independent from other tasks that the agent needs to complete. These agents are highly competent and efficient."""
+- Parallelize tasks only when they have no data dependency on each other. If task B needs output from task A (e.g. a file path, a result, a decision), run A first, wait for it to complete, then run B.
+- Use `write_todos` to plan before firing any `task()` calls. Update the plan as each delegation completes.
+- Each agent invocation is stateless and runs in isolation. Give each agent a complete, self-contained prompt with everything it needs.
+- These agents are highly competent — delegate fully and trust the result."""
 
 MEMORY_SYSTEM_PROMPT = """<agent_memory>
 {agent_memory}
