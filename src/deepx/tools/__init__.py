@@ -1,16 +1,9 @@
-from deepx.tools.filesystem import edit_file, execute, glob, grep, ls, read_file, write_file
-from deepx.tools.planning import list_todos, write_todos
+from deepx.tools.filesystem import edit_file, ls, read_file, write_file
+from deepx.tools.planning import read_todos, write_todos
+from deepx.tools.think import think_tool
 
-FILESYSTEM_TOOLS = [
-    ls,
-    read_file,
-    write_file,
-    edit_file,
-    glob,
-    grep,
-    execute,
-]
-PLANNING_TOOLS = [write_todos, list_todos]
+FILESYSTEM_TOOLS = [ls, read_file, write_file, edit_file]
+PLANNING_TOOLS = [write_todos, read_todos, think_tool]
 
 __all__ = [
     "FILESYSTEM_TOOLS",
@@ -19,9 +12,7 @@ __all__ = [
     "read_file",
     "write_file",
     "edit_file",
-    "glob",
-    "grep",
-    "execute",
     "write_todos",
-    "list_todos",
+    "read_todos",
+    "think_tool",
 ]

@@ -14,44 +14,73 @@ class TodoInput(BaseModel):
     content: str
     status: str = "pending"
 
-WRITE_TODOS_TOOL_DESCRIPTION = (
-    "Create or update your structured task list. Call this tool whenever your work involves more than "
-    "a single direct answer — any tool use, delegation, or multi-step task of any kind.\n\n"
-    "**Before building the list:** review the descriptions of available tools and subagents. "
-    "Design steps that match what each tool or subagent can accomplish in a single invocation. "
-    "Do not create one todo step per task when one subagent call can cover all of them."
-    "   For example: creating a todo list like step-1: delegate task1 to subagent1"
-    "   step-2: delegate task2 to subagent1"
-    "   step-3: delegate task3 to subagent1 and so on when we can delegate all of"
-    "those tasks to the subagent1 in one step\n\n" 
-    "**After each step completes:** call `list_todos` first to read the current state, then call "
-    "`write_todos` to mark the finished step `completed` and advance the next to `in_progress`.\n\n"
-    "## Rules\n\n"
-    "- Always pass the **complete list** — never omit existing entries.\n"
-    "- Never call this tool multiple times in parallel.\n"
-    "- Mark the first step `in_progress` when you create the plan; keep exactly one step `in_progress` "
-    "unless running genuinely parallel independent work.\n"
-    "- ONLY mark a step `completed` when fully done. If blocked, keep it `in_progress` and add a new "
-    "step describing the blocker.\n"
-    "- When new work appears mid-run, append it and update statuses in the same call.\n"
-    "- Keep completed steps in the list for visibility — do not delete them.\n\n"
-    "## Task states\n\n"
-    "- `pending` — not yet started\n"
-    "- `in_progress` — currently being worked on\n"
-    "- `completed` — fully done\n\n"
-    "The only time you may skip this tool is for a purely conversational reply with zero tool use."
-)
+
+WRITE_TODOS_TOOL_DESCRIPTION = """\
+Create or replace the current task list. This is your primary planning tool.
+
+**When to call:**
+Call this for any task involving more than a single direct answer — tool use, subagent delegation,
+multi-step work, or even a sequence of reads followed by a response. If in doubt, write the plan.
+
+**Before building the list — understand your capabilities:**
+Review all available tools and subagent descriptions first. Design steps that match what each tool
+or subagent can accomplish in a single invocation. Do not fragment work unnecessarily:
+- BAD: one step per research sub-topic when a single subagent call can handle all of them together.
+- GOOD: one delegation step covering the full scope, followed by a synthesis step.
+
+**Lifecycle — all five cases:**
+
+1. **Creating the plan** — write all steps you can foresee. Mark the first step `in_progress`.
+   Subsequent steps should be `pending`.
+
+2. **Step completes** — mark it `completed` and mark the next step `in_progress` in the same call.
+   Never leave the plan between states — always update in one atomic write.
+
+3. **Plan changes mid-run** — when `think_tool` reveals new information or a different approach is
+   needed, revise the todos: update descriptions, insert new steps, reorder, or split steps. Mark
+   the correct next step `in_progress`. Pass the full list including already-completed steps.
+
+4. **Blocked** — keep the current step `in_progress`. Append a new step describing the specific
+   blocker (what failed, what is needed to proceed). Do not mark as completed.
+
+5. **New work discovered** — append the new steps and update statuses in the same call.
+   Never call write_todos separately just to add steps.
+
+**Rules:**
+- Always pass the **complete list** — never omit existing entries. The full history is visible
+  to you and helps track what has been done.
+- Never call `write_todos` multiple times in parallel.
+- Keep completed steps — do not delete them.
+- Maintain exactly **one** step `in_progress` unless running genuinely parallel independent work.
+
+**States:**
+- `pending`     — not yet started
+- `in_progress` — currently being worked on (exactly one at a time, normally)
+- `completed`   — fully done and verified
+
+The only time you may skip this tool entirely is for a purely conversational reply with zero tool use.\
+"""
+
+_READ_TODOS_DESCRIPTION = """\
+Read your current plan state. Call this BEFORE every action step.
+
+This is a mandatory checkpoint before using any tool, calling any subagent, or writing any file.
+Confirm:
+- Which step is currently `in_progress` and exactly what it requires you to do.
+- What has been completed and what comes after the current step.
+- Whether you are about to take the correct next action.
+
+The plan may have been revised by a prior `think_tool` call — always read the latest state before
+acting. Never assume you know what the plan says; always read it.\
+"""
 
 
-@function_tool
-def list_todos(ctx: RunContextWrapper[AgentContext]) -> str:
-    """Return the current todo list for this agent.
-
-    Call this after completing a step to review progress before updating write_todos.
-    """
+@function_tool(description_override=_READ_TODOS_DESCRIPTION)
+def read_todos(ctx: RunContextWrapper[AgentContext]) -> str:
+    """Read the current todo list for this agent."""
     todos = ctx.context.plan.todos
     if not todos:
-        return "No todos yet. Use write_todos to create your plan."
+        return "No todos yet. Use write_todos to create your plan before taking any action."
     lines = [
         f"[{i + 1}] ({t.status.value}) {t.title}"
         for i, t in enumerate(todos)

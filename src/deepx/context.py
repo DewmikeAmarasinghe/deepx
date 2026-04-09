@@ -17,6 +17,7 @@ class AgentContext:
     debug: bool = False
     hitl_tools: list[str] = field(default_factory=list)
     resume: bool = False
+    is_subagent: bool = False
 
     def __post_init__(self) -> None:
         an = self.agent_name or "agent"

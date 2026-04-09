@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import base64
-import fnmatch
 from datetime import datetime, timezone
-from typing import Literal
 
 from agents import RunContextWrapper, function_tool
 
@@ -126,10 +124,7 @@ def _run_ls(ctx: RunContextWrapper[AgentContext], path: str) -> str:
 
 @function_tool
 def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
-    """Lists all files in a directory.
-
-    This is useful for exploring the filesystem and finding the right file to read or edit.
-    You should almost ALWAYS use this tool before using the read_file or edit_file tools."""
+    """List files in a directory. Use before read_file or edit_file to explore the filesystem."""
     return _run_ls(ctx, path)
 
 
@@ -182,8 +177,10 @@ def read_file(
     if content is None:
         return f"Error: '{path}' not found."
 
+
+
     if not content.strip():
-        return "System reminder: File exists but has empty contents"
+        return "File exists but has empty contents."
 
     lines = content.splitlines()
     selected = lines[offset: offset + limit]
@@ -268,125 +265,4 @@ def edit_file(
         b.write_store(rel, new_content)
     else:
         b.write(sid, rel, new_content)
-    return f"Successfully replaced {count if replace_all else 1} instance(s) of the string in '{path}'"
-
-
-@function_tool
-def glob(
-    ctx: RunContextWrapper[AgentContext], pattern: str, path: str = "/"
-) -> str:
-    """Find files matching a glob pattern.
-
-    Supports standard glob patterns: `*` (any characters), `**` (any directories), `?` (single character).
-    Returns a list of file paths that match the pattern.
-
-    Examples:
-    - `**/*.py` - Find all Python files
-    - `*.txt` - Find all text files in root
-    - `/subdir/**/*.md` - Find all markdown files under /subdir"""
-    kind, rel = _route_path(path)
-    base_prefix = rel.strip("/")
-    pfx = f"{base_prefix}/" if base_prefix else ""
-    if kind == "store":
-        candidates = ctx.context.backend.list_store("")
-        if base_prefix:
-            candidates = [
-                c
-                for c in candidates
-                if c == base_prefix or c.startswith(pfx)
-            ]
-    else:
-        sid = ctx.context.session_id
-        candidates = ctx.context.backend.list_files(sid, prefix=pfx if pfx else "")
-    matches = sorted({p for p in candidates if fnmatch.fnmatch(p, pattern)})
-    return "\n".join(matches) if matches else "(no matches)"
-
-
-@function_tool
-def grep(
-    ctx: RunContextWrapper[AgentContext],
-    pattern: str,
-    path: str | None = None,
-    glob_pattern: str | None = None,
-    output_mode: Literal["files_with_matches", "content", "count"] = "files_with_matches",
-) -> str:
-    """Search for a text pattern across files.
-
-    Searches for literal text (not regex) and returns matching files or content based on output_mode.
-    Special characters like parentheses, brackets, pipes, etc. are treated as literal characters, not regex operators.
-
-    Examples:
-    - Search all files: `grep(pattern="TODO")`
-    - Search Python files only: `grep(pattern="import", glob_pattern="*.py")`
-    - Show matching lines: `grep(pattern="error", output_mode="content")`
-    - Search for code with special chars: `grep(pattern="def __init__(self):")`"""
-    sid = ctx.context.session_id
-    b = ctx.context.backend
-
-    if path:
-        kind, rel = _route_path(path)
-        base_prefix = rel.strip("/")
-        pfx = f"{base_prefix}/" if base_prefix else ""
-        if kind == "store":
-            files = b.list_store("")
-            if base_prefix:
-                files = [
-                    f
-                    for f in files
-                    if f == base_prefix or f.startswith(pfx)
-                ]
-        else:
-            files = b.list_files(sid, prefix=pfx if pfx else "")
-    else:
-        files = b.list_files(sid, "")
-        kind = "files"
-
-    if glob_pattern:
-        files = [f for f in files if fnmatch.fnmatch(f, glob_pattern)]
-
-    results: list[str] = []
-    for fp in sorted(files):
-        if path and _route_path(path)[0] == "store":
-            raw = b.read_store(fp)
-        else:
-            raw = b.read(sid, fp)
-        if raw is None:
-            continue
-        count = raw.count(pattern)
-        if count == 0:
-            continue
-        if output_mode == "count":
-            results.append(f"{fp}:{count}")
-        elif output_mode == "files_with_matches":
-            results.append(fp)
-        else:
-            for i, line in enumerate(raw.splitlines(), 1):
-                if pattern in line:
-                    results.append(f"{fp}:{i}:{line}")
-    return "\n".join(results) if results else "(no matches)"
-
-
-@function_tool
-def execute(ctx: RunContextWrapper[AgentContext], command: str) -> str:
-    """Executes a shell command in an isolated sandbox environment.
-
-    Usage:
-    Executes a given command in the sandbox environment with proper handling and security measures.
-    Before executing the command, please follow these steps:
-    1. Directory Verification:
-       - If the command will create new directories or files, first use the ls tool to verify the parent directory exists and is the correct location
-    2. Command Execution:
-       - Always quote file paths that contain spaces with double quotes
-       - When issuing multiple commands, use the ';' or '&&' operator to separate them. DO NOT use newlines
-    Usage notes:
-      - Commands run in an isolated sandbox environment
-      - Returns combined stdout/stderr output with exit code
-      - VERY IMPORTANT: You MUST avoid using search commands like find and grep. Instead use the grep, glob tools to search. You MUST avoid read tools like cat, head, tail, and use read_file to read files.
-
-    Note: This tool is only available if the backend supports execution."""
-    b = ctx.context.backend
-    if not b.supports_execution:
-        return (
-            "Shell execution is not available. Use a sandbox backend to enable it."
-        )
-    return b.execute(command)
+    return f"Replaced {count if replace_all else 1} instance(s) in '{path}'"

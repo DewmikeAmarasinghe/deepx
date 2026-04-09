@@ -56,3 +56,7 @@ keys/
 
 
 .deepx/
+*.db
+deepagents/
+deepagents_cli/
+.cursor/
