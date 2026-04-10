@@ -67,23 +67,34 @@ PLANNING_PROMPT = """\
    task, call `read_file` on its path before writing your plan. Then ask yourself: given these
    specific tools, subagents, and skills — what is the best strategy for this task?
 
-2. **Use `write_todos` for any multi-step task.** Write the plan *after* capability assessment.
-   Mark the first step `in_progress`. When a step completes, mark it `completed` and mark the
-   next step `in_progress` in the same call.
+2. **Planning tools:** Use `write_todos` once to create the initial plan (ids will be `1`, `2`, …).
+   After that, prefer `update_todos` to change status or titles — it is cheaper than replacing
+   the full list. Use `write_todos` again only when you need to reset the whole plan.
 
-3. **Maintain the ReAct loop for every step:**
+3. **Execution loop (typical step):**
    ```
-   read_todos  → confirm which step is in_progress
-   execute     → perform the step (tool call, subagent call, etc.)
-   think_tool  → assess the result; decide if the plan needs updating
-   write_todos → update plan based on what you learned, advance to next step
+   execute     → tool or subagent call
+   update_todos → mark progress (completed / next in_progress) as results come in
    ```
-   Adapt the plan when results reveal new information. Example: a website instructs you to
-   visit another URL — add that step before continuing.
+   Call `think_tool` only when something is unclear, surprising, or you have been autonomous
+   for many steps and want to sanity-check the plan — not after every tool result.
+   If the plan structure must change a lot, use `write_todos` to replace the todo list, or combine
+   `update_todos` patches as needed.
 
 4. **Deliver final results inline.** When responding to a human user, write all content
    directly in your response — do not reference internal file paths. (Not applicable when you
    are a subagent returning results to an orchestrator.)
+
+## Session filesystem conventions (suggested layout)
+
+These are conventions only — the backend does not enforce folder names.
+
+- **`/research/`** — web research notes, scraped summaries, topic digests.
+- **`/intermediate/`** — large intermediate tool outputs or drafts you choose to spill to disk.
+- **`/notes/`** or **`/drafts/`** — optional scratch or working documents.
+
+Keep the number of files **reasonable** (prefer fewer, well-structured files when it helps), but
+you may use multiple files when the task warrants it.
 
 ---
 
@@ -95,52 +106,55 @@ PLANNING_PROMPT = """\
    before writing a single todo. The skill may define quality standards that change your approach.
 3. **Design a strategy-driven plan.** Write todos that leverage your real capabilities:
 
-   Bad — naive task breakdown:
+   Bad — many small calls to the same subagent that could do the work in one go:
    ```
-   [1] Research topic A   [2] Research topic B   [3] Research topic C
+   [1] Call subagent_x: subtask A
+   [2] Call subagent_x: subtask B
+   [3] Call subagent_x: subtask C
    ```
-   Good — capability-driven:
+   Good — one delegation per subagent scope, high-level prompts, paths passed between steps:
    ```
    [1] Assess capabilities and read matching skill files   (in_progress)
-   [2] Delegate all research to web_agent_subagent in one call
-   [3] Pass research file paths to writer_subagent — do NOT read and re-pass content
-   [4] Return the completed result to the user
+   [2] Call the appropriate *_subagent ONCE with the full scope of its work; ask it to
+       consolidate outputs into as few session files as practical and return paths.
+   [3] Pass those paths to the next *_subagent or finish the task yourself
+   [4] Return the final result inline to the user
    ```
 
 ## Phase 2 — Execution Loop (repeat for every step)
 
 ```
-BEFORE acting   → call read_todos to confirm which step is in_progress
-EXECUTE         → perform the step
-AFTER result    → call think_tool to assess what you got
+EXECUTE         → perform the step (tool or *_subagent)
 THEN:
-  expected result  → write_todos: mark completed, next step in_progress
-  new information  → write_todos: revise plan, mark correct next step in_progress
-  blocked          → write_todos: append blocker step, keep current in_progress
+  expected result  → update_todos: mark step completed, next in_progress
+  plan structure change → write_todos (full replace) or simple update_todos patches for todo status updates or todo title updates after selecting a todo by its id
+  blocked          → update_todos: describe blocker; keep current in_progress
+  confused / surprised / have_been_runing_autonomously_for_a_long_time → think_tool, then update_todos or write_todos or continue
 ```
 
 ## Phase 3 — Delegation to subagents
 
 - Give each `*_subagent` a **complete, self-contained prompt** — it cannot ask follow-up
   questions and has no memory of your prior work. Include all context it needs.
-- Instruct it to write intermediate results to files and **return the file paths**.
-- **Pass file paths between agents — never read file contents yourself just to re-pass them
-  as strings.** Subagents share the same session filesystem, so a file written by one
-  subagent can be read directly by the next using its path. This saves significant tokens.
-- After a subagent returns, call `think_tool` to assess the result before updating `write_todos`.
+- **Call each subagent once with the full scope** of what that agent is responsible for. Do not
+  split the same agent's work across many tiny calls if one call can carry the whole brief.
+- Ask subagents to **use as few files as practical** (fewer files usually means fewer follow-up
+  reads). They may still use multiple files when the task requires it.
+- **Pass file paths between agents** — do not read large file bodies only to paste them back
+  into the next prompt. Subagents share the same session filesystem.
 - Parallelise subagent calls only when there is **zero data dependency** between them.
 
-## Rules for `write_todos`
+## Rules for `write_todos` and `update_todos`
 
-- Always pass the **complete list** — never omit existing entries.
-- Never call `write_todos` in parallel.
-- Keep completed steps in the list — do not remove them.\
+- `write_todos`: full replace; pass every step in order; never omit entries you want to keep.
+- `update_todos`: patch by numeric id (`"1"`, `"2"`, …).
+- Never call `write_todos` in parallel with other planning tools.\
 """
 
-def _build_filesystem_prompt(session_id: str, db_path: str) -> str:
+def _build_filesystem_prompt(session_id: str, checkpointer: str) -> str:
     """Build the filesystem section with the actual session scope injected."""
     scope_note: str
-    if db_path == ":memory:":
+    if checkpointer == ":memory:":
         scope_note = (
             "Your session filesystem is **ephemeral** (in-memory). Files exist only for the "
             "duration of this run — they will not persist after the agent finishes. All paths "
@@ -168,7 +182,7 @@ Use before `read_file` or `edit_file` to confirm a file exists and explore the s
 - Reads up to `limit` lines starting at `offset` (0-indexed, default limit=100).
 - Paginate large files: `read_file(path, limit=100)`, then `read_file(path, offset=100, ...)`.
 - Always read a file before editing it.
-- Image files (.png, .jpg, .jpeg, .gif, .webp) are returned as base64-encoded data.
+- File contents are returned as plain text (binary files are decoded with replacement for invalid UTF-8).
 
 ### `write_file` — create a new file
 Fails if the file already exists. Prefer editing over recreating.
@@ -220,7 +234,7 @@ The following tools require human approval in this session: {tools}
 Simply call the tool when your plan requires it. The system handles the approval prompt automatically.
 
 If a tool returns a message starting with `[Human-in-the-loop]` saying approval was **declined**:
-the tool did NOT run. Call `think_tool` to reassess, update `write_todos`, and proceed differently.\
+the tool did NOT run. Call `think_tool` if needed, then `update_todos` or `write_todos`, and proceed differently.\
 """
 
 _SEP = "\n\n" + "=" * 80 + "\n\n"
@@ -240,25 +254,45 @@ class SkillMetadata(TypedDict, total=False):
     allowed_tools: list[str]
 
 
-def discover_skills(paths: list[str]) -> list[SkillMetadata]:
-    """Discover skills from a list of directory paths.
+def _skill_md_in_dir(d: Path) -> Path | None:
+    p = d / "SKILL.md"
+    return p if p.is_file() else None
 
-    Supports both flat .md files with frontmatter and the legacy subdir/SKILL.md pattern.
-    Uses rglob so all .md files under each path are considered.
+
+def discover_skills(paths: list[str]) -> list[SkillMetadata]:
+    """Discover skills: each skill is a folder containing SKILL.md (required).
+
+    For each configured path:
+    - If `path/SKILL.md` exists, load that skill.
+    - Else if `path` is a directory, load `path/<child>/SKILL.md` for each immediate child.
+    - Else if `path/<child>` is a directory without SKILL.md, load `path/<child>/<sub>/SKILL.md`
+      for each immediate subfolder (one extra level, e.g. sql/query-writing).
     """
     by_name: dict[str, SkillMetadata] = {}
     for raw in paths:
         root = Path(raw)
         if not root.exists():
             continue
-        for md_file in sorted(root.rglob("*.md")):
-            try:
-                meta = _parse_skill_frontmatter(
-                    md_file.read_text(encoding="utf-8", errors="replace"),
-                    str(md_file.resolve()),
-                )
-            except Exception:
-                continue
+        candidates: list[Path] = []
+        direct = _skill_md_in_dir(root)
+        if direct:
+            candidates.append(direct)
+        elif root.is_dir():
+            for child in sorted(root.iterdir()):
+                if not child.is_dir():
+                    continue
+                sm = _skill_md_in_dir(child)
+                if sm:
+                    candidates.append(sm)
+                else:
+                    for sub in sorted(child.iterdir()):
+                        if sub.is_dir():
+                            sm2 = _skill_md_in_dir(sub)
+                            if sm2:
+                                candidates.append(sm2)
+        for md_file in candidates:
+            text = md_file.read_text(encoding="utf-8", errors="replace")
+            meta = _parse_skill_frontmatter(text, str(md_file.resolve()))
             if meta and meta.get("name") and meta.get("description"):
                 by_name.setdefault(str(meta["name"]), meta)
     return list(by_name.values())
@@ -349,7 +383,7 @@ def build_system_prompt(
     ctx: RunContextWrapper[AgentContext],
     agent: Agent,
     custom_prompt: str = "",
-    db_path: str = ":memory:",
+    checkpointer: str = ":memory:",
 ) -> str:
     sections: list[str] = []
 
@@ -380,7 +414,7 @@ def build_system_prompt(
     sections.append(
         _section(
             "FILESYSTEM",
-            _build_filesystem_prompt(ctx.context.session_id, db_path),
+            _build_filesystem_prompt(ctx.context.session_id, checkpointer),
         )
     )
 
@@ -394,8 +428,8 @@ def build_system_prompt(
 
     if ctx.context.plan.todos:
         lines = [
-            f"[{i + 1}] ({t.status.value}) {t.title}"
-            for i, t in enumerate(ctx.context.plan.todos)
+            f"[{t.id}] ({t.status.value}) {t.title}"
+            for t in ctx.context.plan.todos
         ]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 
@@ -407,14 +441,4 @@ def build_system_prompt(
             block += f"\n... and {len(files) - 50} more. Use ls to explore."
         sections.append(_section("SESSION FILES", block))
 
-    prompt = _SEP.join(sections)
-
-    if ctx.context.debug:
-        try:
-            ctx.context.backend.append_system_prompt_log(
-                ctx.context.session_id, ctx.context.agent_name, prompt
-            )
-        except Exception:
-            pass
-
-    return prompt
+    return _SEP.join(sections)

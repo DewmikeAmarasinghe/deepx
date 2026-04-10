@@ -4,7 +4,7 @@ import json
 from datetime import datetime, timezone
 
 from agents import RunContextWrapper, function_tool
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from deepx.context import AgentContext
 from deepx.models import Todo, TodoStatus
@@ -15,77 +15,41 @@ class TodoInput(BaseModel):
     status: str = "pending"
 
 
+class TodoPatch(BaseModel):
+    id: str = Field(description="Numeric todo id from the plan, e.g. '1', '2'.")
+    title: str | None = None
+    status: str | None = None
+
+
 WRITE_TODOS_TOOL_DESCRIPTION = """\
-Create or replace the current task list. This is your primary planning tool.
+Replace the entire task list (initial plan or full reset). Assigns todo ids `1`, `2`, `3`, … in order.
 
-**When to call:**
-Call this for any task involving more than a single direct answer — tool use, subagent delegation,
-multi-step work, or even a sequence of reads followed by a response. If in doubt, write the plan.
+**When to call:** First time you need a plan for multi-step work, or when you want to discard the
+current list and start fresh.
 
-**Before building the list — understand your capabilities:**
-Review all available tools and subagent descriptions first. Design steps that match what each tool
-or subagent can accomplish in a single invocation. Do not fragment work unnecessarily:
-- BAD: one step per research sub-topic when a single subagent call can handle all of them together.
-- GOOD: one delegation step covering the full scope, followed by a synthesis step.
-
-**Lifecycle — all five cases:**
-
-1. **Creating the plan** — write all steps you can foresee. Mark the first step `in_progress`.
-   Subsequent steps should be `pending`.
-
-2. **Step completes** — mark it `completed` and mark the next step `in_progress` in the same call.
-   Never leave the plan between states — always update in one atomic write.
-
-3. **Plan changes mid-run** — when `think_tool` reveals new information or a different approach is
-   needed, revise the todos: update descriptions, insert new steps, reorder, or split steps. Mark
-   the correct next step `in_progress`. Pass the full list including already-completed steps.
-
-4. **Blocked** — keep the current step `in_progress`. Append a new step describing the specific
-   blocker (what failed, what is needed to proceed). Do not mark as completed.
-
-5. **New work discovered** — append the new steps and update statuses in the same call.
-   Never call write_todos separately just to add steps.
+**Prefer `update_todos`** for small changes after a plan exists (mark one step completed, tweak a title).
 
 **Rules:**
-- Always pass the **complete list** — never omit existing entries. The full history is visible
-  to you and helps track what has been done.
-- Never call `write_todos` multiple times in parallel.
-- Keep completed steps — do not delete them.
-- Maintain exactly **one** step `in_progress` unless running genuinely parallel independent work.
+- Pass every step in order. Mark the first step `in_progress`, later steps `pending` until you advance.
+- When a step completes, use `update_todos` to set it `completed` and the next `in_progress`.
+- Never call `write_todos` in parallel with other planning tools.
 
-**States:**
-- `pending`     — not yet started
-- `in_progress` — currently being worked on (exactly one at a time, normally)
-- `completed`   — fully done and verified
-
-The only time you may skip this tool entirely is for a purely conversational reply with zero tool use.\
-"""
-
-_READ_TODOS_DESCRIPTION = """\
-Read your current plan state. Call this BEFORE every action step.
-
-This is a mandatory checkpoint before using any tool, calling any subagent, or writing any file.
-Confirm:
-- Which step is currently `in_progress` and exactly what it requires you to do.
-- What has been completed and what comes after the current step.
-- Whether you are about to take the correct next action.
-
-The plan may have been revised by a prior `think_tool` call — always read the latest state before
-acting. Never assume you know what the plan says; always read it.\
+**States:** `pending`, `in_progress`, `completed`, `cancelled`
 """
 
 
-@function_tool(description_override=_READ_TODOS_DESCRIPTION)
-def read_todos(ctx: RunContextWrapper[AgentContext]) -> str:
-    """Read the current todo list for this agent."""
-    todos = ctx.context.plan.todos
-    if not todos:
-        return "No todos yet. Use write_todos to create your plan before taking any action."
-    lines = [
-        f"[{i + 1}] ({t.status.value}) {t.title}"
-        for i, t in enumerate(todos)
-    ]
-    return "Current plan:\n" + "\n".join(lines)
+UPDATE_TODOS_TOOL_DESCRIPTION = """\
+Patch existing todos by id (ids are `1`, `2`, `3`, … as shown in the plan). Use this for most updates
+after the plan exists — cheaper than rewriting the full list.
+
+For each patch, provide `id` and optionally `title` and/or `status`. Omitted fields stay unchanged.
+
+**Examples:**
+- Mark step 1 done and step 2 active: two patches `{id: "1", status: "completed"}` and `{id: "2", status: "in_progress"}`.
+- Rename step 3: `{id: "3", title: "New title"}`.
+
+If an id does not exist, the tool returns an error listing valid ids.
+"""
 
 
 @function_tool(description_override=WRITE_TODOS_TOOL_DESCRIPTION)
@@ -93,13 +57,14 @@ def write_todos(
     ctx: RunContextWrapper[AgentContext],
     todos: list[TodoInput],
 ) -> str:
-    """Replace the current todo list with the provided items."""
+    """Replace the full todo list; ids are reassigned 1..n."""
     ctx.context.plan.todos = [
         Todo(
+            id=str(i + 1),
             title=t.content,
             status=_safe_status(t.status),
         )
-        for t in todos
+        for i, t in enumerate(todos)
     ]
     ctx.context.plan.updated_at = datetime.now(timezone.utc).isoformat()
     _persist_plan(ctx)
@@ -107,14 +72,53 @@ def write_todos(
         entry = {
             "timestamp": ctx.context.plan.updated_at,
             "agent": ctx.context.agent_name,
-            "todos": [{"content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
+            "todos": [{"id": t.id, "content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
         }
         ctx.context.backend.append_plan_log(
             ctx.context.session_id, json.dumps(entry)
         )
+    return _format_plan(ctx)
+
+
+@function_tool(description_override=UPDATE_TODOS_TOOL_DESCRIPTION)
+def update_todos(
+    ctx: RunContextWrapper[AgentContext],
+    patches: list[TodoPatch],
+) -> str:
+    """Apply patches to existing todos by id."""
+    if not ctx.context.plan.todos:
+        return "No plan yet. Call write_todos first."
+    by_id = {t.id: t for t in ctx.context.plan.todos}
+    valid = ", ".join(
+        sorted(by_id.keys(), key=lambda x: int(x) if x.isdigit() else 0)
+    )
+    for p in patches:
+        if p.id not in by_id:
+            return f"Unknown todo id {p.id!r}. Valid ids: {valid}"
+    for p in patches:
+        t = by_id[p.id]
+        if p.title is not None:
+            t.title = p.title
+        if p.status is not None:
+            t.status = _safe_status(p.status)
+    ctx.context.plan.updated_at = datetime.now(timezone.utc).isoformat()
+    _persist_plan(ctx)
+    if ctx.context.debug:
+        entry = {
+            "timestamp": ctx.context.plan.updated_at,
+            "agent": ctx.context.agent_name,
+            "todos": [{"id": t.id, "content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
+        }
+        ctx.context.backend.append_plan_log(
+            ctx.context.session_id, json.dumps(entry)
+        )
+    return _format_plan(ctx)
+
+
+def _format_plan(ctx: RunContextWrapper[AgentContext]) -> str:
     lines = [
-        f"[{i + 1}] ({t.status.value}) {t.title}"
-        for i, t in enumerate(ctx.context.plan.todos)
+        f"[{t.id}] ({t.status.value}) {t.title}"
+        for t in ctx.context.plan.todos
     ]
     return "Plan saved:\n" + "\n".join(lines)
 

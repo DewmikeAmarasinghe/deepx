@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TodoStatus(str, Enum):
@@ -15,10 +14,11 @@ class TodoStatus(str, Enum):
 
 
 class Todo(BaseModel):
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = ""
     title: str
     status: TodoStatus = TodoStatus.pending
-    notes: str = ""
 
 
 class Plan(BaseModel):
@@ -29,6 +29,15 @@ class Plan(BaseModel):
     updated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+
+    @model_validator(mode="after")
+    def ensure_todo_ids(self) -> Plan:
+        new: list[Todo] = []
+        for i, t in enumerate(self.todos):
+            nid = t.id if t.id else str(i + 1)
+            new.append(t.model_copy(update={"id": nid}))
+        self.todos = new
+        return self
 
     def pending(self) -> list[Todo]:
         return [t for t in self.todos if t.status == TodoStatus.pending]

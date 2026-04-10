@@ -12,8 +12,8 @@ def _safe_agent_name(name: str) -> str:
 
 
 class FilesystemBackend(BackendProtocol):
-    def __init__(self, root: str | Path = ".deepx") -> None:
-        self._root = Path(root)
+    def __init__(self, root_dir: str | Path = ".deepx") -> None:
+        self._root = Path(root_dir)
 
     def _files_base(self, session_id: str) -> Path:
         return self._root / "sessions" / session_id / "files"
@@ -35,9 +35,6 @@ class FilesystemBackend(BackendProtocol):
 
     def _logs_dir(self, session_id: str) -> Path:
         return self._root / "sessions" / session_id / "logs"
-
-    def _tool_log_path(self, session_id: str, tool_name: str, call_id: str) -> Path:
-        return self._logs_dir(session_id) / "tools" / tool_name / f"{call_id}.json"
 
     def read(self, session_id: str, path: str) -> str | None:
         p = self._file_path(session_id, path)
@@ -113,12 +110,6 @@ class FilesystemBackend(BackendProtocol):
         p = self._plan_path(session_id, agent_name)
         return p.read_text() if p.is_file() else None
 
-    def append_task_log(self, session_id: str, task: str) -> None:
-        p = self._logs_dir(session_id) / "tasks.md"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with p.open("a") as f:
-            f.write(task + "\n")
-
     def append_plan_log(self, session_id: str, entry_json: str) -> None:
         p = self._logs_dir(session_id) / "plans.json"
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -139,27 +130,9 @@ class FilesystemBackend(BackendProtocol):
 
     def save_tool_log(self, session_id: str, log_data: dict) -> None:
         tool_name = str(log_data["tool_name"])
-        call_id = str(log_data["call_id"])
-        path = self._tool_log_path(session_id, tool_name, call_id)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(log_data, indent=2))
-
-    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None:
-        from datetime import datetime, timezone
-        p = self._logs_dir(session_id) / "system_prompts.json"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        if p.exists():
-            try:
-                arr = json.loads(p.read_text())
-                if not isinstance(arr, list):
-                    arr = []
-            except json.JSONDecodeError:
-                arr = []
-        else:
-            arr = []
-        arr.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "agent": agent_name,
-            "prompt": prompt,
-        })
-        p.write_text(json.dumps(arr, indent=2))
+        dir_path = self._logs_dir(session_id) / "tools" / tool_name
+        dir_path.mkdir(parents=True, exist_ok=True)
+        existing = [int(p.stem) for p in dir_path.glob("*.json") if p.stem.isdigit()]
+        next_id = max(existing, default=0) + 1
+        entry = {**log_data, "call_id": str(next_id)}
+        (dir_path / f"{next_id}.json").write_text(json.dumps(entry, indent=2))

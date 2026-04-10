@@ -35,16 +35,10 @@ class BackendProtocol(abc.ABC):
     def load_plan(self, session_id: str, agent_name: str) -> str | None: ...
 
     @abc.abstractmethod
-    def append_task_log(self, session_id: str, task: str) -> None: ...
-
-    @abc.abstractmethod
     def append_plan_log(self, session_id: str, entry_json: str) -> None: ...
 
     @abc.abstractmethod
     def save_tool_log(self, session_id: str, log_data: dict) -> None: ...
-
-    @abc.abstractmethod
-    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None: ...
 
     @property
     def supports_execution(self) -> bool:

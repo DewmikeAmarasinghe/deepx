@@ -3,7 +3,7 @@
 `deepx` is a generic Python agent harness, inspired by `langchain/deepagents`, built on top of the
 `openai-agents` SDK. It gives any agent built with this framework:
 
-- A planning tool (write_todos, mark_done, read_todos)
+- Planning tools (`write_todos`, `update_todos`) plus `think_tool`
 - A workspace filesystem (read_file, write_file, edit_file, list_files, append_to_file)
 - Shared memory across agents (AGENTS.md loaded at startup)
 - Skills (SKILL.md files discovered at startup, read on demand by the agent)
@@ -48,7 +48,7 @@ agent = create_deep_agent(
     system_prompt="You are a research assistant that combines web and database information.",
     skills_path="./skills/",
     workspace_path=".deepx/",
-    db_path="agent.db",
+    checkpointer="agent.db",
 )
 
 result = agent.run_sync(
@@ -97,12 +97,20 @@ LANGFUSE_BASE_URL       optional — Langfuse endpoint (default: https://cloud.l
 │       └── SKILL.md                 ← skill definition with YAML frontmatter
 └── sessions/
     └── {session_id}/                ← per-session isolation
-        ├── plan.json                ← Pydantic Plan model (todos + metadata)
-        ├── files/                   ← files written by the agent via write_file
-        │   └── ...user-created files
-        └── tools/                   ← auto-logged tool call I/O for observability
-            └── {tool_name}/
-                └── {call_id}.json   ← {input, output, timestamp, agent_name, chars}
+        ├── plans/
+        │   └── {agent_name}.json    ← current Plan model (todos + metadata)
+        │
+        ├── files/                   ← files written by agents (write_file, outputs, artifacts)
+        │   ├── research/            ← example: structured outputs (e.g., markdown reports)
+        │   ├── large_tool_results/  ← large outputs stored as blobs (referenced elsewhere)
+        │   └── ...                  ← any other agent-created files
+        │
+        ├── logs/                    ← observability + execution traces
+        │   ├── plans.json           ← aggregated plan updates/events across the session
+        │   │
+        │   └── tools/               ← auto-logged tool call I/O
+        │       └── {tool_category}/ ← generic grouping (NOT specific tool names)
+        │           └── 1.json, 2.json, …   ← sequential logs (include `call_id`, input, output)
 ```
 
 ## Skills
@@ -205,9 +213,8 @@ class DeepRunResult:
 ## Built-in Tools
 
 ### Planning Tools
-- `write_todos(todos: list[str])` - Create a new plan
-- `mark_done(index: int)` - Mark a todo as completed
-- `read_todos()` - Read current plan status
+- `write_todos(todos)` — replace the full plan (ids assigned `1`…`n`)
+- `update_todos(patches)` — patch existing todos by id (`title` / `status`)
 
 ### Workspace Tools
 - `write_file(path: str, content: str)` - Write a new file

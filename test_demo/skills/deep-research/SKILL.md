@@ -3,9 +3,9 @@ name: deep_researcher
 description: Domain knowledge and quality standards for multi-source web research with a written deliverable (report, analysis, comparison, ADR, etc.).
 ---
 
-# Deep Research — Domain Knowledge & Quality Standards
+# Deep research (this skill is for deep-research tasks)
 
-## What this skill covers
+Use this skill when the user wants **investigative web research** synthesized into a **written deliverable** (report, memo, comparison, ADR, etc.).
 
 This skill applies when the task requires:
 - Investigating a topic across multiple web sources and producing a synthesised written deliverable.
@@ -51,3 +51,6 @@ The final document must:
   must open.
 - Consolidate citation numbers across all research files before passing to the writer so that
   each unique URL has exactly one number throughout the final document.
+- **Limit total web searches to a maximum of 5 across all topics.** Plan the queries upfront
+  to get the broadest coverage within that budget. One well-targeted search per major topic is
+  the goal — do not search the same topic multiple times with slightly different queries.

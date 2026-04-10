@@ -16,7 +16,7 @@ from deepx.context import AgentContext
 from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.models import Plan
 
-LARGE_OUTPUT_THRESHOLD = 80_000
+LARGE_OUTPUT_THRESHOLD = 40_000
 
 
 class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
@@ -47,6 +47,7 @@ def _make_evicting_invoke(original_invoke: Any, backend: BackendProtocol) -> Any
         if len(text) <= LARGE_OUTPUT_THRESHOLD:
             return result
         session_id = ctx.context.session_id
+
         call_id = uuid.uuid4().hex[:12]
         rel = f"large_tool_results/{call_id}.txt"
         backend.write(session_id, rel, text)
@@ -82,11 +83,9 @@ def _make_logged_invoke(
     async def logged_invoke(ctx: Any, args_json: str) -> Any:
         result = await original_invoke(ctx, args_json)
         session_id = ctx.context.session_id
-        call_id = uuid.uuid4().hex[:12]
         backend.save_tool_log(
             session_id,
             {
-                "call_id": call_id,
                 "tool_name": tool_name,
                 "agent_name": agent_name,
                 "session_id": session_id,

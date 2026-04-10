@@ -62,7 +62,11 @@ class InMemoryBackend(BackendProtocol):
         self._plan_logs.setdefault(session_id, []).append(obj)
 
     def save_tool_log(self, session_id: str, log_data: dict) -> None:
-        self._tool_logs.setdefault(session_id, []).append(log_data)
+        logs = self._tool_logs.setdefault(session_id, [])
+        tn = str(log_data["tool_name"])
+        n = 1 + sum(1 for e in logs if str(e.get("tool_name")) == tn)
+        entry = {**log_data, "call_id": str(n)}
+        logs.append(entry)
 
     def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None:
         pass

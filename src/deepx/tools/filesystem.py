@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import base64
 from datetime import datetime, timezone
 
 from agents import RunContextWrapper, function_tool
 
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.context import AgentContext
-
-_IMAGE_EXT = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 
 
 def _route_path(path: str) -> tuple[str, str]:
@@ -26,22 +23,6 @@ def _format_size(n: int) -> str:
     if n < 1024 * 1024:
         return f"{n / 1024:.1f} KB"
     return f"{n / (1024 * 1024):.1f} MB"
-
-
-def _path_ext(rel: str) -> str:
-    if "." not in rel:
-        return ""
-    return "." + rel.rsplit(".", 1)[-1].lower()
-
-
-def _mime(ext: str) -> str:
-    return {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-    }.get(ext, "application/octet-stream")
 
 
 def _child_map(all_rels: list[str], base_prefix: str) -> dict[str, bool]:
@@ -149,30 +130,29 @@ def read_file(
     - Results are returned using cat -n format, with line numbers starting at 1
     - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
     - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-    - Image files (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`) are returned as base64-encoded data.
+    - Binary files are decoded as UTF-8 with replacement characters where needed.
 
     - You should ALWAYS make sure a file has been read before editing it."""
     kind, rel = _route_path(path)
     b = ctx.context.backend
     sid = ctx.context.session_id
-    ext = _path_ext(rel)
 
     if kind == "store":
-        if ext in _IMAGE_EXT and isinstance(b, FilesystemBackend):
+        if isinstance(b, FilesystemBackend):
             raw = b.read_store_bytes(rel)
             if raw is None:
                 return f"Error: '{path}' not found."
-            b64 = base64.standard_b64encode(raw).decode("ascii")
-            return f"[Image base64 {ext}]\ndata:{_mime(ext)};base64,{b64}"
-        content = b.read_store(rel)
+            content = raw.decode("utf-8", errors="replace")
+        else:
+            content = b.read_store(rel)
     else:
-        if ext in _IMAGE_EXT and isinstance(b, FilesystemBackend):
+        if isinstance(b, FilesystemBackend):
             raw = b.read_session_bytes(sid, rel)
             if raw is None:
                 return f"Error: '{path}' not found."
-            b64 = base64.standard_b64encode(raw).decode("ascii")
-            return f"[Image base64 {ext}]\ndata:{_mime(ext)};base64,{b64}"
-        content = b.read(sid, rel)
+            content = raw.decode("utf-8", errors="replace")
+        else:
+            content = b.read(sid, rel)
 
     if content is None:
         return f"Error: '{path}' not found."

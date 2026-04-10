@@ -45,15 +45,15 @@ def create_deep_agent(
     memory: list[str] | None = None,
     response_format: type | None = None,
     backend: BackendProtocol | None = None,
-    db_path: str = ":memory:",
+    checkpointer: str = ":memory:",
     interrupt_on: list[str] | None = None,
     debug: bool = False,
     max_turns: int = 1000,
 ) -> "DeepAgentRunner":
     setup_observability()
 
-    db_path = db_path.strip() or ":memory:"
-    resolved_backend = backend or FilesystemBackend(".deepx")
+    checkpointer = checkpointer.strip() or ":memory:"
+    resolved_backend = backend or FilesystemBackend(root_dir=".deepx")
     mem_content = _load_memory(memory, resolved_backend)
     skills_paths = skills or []
     skills_info_main = format_skills_for_prompt(discover_skills(skills_paths))
@@ -89,7 +89,7 @@ def create_deep_agent(
             spec,
             parent_model=model,
             parent_backend=resolved_backend,
-            db_path=db_path,
+            checkpointer=checkpointer,
             parent_hitl=hitl,
             debug=debug,
             mem_content=mem_content,
@@ -105,7 +105,7 @@ def create_deep_agent(
             _make_subagent_tool(
                 runner=runner,
                 tool_name=tool_name,
-                db_path=db_path,
+                checkpointer=checkpointer,
                 max_turns=max_turns,
                 backend=resolved_backend,
                 hitl=hitl,
@@ -113,10 +113,12 @@ def create_deep_agent(
             )
         )
 
-    _main_db_path = db_path
+    _main_checkpointer = checkpointer
 
     def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
-        return build_system_prompt(ctx, agent, custom_prompt=system_prompt, db_path=_main_db_path)
+        return build_system_prompt(
+            ctx, agent, custom_prompt=system_prompt, checkpointer=_main_checkpointer
+        )
 
     main_agent = Agent(
         name=name,
@@ -129,7 +131,7 @@ def create_deep_agent(
     return DeepAgentRunner(
         agent=main_agent,
         backend=resolved_backend,
-        db_path=db_path,
+        checkpointer=checkpointer,
         max_turns=max_turns,
         hitl=hitl,
         skills_info=skills_info_main,
@@ -146,7 +148,7 @@ def _resolve_subagent_spec(
     *,
     parent_model: str,
     parent_backend: BackendProtocol,
-    db_path: str,
+    checkpointer: str,
     parent_hitl: HumanInTheLoopHooks | None,
     debug: bool,
     mem_content: str,
@@ -187,7 +189,7 @@ def _resolve_subagent_spec(
             nested,
             parent_model=spec_model,
             parent_backend=parent_backend,
-            db_path=db_path,
+            checkpointer=checkpointer,
             parent_hitl=spec_hitl,
             debug=debug,
             mem_content=spec_mem,
@@ -202,7 +204,7 @@ def _resolve_subagent_spec(
             _make_subagent_tool(
                 runner=nested_runner,
                 tool_name=nested_tool_name,
-                db_path=db_path,
+                checkpointer=checkpointer,
                 max_turns=max_turns,
                 backend=parent_backend,
                 hitl=spec_hitl,
@@ -211,10 +213,12 @@ def _resolve_subagent_spec(
         )
 
     custom_prompt = spec.get("system_prompt", "")
-    _spec_db_path = db_path
+    _spec_checkpointer = checkpointer
 
     def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
-        return build_system_prompt(ctx, agent, custom_prompt=custom_prompt, db_path=_spec_db_path)
+        return build_system_prompt(
+            ctx, agent, custom_prompt=custom_prompt, checkpointer=_spec_checkpointer
+        )
 
     agent = Agent(
         name=an,
@@ -227,7 +231,7 @@ def _resolve_subagent_spec(
     return DeepAgentRunner(
         agent=agent,
         backend=parent_backend,
-        db_path=db_path,
+        checkpointer=checkpointer,
         max_turns=max_turns,
         hitl=spec_hitl,
         skills_info=skills_info,
@@ -243,7 +247,7 @@ def _make_subagent_tool(
     *,
     runner: "DeepAgentRunner",
     tool_name: str,
-    db_path: str,
+    checkpointer: str,
     max_turns: int,
     backend: BackendProtocol,
     hitl: HumanInTheLoopHooks | None,
@@ -267,7 +271,7 @@ def _make_subagent_tool(
             is_subagent=True,
         )
         sub_sid = f"{ctx.context.session_id}:{agent.name}:{uuid.uuid4().hex[:12]}"
-        session = create_session(sub_sid, db_path)
+        session = create_session(sub_sid, checkpointer)
         wrapped = apply_tool_pipeline(
             list(agent.tools),
             backend,
@@ -298,7 +302,7 @@ class DeepAgentRunner:
         self,
         agent: Agent,
         backend: BackendProtocol,
-        db_path: str,
+        checkpointer: str,
         max_turns: int,
         hitl: HumanInTheLoopHooks | None,
         skills_info: str,
@@ -310,7 +314,7 @@ class DeepAgentRunner:
     ) -> None:
         self._agent = agent
         self._backend = backend
-        self._db_path = db_path
+        self._checkpointer = checkpointer
         self._max_turns = max_turns
         self._hitl = hitl
         self._skills_info = skills_info
@@ -354,9 +358,7 @@ class DeepAgentRunner:
     ) -> "DeepRunResult":
         sid = session_id or uuid.uuid4().hex
         ctx = self._make_ctx(sid, resume)
-        if self._debug:
-            self._backend.append_task_log(sid, task)
-        session = create_session(sid, self._db_path)
+        session = create_session(sid, self._checkpointer)
         agent = self._prepare_agent()
         result = await Runner.run(
             agent,
@@ -375,6 +377,7 @@ class DeepAgentRunner:
         session_id: str | None = None,
         resume: bool = False,
     ) -> "DeepRunResult":
+        """Run one agent turn. For multi-turn CLIs, prefer a single event loop + `run()` (see deepx_cli.session)."""
         coro = self.run(task, session_id=session_id, resume=resume)
         try:
             asyncio.get_running_loop()
@@ -394,9 +397,7 @@ class DeepAgentRunner:
     ):
         sid = session_id or uuid.uuid4().hex
         ctx = self._make_ctx(sid, resume)
-        if self._debug:
-            self._backend.append_task_log(sid, task)
-        session = create_session(sid, self._db_path)
+        session = create_session(sid, self._checkpointer)
         agent = self._prepare_agent()
         stream: RunResultStreaming = Runner.run_streamed(
             agent,
