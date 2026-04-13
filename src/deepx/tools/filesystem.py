@@ -1,20 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from agents import RunContextWrapper, function_tool
 
-from deepx.backends.filesystem import FilesystemBackend
 from deepx.context import AgentContext
-
-
-def _route_path(path: str) -> tuple[str, str]:
-    p = path.strip().replace("\\", "/")
-    if p.startswith("/store/"):
-        return "store", p[7:].lstrip("/")
-    if p.startswith("store/"):
-        return "store", p[6:].lstrip("/")
-    return "files", p.lstrip("/")
 
 
 def _format_size(n: int) -> str:
@@ -25,88 +13,26 @@ def _format_size(n: int) -> str:
     return f"{n / (1024 * 1024):.1f} MB"
 
 
-def _child_map(all_rels: list[str], base_prefix: str) -> dict[str, bool]:
-    base_prefix = base_prefix.strip("/")
-    pfx = f"{base_prefix}/" if base_prefix else ""
-    children: dict[str, bool] = {}
-    for rel in all_rels:
-        if base_prefix:
-            if rel == base_prefix:
-                continue
-            if not rel.startswith(pfx):
-                continue
-            rest = rel[len(pfx):]
-        else:
-            rest = rel
-        if not rest:
-            continue
-        head, _, tail = rest.partition("/")
-        is_dir = bool(tail) or any(o.startswith(f"{pfx}{head}/") for o in all_rels)
-        if head in children:
-            children[head] = children[head] or is_dir
-        else:
-            children[head] = is_dir
-    return children
-
-
-def _format_ls_lines(
-    ctx: RunContextWrapper[AgentContext],
-    children: dict[str, bool],
-    pfx: str,
-    *,
-    store: bool,
-) -> str:
-    b = ctx.context.backend
-    sid = ctx.context.session_id
-    fs_b = b if isinstance(b, FilesystemBackend) else None
-    lines: list[str] = []
-    for name in sorted(children):
-        is_dir = children[name]
-        if is_dir:
-            lines.append(f"{name}/{' ' * max(0, 22 - len(name))}DIR")
-            continue
-        rel_path = f"{pfx}{name}" if pfx else name
-        ts = ""
-        sz = ""
-        if store:
-            raw = b.read_store(rel_path)
-            if raw is not None:
-                sz = _format_size(len(raw.encode("utf-8")))
-        elif fs_b:
-            p_stat = fs_b._file_path(sid, rel_path)
-            if p_stat.is_file():
-                st = p_stat.stat()
-                sz = _format_size(st.st_size)
-                ts = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-        else:
-            raw = b.read(sid, rel_path)
-            if raw is not None:
-                sz = _format_size(len(raw.encode("utf-8")))
-        pad = max(0, 18 - len(name))
-        lines.append(f"{name}{' ' * pad}{sz}{' ' * 4}{ts}".rstrip())
-    return "\n".join(lines) if lines else "(empty)"
-
-
-def _run_ls(ctx: RunContextWrapper[AgentContext], path: str) -> str:
-    kind, rel = _route_path(path)
-    base_prefix = rel.strip("/")
-    if kind == "store":
-        all_rels = ctx.context.backend.list_store("")
-        children = _child_map(all_rels, base_prefix)
-        pfx = f"{base_prefix}/" if base_prefix else ""
-        return _format_ls_lines(ctx, children, pfx, store=True)
-    all_rels = ctx.context.backend.list_files(ctx.context.session_id, "")
-    children = _child_map(all_rels, base_prefix)
-    pfx = f"{base_prefix}/" if base_prefix else ""
-    return _format_ls_lines(ctx, children, pfx, store=False)
-
-
 @function_tool
 def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
     """List files in a directory. Use before read_file or edit_file to explore the filesystem."""
-    return _run_ls(ctx, path)
+    r = ctx.context.backend.ls(ctx.context.session_id, path)
+    if r.error:
+        return r.error
+    if not r.entries:
+        return "(empty)"
+    lines: list[str] = []
+    for e in r.entries:
+        name = e.path.rstrip("/").rsplit("/", 1)[-1]
+        if e.is_dir:
+            pad = max(0, 22 - len(name))
+            lines.append(f"{name}/{' ' * pad}DIR")
+        else:
+            sz = _format_size(e.size or 0)
+            ts = e.modified_at or ""
+            pad = max(0, 18 - len(name))
+            lines.append(f"{name}{' ' * pad}{sz}{' ' * 4}{ts}".rstrip())
+    return "\n".join(lines)
 
 
 @function_tool
@@ -133,44 +59,21 @@ def read_file(
     - Binary files are decoded as UTF-8 with replacement characters where needed.
 
     - You should ALWAYS make sure a file has been read before editing it."""
-    kind, rel = _route_path(path)
     b = ctx.context.backend
     sid = ctx.context.session_id
-
-    if kind == "store":
-        if isinstance(b, FilesystemBackend):
-            raw = b.read_store_bytes(rel)
-            if raw is None:
-                return f"Error: '{path}' not found."
-            content = raw.decode("utf-8", errors="replace")
-        else:
-            content = b.read_store(rel)
-    else:
-        if isinstance(b, FilesystemBackend):
-            raw = b.read_session_bytes(sid, rel)
-            if raw is None:
-                return f"Error: '{path}' not found."
-            content = raw.decode("utf-8", errors="replace")
-        else:
-            content = b.read(sid, rel)
-
-    if content is None:
-        return f"Error: '{path}' not found."
-
-
-
+    rr = b.read(sid, path, offset=offset, limit=limit)
+    if rr.error:
+        return rr.error
+    content = rr.content or ""
     if not content.strip():
         return "File exists but has empty contents."
-
     lines = content.splitlines()
-    selected = lines[offset: offset + limit]
-    if not selected and lines:
-        return f"Error: offset {offset} exceeds file length ({len(lines)} lines)."
+    total = rr.total_lines if rr.total_lines is not None else offset + len(lines)
     numbered = "\n".join(
-        f"{offset + i + 1:6d}\t{line}" for i, line in enumerate(selected)
+        f"{offset + i + 1:6d}\t{line}" for i, line in enumerate(lines)
     )
-    if len(lines) > offset + limit:
-        numbered += f"\n\n[{len(lines) - offset - limit} more lines — use offset={offset + limit} to continue]"
+    if total > offset + len(lines):
+        numbered += f"\n\n[{total - offset - len(lines)} more lines — use offset={offset + len(lines)} to continue]"
     return numbered
 
 
@@ -183,23 +86,9 @@ def write_file(
     Usage:
     - The write_file tool will create a new file.
     - Prefer to edit existing files (with the edit_file tool) over creating new ones when possible."""
-    kind, rel = _route_path(path)
-    b = ctx.context.backend
-    sid = ctx.context.session_id
-    if kind == "store":
-        if b.read_store(rel) is not None:
-            return (
-                f"Cannot write to {path} because it already exists. "
-                "Read and then make an edit, or write to a new path."
-            )
-        b.write_store(rel, content)
-    else:
-        if b.exists(sid, rel):
-            return (
-                f"Cannot write to {path} because it already exists. "
-                "Read and then make an edit, or write to a new path."
-            )
-        b.write(sid, rel, content)
+    wr = ctx.context.backend.write(ctx.context.session_id, path, content)
+    if wr.error:
+        return wr.error
     return f"Updated file {path}"
 
 
@@ -218,31 +107,49 @@ def edit_file(
     - When editing, preserve the exact indentation (tabs/spaces) from the read output. Never include line number prefixes in old_string or new_string.
     - ALWAYS prefer editing existing files over creating new ones.
     - Only use emojis if the user explicitly requests it."""
-    kind, rel = _route_path(path)
-    b = ctx.context.backend
-    sid = ctx.context.session_id
-    if kind == "store":
-        content = b.read_store(rel)
-    else:
-        content = b.read(sid, rel)
-    if content is None:
-        return f"Error: '{path}' not found."
-    count = content.count(old_string)
-    if count == 0:
-        return f"Error: string not found in '{path}'."
-    if not replace_all and count > 1:
-        return (
-            f"Error: String '{old_string}' appears {count} times in file. "
-            "Use replace_all=True to replace all instances, or provide a more "
-            "specific string with surrounding context."
-        )
-    new_content = (
-        content.replace(old_string, new_string)
-        if replace_all
-        else content.replace(old_string, new_string, 1)
+    er = ctx.context.backend.edit(
+        ctx.context.session_id, path, old_string, new_string, replace_all=replace_all
     )
-    if kind == "store":
-        b.write_store(rel, new_content)
-    else:
-        b.write(sid, rel, new_content)
-    return f"Replaced {count if replace_all else 1} instance(s) in '{path}'"
+    if er.error:
+        return er.error
+    return f"Replaced {er.occurrences} instance(s) in '{path}'"
+
+
+@function_tool
+def grep(
+    ctx: RunContextWrapper[AgentContext],
+    pattern: str,
+    path: str | None = None,
+    glob_pattern: str | None = None,
+) -> str:
+    """Search for a literal text pattern in files under an optional directory path."""
+    gr = ctx.context.backend.grep(
+        ctx.context.session_id, pattern, path=path, glob=glob_pattern
+    )
+    if gr.error:
+        return gr.error
+    if not gr.matches:
+        return "No matches."
+    lines_out: list[str] = []
+    for m in gr.matches[:500]:
+        lines_out.append(f"{m.path}:{m.line_number}:{m.line}")
+    if len(gr.matches) > 500:
+        lines_out.append(f"... and {len(gr.matches) - 500} more matches.")
+    return "\n".join(lines_out)
+
+
+@function_tool
+def glob(
+    ctx: RunContextWrapper[AgentContext],
+    pattern: str,
+    path: str = "/",
+) -> str:
+    """Find file paths matching a glob pattern relative to a directory."""
+    gr = ctx.context.backend.glob(ctx.context.session_id, pattern, path)
+    if gr.error:
+        return gr.error
+    if not gr.files:
+        return "No files matched."
+    return "\n".join(f.path for f in gr.files[:500]) + (
+        f"\n... and {len(gr.files) - 500} more." if len(gr.files) > 500 else ""
+    )

@@ -1,44 +1,123 @@
 from __future__ import annotations
 
 import abc
+from dataclasses import dataclass, field
+from typing import Any
+
+
+@dataclass
+class FileInfo:
+    path: str
+    is_dir: bool = False
+    size: int | None = None
+    modified_at: str | None = None
+
+
+@dataclass
+class LsResult:
+    entries: list[FileInfo] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
+class ReadResult:
+    content: str | None = None
+    error: str | None = None
+    total_lines: int | None = None
+
+
+@dataclass
+class GrepMatch:
+    path: str
+    line_number: int
+    line: str
+
+
+@dataclass
+class GrepResult:
+    matches: list[GrepMatch] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
+class GlobResult:
+    files: list[FileInfo] = field(default_factory=list)
+    error: str | None = None
+
+
+@dataclass
+class WriteResult:
+    path: str | None = None
+    error: str | None = None
+    files_update: dict[str, Any] | None = None
+
+
+@dataclass
+class EditResult:
+    path: str | None = None
+    occurrences: int = 0
+    error: str | None = None
 
 
 class BackendProtocol(abc.ABC):
     @abc.abstractmethod
-    def read(self, session_id: str, path: str) -> str | None: ...
+    def ls(self, session_id: str, path: str) -> LsResult:
+        """List entries in a directory (agent path starting with /)."""
 
     @abc.abstractmethod
-    def write(self, session_id: str, path: str, content: str) -> None: ...
+    def read(
+        self,
+        session_id: str,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> ReadResult:
+        """Read text lines from file_path with 0-based line offset and max line count."""
 
     @abc.abstractmethod
-    def append(self, session_id: str, path: str, content: str) -> None: ...
+    def grep(
+        self,
+        session_id: str,
+        pattern: str,
+        path: str | None = None,
+        glob: str | None = None,
+    ) -> GrepResult:
+        """Search for literal pattern in text files."""
 
     @abc.abstractmethod
-    def exists(self, session_id: str, path: str) -> bool: ...
+    def glob(self, session_id: str, pattern: str, path: str = "/") -> GlobResult:
+        """Match file paths under path using glob pattern."""
 
     @abc.abstractmethod
-    def list_files(self, session_id: str, prefix: str = "") -> list[str]: ...
+    def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
+        """Create a new file only; error if it already exists."""
 
     @abc.abstractmethod
-    def read_store(self, path: str) -> str | None: ...
+    def edit(
+        self,
+        session_id: str,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        """Replace old_string with new_string; enforce uniqueness unless replace_all."""
 
     @abc.abstractmethod
-    def write_store(self, path: str, content: str) -> None: ...
+    def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None:
+        """Persist plan JSON for an agent."""
 
     @abc.abstractmethod
-    def list_store(self, prefix: str = "") -> list[str]: ...
+    def load_plan(self, session_id: str, agent_name: str) -> str | None:
+        """Load plan JSON if present."""
 
     @abc.abstractmethod
-    def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None: ...
+    def append_plan_log(self, session_id: str, entry_json: str) -> None:
+        """Append a structured plan history entry."""
 
     @abc.abstractmethod
-    def load_plan(self, session_id: str, agent_name: str) -> str | None: ...
-
-    @abc.abstractmethod
-    def append_plan_log(self, session_id: str, entry_json: str) -> None: ...
-
-    @abc.abstractmethod
-    def save_tool_log(self, session_id: str, log_data: dict) -> None: ...
+    def save_tool_log(self, session_id: str, log_data: dict) -> None:
+        """Append one tool invocation log entry."""
 
     @property
     def supports_execution(self) -> bool:

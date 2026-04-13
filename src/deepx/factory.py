@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -21,11 +22,7 @@ from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.middleware.observability import setup_observability
 from deepx.models import Plan
 from deepx.sessions import create_session
-from deepx.system_prompt import (
-    build_system_prompt,
-    discover_skills,
-    format_skills_for_prompt,
-)
+from deepx.system_prompt import build_system_prompt
 from deepx.tools import FILESYSTEM_TOOLS, PLANNING_TOOLS
 
 # Public type alias for dict-based subagent specs.
@@ -47,16 +44,16 @@ def create_deep_agent(
     backend: BackendProtocol | None = None,
     checkpointer: str = ":memory:",
     interrupt_on: list[str] | None = None,
+    hitl_approval_fn: Callable[[str, str, str], bool | Awaitable[bool]] | None = None,
     debug: bool = False,
     max_turns: int = 1000,
 ) -> "DeepAgentRunner":
     setup_observability()
 
     checkpointer = checkpointer.strip() or ":memory:"
-    resolved_backend = backend or FilesystemBackend(root_dir=".deepx")
+    resolved_backend = backend or FilesystemBackend(root_dir=Path.home() / ".deepx")
     mem_content = _load_memory(memory, resolved_backend)
     skills_paths = skills or []
-    skills_info_main = format_skills_for_prompt(discover_skills(skills_paths))
     user_tools = list(tools or [])
     base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
 
@@ -80,7 +77,11 @@ def create_deep_agent(
             }
         )
 
-    hitl = HumanInTheLoopHooks(interrupt_on) if interrupt_on else None
+    hitl = (
+        HumanInTheLoopHooks(list(interrupt_on), approval_fn=hitl_approval_fn)
+        if interrupt_on
+        else None
+    )
     interrupt_list = list(interrupt_on or [])
 
     subagent_tools: list[Tool] = []
@@ -134,7 +135,7 @@ def create_deep_agent(
         checkpointer=checkpointer,
         max_turns=max_turns,
         hitl=hitl,
-        skills_info=skills_info_main,
+        skills_paths=skills_paths,
         memory=mem_content,
         debug=debug,
         agent_name=name,
@@ -176,9 +177,12 @@ def _resolve_subagent_spec(
     spec_response_format = spec.get("response_format", parent_response_format)
     spec_model = spec.get("model", parent_model)
 
-    skills_info = format_skills_for_prompt(discover_skills(spec_skills))
     spec_mem = _load_memory(spec_memory_paths, parent_backend) if spec_memory_paths else mem_content if is_gp else ""
-    spec_hitl = HumanInTheLoopHooks(spec_interrupt) if spec_interrupt else parent_hitl
+    if spec_interrupt:
+        ap = parent_hitl.approval_fn if parent_hitl else None
+        spec_hitl = HumanInTheLoopHooks(spec_interrupt, approval_fn=ap)
+    else:
+        spec_hitl = parent_hitl
 
     base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
 
@@ -234,7 +238,7 @@ def _resolve_subagent_spec(
         checkpointer=checkpointer,
         max_turns=max_turns,
         hitl=spec_hitl,
-        skills_info=skills_info,
+        skills_paths=spec_skills,
         memory=spec_mem,
         debug=debug,
         agent_name=an,
@@ -255,22 +259,32 @@ def _make_subagent_tool(
 ) -> Tool:
     """Create a named FunctionTool that runs a subagent in an isolated context."""
     agent = runner._agent
-    skills_info = runner._skills_info
+    skills_paths_sub = list(runner._skills_paths)
     memory_default = runner._memory
     interrupt_tools = runner._interrupt_tools
 
     async def _invoke(ctx: RunContextWrapper[AgentContext], input: str) -> str:
+        from deepx.system_prompt import format_skills_for_prompt, materialize_skills
+
+        sub_sid = f"{ctx.context.session_id}:{agent.name}:{uuid.uuid4().hex[:12]}"
+        si_sub = ""
+        if skills_paths_sub:
+            si_sub = format_skills_for_prompt(
+                materialize_skills(
+                    ctx.context.backend, ctx.context.session_id, skills_paths_sub
+                )
+            )
         sub_ctx = AgentContext(
             session_id=ctx.context.session_id,
             backend=ctx.context.backend,
             agent_name=agent.name,
             memory=memory_default,
-            skills_info=skills_info,
+            skills_info=si_sub,
+            skills_paths=skills_paths_sub,
             debug=debug,
             hitl_tools=interrupt_tools,
             is_subagent=True,
         )
-        sub_sid = f"{ctx.context.session_id}:{agent.name}:{uuid.uuid4().hex[:12]}"
         session = create_session(sub_sid, checkpointer)
         wrapped = apply_tool_pipeline(
             list(agent.tools),
@@ -305,7 +319,7 @@ class DeepAgentRunner:
         checkpointer: str,
         max_turns: int,
         hitl: HumanInTheLoopHooks | None,
-        skills_info: str,
+        skills_paths: list[str],
         memory: str,
         debug: bool,
         agent_name: str,
@@ -317,7 +331,7 @@ class DeepAgentRunner:
         self._checkpointer = checkpointer
         self._max_turns = max_turns
         self._hitl = hitl
-        self._skills_info = skills_info
+        self._skills_paths = skills_paths
         self._memory = memory
         self._debug = debug
         self._agent_name = agent_name
@@ -325,12 +339,21 @@ class DeepAgentRunner:
         self._interrupt_tools = interrupt_tools
 
     def _make_ctx(self, session_id: str, resume: bool) -> AgentContext:
+        from deepx.system_prompt import format_skills_for_prompt, materialize_skills
+
+        paths = list(self._skills_paths)
+        si = ""
+        if paths:
+            si = format_skills_for_prompt(
+                materialize_skills(self._backend, session_id, paths)
+            )
         return AgentContext(
             session_id=session_id,
             backend=self._backend,
             agent_name=self._agent_name,
             memory=self._memory,
-            skills_info=self._skills_info,
+            skills_info=si,
+            skills_paths=paths,
             debug=self._debug,
             hitl_tools=self._interrupt_tools,
             resume=resume,
@@ -433,10 +456,10 @@ def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
         if p.is_file():
             parts.append(p.read_text(encoding="utf-8", errors="replace"))
         else:
-            rel = path.lstrip("/")
-            raw = backend.read_store(rel)
-            if raw is not None:
-                parts.append(raw)
+            ap = path if path.startswith("/") else "/store/" + path.lstrip("/")
+            rr = backend.read("_memory_load", ap, 0, 10_000_000)
+            if rr.content is not None and not rr.error:
+                parts.append(rr.content)
     return "\n\n".join(parts)
 
 

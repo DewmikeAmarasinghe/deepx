@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypedDict
 
 import yaml
 from agents import Agent, RunContextWrapper
 
+from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 
 # ---------------------------------------------------------------------------
@@ -45,10 +47,12 @@ Keep working until the task is fully complete. Don't stop partway and explain wh
 
 **When things go wrong:** stop and analyse *why* — don't keep retrying the same approach.
 
-## Progress Updates
+## Progress and final messages
 
-For longer tasks, provide brief progress updates at reasonable intervals — a concise sentence
-recapping what you've done and what's next.\
+During long work you may send short status lines if needed. When you deliver the **final**
+answer to a human user, keep it clean: no section titles like "Progress update", no editor or
+terminal path references, no `@`-style file pointers to local tooling, and no meta-recaps of
+your own process unless the user asked for a post-mortem.\
 """
 
 SUBAGENT_ROLE_PROMPT = """\
@@ -82,8 +86,8 @@ PLANNING_PROMPT = """\
    `update_todos` patches as needed.
 
 4. **Deliver final results inline.** When responding to a human user, write all content
-   directly in your response — do not reference internal file paths. (Not applicable when you
-   are a subagent returning results to an orchestrator.)
+   directly in your response — do not reference internal file paths in the user-visible text.
+   (Not applicable when you are a subagent returning results to an orchestrator.)
 
 ## Session filesystem conventions (suggested layout)
 
@@ -156,15 +160,14 @@ def _build_filesystem_prompt(session_id: str, checkpointer: str) -> str:
     scope_note: str
     if checkpointer == ":memory:":
         scope_note = (
-            "Your session filesystem is **ephemeral** (in-memory). Files exist only for the "
-            "duration of this run — they will not persist after the agent finishes. All paths "
-            f"are scoped to session `{session_id}`."
+            "Your workspace is **ephemeral** (in-memory). Paths are scoped to this run and "
+            f"session `{session_id}`."
         )
     else:
         scope_note = (
-            f"Your session filesystem is stored under `.deepx/sessions/{session_id}/files/`. "
-            "Files written here persist across runs for this session. You cannot access files "
-            "from other sessions."
+            f"Persistent session data for this conversation is tied to session `{session_id}`. "
+            "Paths under `/_workspace_/` persist for this session across runs when a checkpointer "
+            "is configured."
         )
 
     return f"""\
@@ -172,8 +175,14 @@ def _build_filesystem_prompt(session_id: str, checkpointer: str) -> str:
 
 {scope_note}
 
-All file paths must start with `/`. The path scope is **enforced at the tool level** — you
-cannot reference files outside your session regardless of what path you provide.
+All paths start with `/`. **What you can access is enforced by the backend**, not by the tools.
+
+- **`/_workspace_/`** — your private working tree for this session (notes, spill files, copies of
+  skills). Prefer this for agent-created files.
+- **Paths without that prefix** (for example `/notes/readme.md`) — the workspace root the host
+  configured; only use when you intend to read or write host project files there.
+- **`/store/...`** — persistent memory files (for example `/store/AGENTS.md`). Use `read_file`
+  and `edit_file` with a `/store/` path to read or update memory.
 
 ### `ls` — list directory contents
 Use before `read_file` or `edit_file` to confirm a file exists and explore the structure.
@@ -184,6 +193,12 @@ Use before `read_file` or `edit_file` to confirm a file exists and explore the s
 - Always read a file before editing it.
 - File contents are returned as plain text (binary files are decoded with replacement for invalid UTF-8).
 
+### `grep` — search file contents
+Literal pattern search under an optional directory or glob filter.
+
+### `glob` — match paths by pattern
+Find files relative to a directory using glob syntax.
+
 ### `write_file` — create a new file
 Fails if the file already exists. Prefer editing over recreating.
 
@@ -193,7 +208,7 @@ Use `replace_all=True` to replace every occurrence.
 
 ## Large tool results
 
-When a tool result is too large, it is saved to `/large_tool_results/<call_id>.txt`.
+When a tool result is too large, it is saved under `/_workspace_/large_tool_results/<call_id>.txt`.
 Use `read_file` with pagination to inspect it.\
 """
 
@@ -203,9 +218,9 @@ MEMORY_PROMPT = """\
 {agent_memory}
 </agent_memory>
 
-The above memory was loaded from your persistent store. Treat it as prior knowledge.
+The above memory was loaded from your persistent store (`/store/` paths). Treat it as prior knowledge.
 
-**When to update memory** (use `edit_file` on the store file):
+**When to update memory** (use `read_file` then `edit_file` on the same `/store/...` path):
 - User explicitly asks you to remember something
 - User corrects your behaviour or describes how you should work
 - You discover a pattern or convention worth retaining for future sessions
@@ -296,6 +311,30 @@ def discover_skills(paths: list[str]) -> list[SkillMetadata]:
             if meta and meta.get("name") and meta.get("description"):
                 by_name.setdefault(str(meta["name"]), meta)
     return list(by_name.values())
+
+
+def materialize_skills(
+    backend: BackendProtocol,
+    session_id: str,
+    skills_paths: list[str],
+) -> list[SkillMetadata]:
+    discovered = discover_skills(skills_paths)
+    out: list[SkillMetadata] = []
+    for m in discovered:
+        src = Path(m["path"])
+        if not src.is_file():
+            continue
+        safe_name = re.sub(r"[^\w\-.]+", "_", str(m["name"])) or "skill"
+        dest = f"/_workspace_/_skills/{safe_name}/SKILL.md"
+        content = src.read_text(encoding="utf-8", errors="replace")
+        wr = backend.write(session_id, dest, content)
+        if wr.error:
+            chk = backend.read(session_id, dest, 0, 10)
+            if chk.error or not (chk.content or "").strip():
+                continue
+        meta: SkillMetadata = {**m, "path": dest}
+        out.append(meta)
+    return out
 
 
 def format_skills_for_prompt(skills: list[SkillMetadata]) -> str:
@@ -392,6 +431,14 @@ def build_system_prompt(
 
     sections.append(_section("CORE BEHAVIOR", BASE_AGENT_PROMPT))
 
+    utc_now = datetime.now(timezone.utc)
+    sections.append(
+        _section(
+            "CONTEXT",
+            f"Current date and time (UTC): {utc_now.strftime('%Y-%m-%d %H:%M:%S')} ({utc_now.date().isoformat()}).",
+        )
+    )
+
     if ctx.context.is_subagent:
         sections.append(_section("YOUR ROLE", SUBAGENT_ROLE_PROMPT))
 
@@ -433,12 +480,13 @@ def build_system_prompt(
         ]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 
-    files = ctx.context.backend.list_files(ctx.context.session_id)
-    if files:
-        shown = files[:50]
-        block = "\n".join(shown)
-        if len(files) > 50:
-            block += f"\n... and {len(files) - 50} more. Use ls to explore."
-        sections.append(_section("SESSION FILES", block))
+    gf = ctx.context.backend.glob(ctx.context.session_id, "**/*", "/_workspace_/")
+    if not gf.error and gf.files:
+        paths = sorted({f.path for f in gf.files if not f.is_dir})[:50]
+        if paths:
+            block = "\n".join(paths)
+            if len(paths) >= 50:
+                block += "\n... use `glob` or `ls` under `/_workspace_/` to explore further."
+            sections.append(_section("SESSION WORKSPACE FILES", block))
 
     return _SEP.join(sections)

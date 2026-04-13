@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from deepx.backends.protocol import BackendProtocol
+from deepx.backends.protocol import (
+    BackendProtocol,
+    EditResult,
+    GlobResult,
+    GrepResult,
+    LsResult,
+    ReadResult,
+    WriteResult,
+)
 
 
 class CompositeBackend(BackendProtocol):
@@ -15,40 +23,58 @@ class CompositeBackend(BackendProtocol):
             key=lambda x: -len(x[0]),
         )
 
-    def _pick(self, path: str) -> tuple[BackendProtocol, str]:
+    def _pick(self, agent_path: str) -> tuple[BackendProtocol, str]:
+        p = agent_path if agent_path.startswith("/") else "/" + agent_path
         for prefix, backend in self._routes:
-            if path.startswith(prefix):
-                return backend, path[len(prefix) :].lstrip("/")
-        return self._default, path
+            if p.startswith(prefix):
+                rest = p[len(prefix) :].lstrip("/")
+                return backend, "/" + rest if rest else "/"
+        return self._default, p
 
-    def read(self, session_id: str, path: str) -> str | None:
+    def ls(self, session_id: str, path: str) -> LsResult:
         b, p = self._pick(path)
-        return b.read(session_id, p)
+        return b.ls(session_id, p)
 
-    def write(self, session_id: str, path: str, content: str) -> None:
+    def read(
+        self,
+        session_id: str,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> ReadResult:
+        b, p = self._pick(file_path)
+        return b.read(session_id, p, offset, limit)
+
+    def grep(
+        self,
+        session_id: str,
+        pattern: str,
+        path: str | None = None,
+        glob: str | None = None,
+    ) -> GrepResult:
+        if path is None:
+            return self._default.grep(session_id, pattern, None, glob)
         b, p = self._pick(path)
-        b.write(session_id, p, content)
+        return b.grep(session_id, pattern, p, glob)
 
-    def append(self, session_id: str, path: str, content: str) -> None:
+    def glob(self, session_id: str, pattern: str, path: str = "/") -> GlobResult:
         b, p = self._pick(path)
-        b.append(session_id, p, content)
+        return b.glob(session_id, pattern, p)
 
-    def exists(self, session_id: str, path: str) -> bool:
-        b, p = self._pick(path)
-        return b.exists(session_id, p)
+    def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
+        b, p = self._pick(file_path)
+        return b.write(session_id, p, content)
 
-    def list_files(self, session_id: str, prefix: str = "") -> list[str]:
-        b, p = self._pick(prefix or "")
-        return b.list_files(session_id, p)
-
-    def read_store(self, path: str) -> str | None:
-        return self._default.read_store(path)
-
-    def write_store(self, path: str, content: str) -> None:
-        self._default.write_store(path, content)
-
-    def list_store(self, prefix: str = "") -> list[str]:
-        return self._default.list_store(prefix)
+    def edit(
+        self,
+        session_id: str,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        b, p = self._pick(file_path)
+        return b.edit(session_id, p, old_string, new_string, replace_all)
 
     def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None:
         self._default.save_plan(session_id, agent_name, plan_json)
@@ -56,17 +82,11 @@ class CompositeBackend(BackendProtocol):
     def load_plan(self, session_id: str, agent_name: str) -> str | None:
         return self._default.load_plan(session_id, agent_name)
 
-    def append_task_log(self, session_id: str, task: str) -> None:
-        self._default.append_task_log(session_id, task)
-
     def append_plan_log(self, session_id: str, entry_json: str) -> None:
         self._default.append_plan_log(session_id, entry_json)
 
     def save_tool_log(self, session_id: str, log_data: dict) -> None:
         self._default.save_tool_log(session_id, log_data)
-
-    def append_system_prompt_log(self, session_id: str, agent_name: str, prompt: str) -> None:
-        self._default.append_system_prompt_log(session_id, agent_name, prompt)
 
     @property
     def supports_execution(self) -> bool:

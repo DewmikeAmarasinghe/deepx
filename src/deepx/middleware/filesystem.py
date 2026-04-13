@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 from agents.agent import Agent
@@ -14,6 +12,7 @@ from agents.tool import FunctionTool, Tool
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.hitl import HumanInTheLoopHooks
+from deepx.middleware.logs import wrap_tools_for_logging
 from deepx.models import Plan
 
 LARGE_OUTPUT_THRESHOLD = 40_000
@@ -35,9 +34,11 @@ class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
             if saved:
                 context.context.plan = Plan.model_validate_json(saved)
         if not context.context.memory:
-            raw = self._backend.read_store("AGENTS.md")
-            if raw:
-                context.context.memory = raw
+            rr = self._backend.read(
+                context.context.session_id, "/store/AGENTS.md", 0, 1_000_000
+            )
+            if rr.content is not None and not rr.error:
+                context.context.memory = rr.content
 
 
 def _make_evicting_invoke(original_invoke: Any, backend: BackendProtocol) -> Any:
@@ -49,11 +50,13 @@ def _make_evicting_invoke(original_invoke: Any, backend: BackendProtocol) -> Any
         session_id = ctx.context.session_id
 
         call_id = uuid.uuid4().hex[:12]
-        rel = f"large_tool_results/{call_id}.txt"
-        backend.write(session_id, rel, text)
+        dest = f"/_workspace_/large_tool_results/{call_id}.txt"
+        wr = backend.write(session_id, dest, text)
+        if wr.error:
+            return result
         preview = "\n".join(text.splitlines()[:10])
         return (
-            f"[Output was large and saved to /{rel}. Use read_file to access it. "
+            f"[Output was large and saved to {dest}. Use read_file to access it. "
             f"Preview:\n{preview}]"
         )
 
@@ -69,49 +72,6 @@ def wrap_tools_with_large_output_eviction(
         if isinstance(tool, FunctionTool):
             inv = _make_evicting_invoke(tool.on_invoke_tool, backend)
             out.append(dataclasses.replace(tool, on_invoke_tool=inv))
-        else:
-            out.append(tool)
-    return out
-
-
-def _make_logged_invoke(
-    original_invoke: Any,
-    tool_name: str,
-    agent_name: str,
-    backend: BackendProtocol,
-) -> Any:
-    async def logged_invoke(ctx: Any, args_json: str) -> Any:
-        result = await original_invoke(ctx, args_json)
-        session_id = ctx.context.session_id
-        backend.save_tool_log(
-            session_id,
-            {
-                "tool_name": tool_name,
-                "agent_name": agent_name,
-                "session_id": session_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "input": json.loads(args_json) if args_json else {},
-                "output": str(result),
-                "output_chars": len(str(result)),
-            },
-        )
-        return result
-
-    return logged_invoke
-
-
-def wrap_tools_for_logging(
-    tools: list[Tool],
-    backend: BackendProtocol,
-    agent_name: str,
-) -> list[Tool]:
-    out: list[Tool] = []
-    for tool in tools:
-        if isinstance(tool, FunctionTool):
-            logged = _make_logged_invoke(
-                tool.on_invoke_tool, tool.name, agent_name, backend
-            )
-            out.append(dataclasses.replace(tool, on_invoke_tool=logged))
         else:
             out.append(tool)
     return out
@@ -137,7 +97,7 @@ def wrap_tools_for_hitl(
                 _name: str = name,
             ) -> Any:
                 agent_name = getattr(ctx.context, "agent_name", "") or "agent"
-                msg = await _hitl.gate_tool(agent_name, _name)
+                msg = await _hitl.gate_tool(agent_name, _name, args_json)
                 if msg is not None:
                     return msg
                 return await _inner(ctx, args_json)
