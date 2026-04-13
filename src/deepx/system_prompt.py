@@ -59,11 +59,22 @@ You are a subagent. Your response goes to an orchestrating agent, not to a human
 
 Return structured results: include the exact file paths of every file you created, key
 findings, and any data the orchestrator needs to proceed. Be direct and concise — the
-orchestrator reads your output programmatically.\
+orchestrator reads your output programmatically.
+
+**Planning:** you have the same `write_todos`, `update_todos`, and `think_tool` as the main agent.
+For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
+on relevant skills), then `update_todos` after each major step. Skipping todos on multi-step work
+is a mistake.\
 """
 
 PLANNING_PROMPT = """\
 ## Working Rules
+
+0. **Mandatory planning for multi-step work.** If the task is not a single trivial action, you
+   **must** call `write_todos` **before** other tools (right after any quick `read_file` on skills).
+   **Subagents:** this applies to you too—your plans are persisted like the main agent’s. After
+   each substantial tool or subagent call, use `update_todos` to record progress. Never skip
+   planning just because you are “only” helping another agent.
 
 1. **Understand your capabilities before planning.** Review your tool list, identify every
    tool that delegates to a **subagent** (full nested agents) from its description, and check
@@ -120,8 +131,8 @@ you may use multiple files when the task warrants it.
    [1] Assess capabilities and read matching skill files   (in_progress)
    [2] Call the appropriate subagent tool ONCE with the full scope of its work; ask it to
        consolidate outputs into as few session files as practical and return paths.
-   [3] Pass those paths to the next subagent or finish the task yourself
-   [4] Return the final result inline to the user
+   [3] Integrate results (or call the next specialist) using paths only — no huge pastes
+   [4] Return the final result inline to the user (or paths to artifacts for the orchestrator)
    ```
 
 ## Phase 2 — Execution Loop (repeat for every step)
@@ -275,7 +286,6 @@ class SkillMetadata(TypedDict, total=False):
     name: str
     description: str
     path: str
-    preview: str
     license: str | None
     compatibility: str | None
     allowed_tools: list[str]
@@ -382,29 +392,7 @@ def format_skills_for_prompt(skills: list[SkillMetadata]) -> str:
     for skill in skills:
         lines.append(f"- **{skill['name']}**: {skill['description']}")
         lines.append(f"  Path: `{skill['path']}`")
-        preview = skill.get("preview", "")
-        if preview:
-            indented = "\n".join(f"  | {line}" for line in preview.splitlines())
-            lines.append(f"  Preview:\n{indented}")
     return "\n".join(lines)
-
-
-def _extract_preview(body: str, max_words: int = 150) -> str:
-    """Extract a plain-text preview from a markdown body, capped at max_words words."""
-    text = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
-    text = re.sub(r"`[^`]+`", lambda m: m.group(0)[1:-1], text)
-    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    text = re.sub(r"\*{1,2}([^*]+)\*{1,2}", r"\1", text)
-    text = re.sub(r"_{1,2}([^_]+)_{1,2}", r"\1", text)
-    text = re.sub(r"^[\-\*\+]\s+", "", text, flags=re.MULTILINE)
-    text = re.sub(r"^\d+\.\s+", "", text, flags=re.MULTILINE)
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    words = text.split()
-    if len(words) <= max_words:
-        return text
-    return " ".join(words[:max_words]) + " …"
 
 
 def _parse_skill_frontmatter(content: str, path: str) -> SkillMetadata | None:
@@ -421,13 +409,10 @@ def _parse_skill_frontmatter(content: str, path: str) -> SkillMetadata | None:
     description = str(data.get("description", "")).strip()
     if not name or not description:
         return None
-    body = content[match.end():]
-    preview = _extract_preview(body)
     meta: SkillMetadata = {
         "name": name,
         "description": description,
         "path": path,
-        "preview": preview,
     }
     if data.get("license") is not None:
         meta["license"] = str(data["license"])

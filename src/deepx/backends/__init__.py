@@ -1,5 +1,6 @@
 from deepx.backends.composite import CompositeBackend
 from deepx.backends.filesystem import FilesystemBackend
+from deepx.backends.local_shell import LocalShellBackend
 from deepx.backends.memory import InMemoryBackend
 from deepx.backends.protocol import (
     BackendProtocol,
@@ -24,6 +25,7 @@ __all__ = [
     "GrepMatch",
     "FileInfo",
     "FilesystemBackend",
+    "LocalShellBackend",
     "InMemoryBackend",
     "CompositeBackend",
 ]

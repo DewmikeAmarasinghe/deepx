@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import fnmatch
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -272,7 +271,7 @@ class FilesystemBackend(BackendProtocol):
             return EditResult(error=f"Error: {e}")
         return EditResult(path=file_path, occurrences=count if replace_all else 1)
 
-    def run_shell_command(
+    def execute(
         self,
         session_id: str,
         command: str,
@@ -280,17 +279,8 @@ class FilesystemBackend(BackendProtocol):
         timeout: float = 120.0,
         max_chars: int = 50_000,
     ) -> str:
-        _ = session_id
-        cwd = str(self._host_root)
-        proc = subprocess.run(
-            command,
-            shell=True,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
+        _ = session_id, command, timeout, max_chars
+        return (
+            "Shell execution is not available on FilesystemBackend. "
+            "Use LocalShellBackend (or another backend that implements execute) for the execute tool."
         )
-        out = (proc.stdout or "") + (proc.stderr or "")
-        if len(out) > max_chars:
-            out = out[:max_chars] + "\n...[truncated]"
-        return f"exit_code={proc.returncode}\n{out}"

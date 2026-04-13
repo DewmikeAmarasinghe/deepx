@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from deepx.backends.protocol import BackendProtocol
-from deepx.models import Plan
+
+if TYPE_CHECKING:
+    from deepx.tools.planning import Plan
 
 
 @dataclass
@@ -11,7 +14,7 @@ class AgentContext:
     session_id: str
     backend: BackendProtocol
     agent_name: str = ""
-    plan: Plan = field(init=False)
+    plan: "Plan" = field(init=False)
     memory: str = ""
     skills: str = ""
     debug: bool = False
@@ -20,5 +23,7 @@ class AgentContext:
     is_subagent: bool = False
 
     def __post_init__(self) -> None:
+        from deepx.tools.planning import Plan as PlanModel
+
         an = self.agent_name or "agent"
-        self.plan = Plan(session_id=self.session_id, agent_name=an)
+        self.plan = PlanModel(session_id=self.session_id, agent_name=an)

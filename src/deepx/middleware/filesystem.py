@@ -13,9 +13,9 @@ from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.hitl import HumanInTheLoopHooks, wrap_tools_for_hitl
 from deepx.middleware.logs import run_log_load_plan, wrap_tools_for_logging
-from deepx.models import Plan
+from deepx.tools.planning import Plan
 
-LARGE_OUTPUT_THRESHOLD = 40_000
+LARGE_OUTPUT_THRESHOLD = 80_000
 
 
 class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):

@@ -1,5 +1,6 @@
 from deepx.backends.composite import CompositeBackend
 from deepx.backends.filesystem import FilesystemBackend
+from deepx.backends.local_shell import LocalShellBackend
 from deepx.backends.memory import InMemoryBackend
 from deepx.backends.protocol import BackendProtocol
 from deepx.factory import (
@@ -18,6 +19,7 @@ __all__ = [
     "SubAgentDict",
     "BackendProtocol",
     "FilesystemBackend",
+    "LocalShellBackend",
     "InMemoryBackend",
     "CompositeBackend",
 ]

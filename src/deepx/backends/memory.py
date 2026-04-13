@@ -296,3 +296,14 @@ class InMemoryBackend(BackendProtocol):
         else:
             self._root[(session_id, rel)] = new_content
         return EditResult(path=file_path, occurrences=count if replace_all else 1)
+
+    def execute(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        timeout: float = 120.0,
+        max_chars: int = 50_000,
+    ) -> str:
+        _ = session_id, command, timeout, max_chars
+        return "Shell execution is not available on InMemoryBackend."

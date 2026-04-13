@@ -20,7 +20,7 @@ from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
 from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.middleware.observability import setup_observability
-from deepx.models import Plan
+from deepx.tools.planning import Plan
 from deepx.sessions import create_session
 from deepx.system_prompt import (
     build_system_prompt,
@@ -41,7 +41,8 @@ def resolve_host_root(backend: BackendProtocol) -> Path | None:
     return None
 
 
-def _collect_skill_roots(main: list[str] | None, sub_specs: list[Any]) -> list[str]:
+def _collect_skill_roots(main: list[str] | None) -> list[str]:
+    """Skill roots for the *main* agent only (no merging nested subagent skill trees)."""
     out: list[str] = []
     seen: set[str] = set()
 
@@ -56,19 +57,9 @@ def _collect_skill_roots(main: list[str] | None, sub_specs: list[Any]) -> list[s
     dx = Path.cwd() / ".deepx" / "skills"
     if dx.is_dir():
         add(str(dx.resolve()))
-
-    def walk(obj: Any) -> None:
-        if isinstance(obj, dict):
-            for raw in obj.get("skills") or []:
-                add(str(raw))
-            for ch in obj.get("subagents") or []:
-                walk(ch)
-        elif isinstance(obj, DeepAgentRunner):
-            for raw in obj._skill_roots:
-                add(str(raw))
-
-    for spec in sub_specs:
-        walk(spec)
+    u = Path.home() / ".deepx" / "skills"
+    if u.is_dir():
+        add(str(u.resolve()))
     return out
 
 
@@ -89,7 +80,7 @@ def _skills_prompt_for_backend(
 
 
 def create_deep_agent(
-    model: str = "gpt-5-nano",
+    model: str = "gpt-5-mini",
     tools: list | None = None,
     *,
     name: str = "agent",
@@ -124,11 +115,11 @@ def create_deep_agent(
                 ),
                 "system_prompt": "",
                 "tools": list(tools or []),
-                "skills": list(skills or []),
+                "skills": [],
             }
         )
 
-    skill_roots = _collect_skill_roots(skills, sub_specs)
+    skill_roots = _collect_skill_roots(skills)
     if backend is None:
         resolved_backend = FilesystemBackend(Path.home())
     else:
@@ -159,7 +150,7 @@ def create_deep_agent(
             _make_subagent_tool(
                 runner=runner,
                 tool_name=tool_name,
-                checkpointer=checkpointer,
+                checkpointer=runner._checkpointer,
                 max_turns=max_turns,
                 backend=resolved_backend,
                 debug=debug,
@@ -252,7 +243,7 @@ def _resolve_subagent_spec(
             _make_subagent_tool(
                 runner=nested_runner,
                 tool_name=nested_tool_name,
-                checkpointer=checkpointer,
+                checkpointer=nested_runner._checkpointer,
                 max_turns=max_turns,
                 backend=parent_backend,
                 debug=debug,

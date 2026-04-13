@@ -75,3 +75,15 @@ class CompositeBackend(BackendProtocol):
     ) -> EditResult:
         b, p = self._pick(file_path)
         return b.edit(session_id, p, old_string, new_string, replace_all)
+
+    def execute(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        timeout: float = 120.0,
+        max_chars: int = 50_000,
+    ) -> str:
+        return self._default.execute(
+            session_id, command, timeout=timeout, max_chars=max_chars
+        )

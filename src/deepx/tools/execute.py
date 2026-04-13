@@ -9,18 +9,14 @@ from deepx.context import AgentContext
 
 @function_tool
 async def execute(ctx: RunContextWrapper[AgentContext], command: str) -> str:
-    """Run a shell command in the session workspace directory (local process, not a container).
+    """Run a shell command on the host with working directory set to the backend host root.
 
-    Uses the host shell with working directory set to this session's `/_workspace_/` folder.
-    Output is capped. Prefer short, non-interactive commands; set timeouts implicitly via the
-    backend (default roughly two minutes).
+    Requires a backend that implements ``execute`` (e.g. ``LocalShellBackend``). Output is capped.
+    Prefer short, non-interactive commands.
     """
     b = ctx.context.backend
     sid = ctx.context.session_id
-    runner = getattr(b, "run_shell_command", None)
-    if runner is None:
-        return "execute is not available for this backend."
     cmd = (command or "").strip()
     if not cmd:
         return "No command provided."
-    return await asyncio.to_thread(lambda: runner(sid, cmd))
+    return await asyncio.to_thread(b.execute, sid, cmd)

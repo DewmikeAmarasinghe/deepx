@@ -102,3 +102,18 @@ class BackendProtocol(abc.ABC):
         replace_all: bool = False,
     ) -> EditResult:
         """Replace old_string with new_string; enforce uniqueness unless replace_all."""
+
+    @abc.abstractmethod
+    def execute(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        timeout: float = 120.0,
+        max_chars: int = 50_000,
+    ) -> str:
+        """Run a shell command when supported; otherwise return a fixed error string.
+
+        ``session_id`` is reserved for backends that scope execution per session; filesystem-only
+        backends ignore it for ``cwd`` and use the host project root instead.
+        """
