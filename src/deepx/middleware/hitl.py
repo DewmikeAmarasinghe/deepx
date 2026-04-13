@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import inspect
 from collections.abc import Awaitable, Callable
+from typing import Any
+
+from agents.tool import FunctionTool, Tool
 
 
 class HumanInTheLoopHooks:
+    """Pre-invoke approval gate (LangChain-style) before sensitive tools run."""
+
     def __init__(
         self,
         sensitive_tools: list[str],
@@ -50,7 +56,37 @@ class HumanInTheLoopHooks:
                 return (
                     f"[Human-in-the-loop] The human declined approval for tool {tool_name!r}. "
                     "Do not retry this exact tool call without changing your approach or asking the user. "
-                    "Use write_todos to update your plan and continue with other steps or tools."
+                    "Use write_todos or update_todos to adjust your plan and continue with other steps."
                 )
             self._approved.add(tool_name)
         return None
+
+
+def wrap_tools_for_hitl(
+    tools: list[Tool],
+    hitl: HumanInTheLoopHooks,
+) -> list[Tool]:
+    out: list[Tool] = []
+    for tool in tools:
+        if isinstance(tool, FunctionTool) and tool.name in hitl._sensitive:
+            inner = tool.on_invoke_tool
+            name = tool.name
+
+            async def hitl_invoke(
+                ctx: Any,
+                args_json: str,
+                *,
+                _inner: Any = inner,
+                _hitl: HumanInTheLoopHooks = hitl,
+                _name: str = name,
+            ) -> Any:
+                agent_name = getattr(ctx.context, "agent_name", "") or "agent"
+                msg = await _hitl.gate_tool(agent_name, _name, args_json)
+                if msg is not None:
+                    return msg
+                return await _inner(ctx, args_json)
+
+            out.append(dataclasses.replace(tool, on_invoke_tool=hitl_invoke))
+        else:
+            out.append(tool)
+    return out

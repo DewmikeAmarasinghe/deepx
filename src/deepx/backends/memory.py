@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import fnmatch
-import json
-import re
 
 from deepx.backends.protocol import (
     BackendProtocol,
@@ -17,10 +15,6 @@ from deepx.backends.protocol import (
 )
 
 
-def _safe_agent_name(name: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name) or "agent"
-
-
 def _norm_agent_path(path: str) -> str:
     p = path.replace("\\", "/").strip()
     if not p.startswith("/"):
@@ -32,13 +26,13 @@ def _split_scope(agent_path: str) -> tuple[str, str]:
     p = _norm_agent_path(agent_path)
     body = p[1:]
     if body.startswith("_workspace_/"):
-        return "ws", body[len("_workspace_/") :]
+        return "_workspace_", body[len("_workspace_/") :]
     if body == "_workspace_":
-        return "ws", ""
-    if body.startswith("store/"):
-        return "store", body[6:]
-    if body == "store":
-        return "store", ""
+        return "_workspace_", ""
+    if body.startswith("_memory_/"):
+        return "_memory_", body[len("_memory_/") :]
+    if body == "_memory_":
+        return "_memory_", ""
     return "root", body
 
 
@@ -53,10 +47,7 @@ class InMemoryBackend(BackendProtocol):
     def __init__(self) -> None:
         self._ws: dict[tuple[str, str], str] = {}
         self._root: dict[tuple[str, str], str] = {}
-        self._store: dict[str, str] = {}
-        self._plans: dict[tuple[str, str], str] = {}
-        self._plan_logs: dict[str, list[dict]] = {}
-        self._tool_logs: dict[str, list[dict]] = {}
+        self._memory: dict[str, str] = {}
 
     def _child_names_ws(self, session_id: str, prefix: str) -> dict[str, bool]:
         pfx = prefix + "/" if prefix else ""
@@ -96,17 +87,17 @@ class InMemoryBackend(BackendProtocol):
             out[head] = cur or is_dir
         return out
 
-    def _child_names_store(self, prefix: str) -> dict[str, bool]:
+    def _child_names_memory(self, prefix: str) -> dict[str, bool]:
         pfx = prefix + "/" if prefix else ""
         out: dict[str, bool] = {}
-        for r in self._store.keys():
+        for r in self._memory.keys():
             if prefix and not (r == prefix or r.startswith(pfx)):
                 continue
             rest = r[len(pfx) :] if pfx else r
             if not rest:
                 continue
             head, _, tail = rest.partition("/")
-            is_dir = bool(tail) or any(sk.startswith(pfx + head + "/") for sk in self._store)
+            is_dir = bool(tail) or any(sk.startswith(pfx + head + "/") for sk in self._memory)
             cur = out.get(head, False)
             out[head] = cur or is_dir
         return out
@@ -116,27 +107,23 @@ class InMemoryBackend(BackendProtocol):
         if p == "/":
             entries = [
                 FileInfo(path="/_workspace_", is_dir=True),
-                FileInfo(path="/store", is_dir=True),
+                FileInfo(path="/_memory_", is_dir=True),
             ]
             for name, is_dir in sorted(self._child_names_root(session_id, "").items()):
                 entries.append(FileInfo(path=f"/{name}", is_dir=is_dir))
             return LsResult(entries=entries)
         scope, rel = _split_scope(p)
-        if scope == "ws":
+        if scope == "_workspace_":
             kids = self._child_names_ws(session_id, rel)
             base = p.rstrip("/")
             return LsResult(
-                entries=[
-                    FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())
-                ]
+                entries=[FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())]
             )
-        if scope == "store":
-            kids = self._child_names_store(rel)
+        if scope == "_memory_":
+            kids = self._child_names_memory(rel)
             base = p.rstrip("/")
             return LsResult(
-                entries=[
-                    FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())
-                ]
+                entries=[FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())]
             )
         kids = self._child_names_root(session_id, rel)
         base = p.rstrip("/")
@@ -150,10 +137,10 @@ class InMemoryBackend(BackendProtocol):
         limit: int = 2000,
     ) -> ReadResult:
         scope, rel = _split_scope(file_path)
-        if scope == "ws":
+        if scope == "_workspace_":
             raw = self._ws.get((session_id, rel.strip("/")))
-        elif scope == "store":
-            raw = self._store.get(rel.strip("/"))
+        elif scope == "_memory_":
+            raw = self._memory.get(rel.strip("/"))
         else:
             raw = self._root.get((session_id, rel.strip("/")))
         if raw is None:
@@ -190,18 +177,18 @@ class InMemoryBackend(BackendProtocol):
                 if pattern in line:
                     matches.append(GrepMatch(path=ap, line_number=i, line=line))
 
-        if scope == "ws":
+        if scope == "_workspace_":
             for (sid, r), content in self._ws.items():
                 if sid != session_id:
                     continue
                 if rel and not (r == rel or r.startswith(rel + "/")):
                     continue
                 scan("/_workspace_/" + r, content)
-        elif scope == "store":
-            for k, content in self._store.items():
+        elif scope == "_memory_":
+            for k, content in self._memory.items():
                 if rel and not (k == rel or k.startswith(rel + "/")):
                     continue
-                scan("/store/" + k, content)
+                scan("/_memory_/" + k, content)
         else:
             for (sid, r), content in self._root.items():
                 if sid != session_id:
@@ -215,7 +202,7 @@ class InMemoryBackend(BackendProtocol):
         base = _norm_agent_path(path)
         scope, rel = _split_scope(base)
         files: list[FileInfo] = []
-        if scope == "ws":
+        if scope == "_workspace_":
             for (sid, r), _ in self._ws.items():
                 if sid != session_id:
                     continue
@@ -228,13 +215,13 @@ class InMemoryBackend(BackendProtocol):
                 if not _glob_match(check, pattern):
                     continue
                 files.append(FileInfo(path="/_workspace_/" + r, is_dir=False))
-        elif scope == "store":
-            for k, _ in self._store.items():
+        elif scope == "_memory_":
+            for k, _ in self._memory.items():
                 if rel and not (k == rel or k.startswith(rel + "/")):
                     continue
                 if not _glob_match(k, pattern):
                     continue
-                files.append(FileInfo(path="/store/" + k, is_dir=False))
+                files.append(FileInfo(path="/_memory_/" + k, is_dir=False))
         else:
             for (sid, r), _ in self._root.items():
                 if sid != session_id:
@@ -250,15 +237,15 @@ class InMemoryBackend(BackendProtocol):
     def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
         scope, rel = _split_scope(file_path)
         rel = rel.strip("/")
-        if scope == "ws":
+        if scope == "_workspace_":
             k = (session_id, rel)
             if k in self._ws:
                 return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
             self._ws[k] = content
-        elif scope == "store":
-            if rel in self._store:
+        elif scope == "_memory_":
+            if rel in self._memory:
                 return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
-            self._store[rel] = content
+            self._memory[rel] = content
         else:
             k = (session_id, rel)
             if k in self._root:
@@ -276,12 +263,12 @@ class InMemoryBackend(BackendProtocol):
     ) -> EditResult:
         scope, rel = _split_scope(file_path)
         rel = rel.strip("/")
-        if scope == "ws":
+        if scope == "_workspace_":
             k = (session_id, rel)
             content = self._ws.get(k)
-        elif scope == "store":
+        elif scope == "_memory_":
             k = rel
-            content = self._store.get(rel)
+            content = self._memory.get(rel)
         else:
             k = (session_id, rel)
             content = self._root.get(k)
@@ -302,29 +289,10 @@ class InMemoryBackend(BackendProtocol):
             if replace_all
             else content.replace(old_string, new_string, 1)
         )
-        if scope == "ws":
+        if scope == "_workspace_":
             self._ws[(session_id, rel)] = new_content
-        elif scope == "store":
-            self._store[rel] = new_content
+        elif scope == "_memory_":
+            self._memory[rel] = new_content
         else:
             self._root[(session_id, rel)] = new_content
         return EditResult(path=file_path, occurrences=count if replace_all else 1)
-
-    def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None:
-        self._plans[(session_id, agent_name)] = plan_json
-
-    def load_plan(self, session_id: str, agent_name: str) -> str | None:
-        return self._plans.get((session_id, agent_name))
-
-    def append_plan_log(self, session_id: str, entry_json: str) -> None:
-        try:
-            obj = json.loads(entry_json)
-        except json.JSONDecodeError:
-            obj = {"raw": entry_json}
-        self._plan_logs.setdefault(session_id, []).append(obj)
-
-    def save_tool_log(self, session_id: str, log_data: dict) -> None:
-        logs = self._tool_logs.setdefault(session_id, [])
-        tn = str(log_data["tool_name"])
-        n = 1 + sum(1 for e in logs if str(e.get("tool_name")) == tn)
-        logs.append({**log_data, "call_id": str(n)})

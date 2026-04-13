@@ -75,22 +75,3 @@ class CompositeBackend(BackendProtocol):
     ) -> EditResult:
         b, p = self._pick(file_path)
         return b.edit(session_id, p, old_string, new_string, replace_all)
-
-    def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None:
-        self._default.save_plan(session_id, agent_name, plan_json)
-
-    def load_plan(self, session_id: str, agent_name: str) -> str | None:
-        return self._default.load_plan(session_id, agent_name)
-
-    def append_plan_log(self, session_id: str, entry_json: str) -> None:
-        self._default.append_plan_log(session_id, entry_json)
-
-    def save_tool_log(self, session_id: str, log_data: dict) -> None:
-        self._default.save_tool_log(session_id, log_data)
-
-    @property
-    def supports_execution(self) -> bool:
-        return self._default.supports_execution
-
-    def execute(self, command: str) -> str:
-        return self._default.execute(command)

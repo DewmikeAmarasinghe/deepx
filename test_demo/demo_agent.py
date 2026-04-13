@@ -1,8 +1,9 @@
 """Multi-agent orchestrator demo.
 
-- Web research: web_agent_subagent
-- Writing: writer_subagent
-- Text-to-SQL (Chinook): sql_agent_subagent (SQL tools only on that subagent)
+- Web research: `web_agent` tool (subagent)
+- Writing: `writer` tool (subagent)
+- Text-to-SQL: `sql_chinook` and `sql_northwind` (separate SQLite tool prefixes)
+- PDF/forms: `pdf_agent` (subagent with bundled ``test_demo/skills/pdf``)
 
 Usage:
     python test_demo/demo_agent.py              # interactive (default)
@@ -14,260 +15,63 @@ Type /bye to exit (handled by the CLI, not sent to the model).
 
 from __future__ import annotations
 
-import asyncio
-import json
 import os
-import sqlite3
 import sys
 from pathlib import Path
 
-import httpx
-from agents import RunContextWrapper, function_tool
-from dotenv import load_dotenv
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-from deepx import create_deep_agent
-from deepx.backends.filesystem import FilesystemBackend
-from deepx.context import AgentContext
-from deepx_cli import run_interactive
+from deepx import create_deep_agent  # noqa: E402
+from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
+from deepx_cli import run_interactive  # noqa: E402
 
-load_dotenv()
+from test_demo.tools import (  # noqa: E402
+    CHINOOK_DB,
+    DBS_DIR,
+    NORTHWIND_DB,
+    PDF_SKILLS_DIR,
+    SKILLS_DIR,
+    SQL_SKILLS_DIR,
+    create_sql_tools,
+    render_file,
+    web_extract,
+    web_map,
+    web_search,
+)
 
-TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
-_DEMO_DIR = os.path.dirname(os.path.abspath(__file__))
-_SKILLS_ROOT = os.path.join(_DEMO_DIR, "skills")
-_SQL_SKILLS = os.path.join(_SKILLS_ROOT, "sql")
-_CHINOOK_DB = os.path.join(_DEMO_DIR, "chinook.db")
-_DEMO_BACKEND = FilesystemBackend(Path(".deepx").resolve())
+DBS_DIR.mkdir(parents=True, exist_ok=True)
+DEMO_BACKEND = FilesystemBackend(_REPO_ROOT)
 
-
-@function_tool
-async def web_search(ctx: RunContextWrapper, queries: list[str]) -> str:
-    """
-    Run one or more independent search requests against the public web index.
-
-    Each query is executed in parallel. Use a separate query string when the information
-    needed is unrelated; combine related facets into one query to reduce cost.
-
-    Returns JSON: a list of objects with "query", "answer", "results", and other fields
-    returned by the search API for that query.
-    """
-    _ = ctx
-    if not TAVILY_KEY:
-        return "TAVILY_API_KEY not set. Cannot perform web search."
-    qs = [q.strip() for q in queries if q and str(q).strip()]
-    if not qs:
-        return "No queries provided."
-    async with httpx.AsyncClient() as client:
-
-        async def one(q: str) -> dict:
-            r = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": TAVILY_KEY,
-                    "query": q,
-                    "max_results": 5,
-                },
-                timeout=25,
-            )
-            r.raise_for_status()
-            data = r.json()
-            return {
-                "query": q,
-                "answer": data.get("answer"),
-                "results": data.get("results", []),
-                "images": data.get("images", []),
-            }
-
-        rows = await asyncio.gather(*[one(q) for q in qs])
-    return json.dumps(rows, indent=2)
-
-
-@function_tool
-async def web_extract(
-    ctx: RunContextWrapper,
-    urls: list[str],
-    query: str | None = None,
-    chunks_per_source: int | None = None,
-) -> str:
-    """
-    Extract and clean full webpage content from specific URLs using a hosted extraction service.
-
-    Acts as a structured fetch that returns core text. Use when you already have URLs and
-    need their text for analysis or summarization.
-
-    Args:
-        urls: One or more valid HTTP(S) URLs to extract.
-        query: Optional intent string; when set, the service may rerank content chunks.
-        chunks_per_source: When ``query`` is set, maximum chunks per URL (1 to 5).
-    """
-    _ = ctx
-    if not TAVILY_KEY:
-        return "TAVILY_API_KEY not set. Cannot extract content."
-    if not urls:
-        return "[]"
-    body: dict = {"api_key": TAVILY_KEY, "urls": urls}
-    if query:
-        body["query"] = query
-    if chunks_per_source is not None:
-        body["chunks_per_source"] = max(1, min(5, int(chunks_per_source)))
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            "https://api.tavily.com/extract",
-            json=body,
-            timeout=90,
-        )
-        r.raise_for_status()
-        data = r.json()
-    results = data.get("results", [])
-    failed = data.get("failed_results", [])
-    out = {"results": results, "failed_results": failed}
-    return json.dumps(out, indent=2)
-
-
-@function_tool
-async def web_map(
-    ctx: RunContextWrapper,
-    url: str,
-    instructions: str | None = None,
-    max_depth: int = 1,
-    max_breadth: int = 12,
-    limit: int = 40,
-) -> str:
-    """
-    Discover URLs reachable from a single root URL on one site (breadth-first link crawl).
-
-    Use after you already know which host to explore. Prefer narrow limits to control cost.
-    This issues one map request per call (no internal parallel map fan-out).
-
-    Args:
-        url: Root page where crawling starts (scheme required, e.g. https://example.com).
-        instructions: Optional natural-language focus for the crawl (may increase cost).
-        max_depth: How many link levels to follow (1 to 5).
-        max_breadth: Maximum links to follow from each page (1 to 500).
-        limit: Maximum URLs to return before stopping (>= 1).
-    """
-    _ = ctx
-    if not TAVILY_KEY:
-        return "TAVILY_API_KEY not set. Cannot map site."
-    body: dict = {
-        "api_key": TAVILY_KEY,
-        "url": url,
-        "max_depth": max(1, min(5, int(max_depth))),
-        "max_breadth": max(1, min(500, int(max_breadth))),
-        "limit": max(1, int(limit)),
-    }
-    if instructions:
-        body["instructions"] = instructions
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            "https://api.tavily.com/map",
-            json=body,
-            timeout=160,
-        )
-        r.raise_for_status()
-        return json.dumps(r.json(), indent=2)
-
-
-@function_tool
-async def render_file(
-    ctx: RunContextWrapper[AgentContext],
-    path: str,
-    max_lines: int = 400,
-) -> str:
-    """Render a text or markdown file from the session workspace to the host terminal."""
-    sid = ctx.context.session_id
-    rr = ctx.context.backend.read(sid, path, 0, max(1, min(max_lines, 5000)))
-    if rr.error:
-        return rr.error
-    text = rr.content or ""
-    bar = "=" * 72
-    print(f"\n{bar}\n{text}\n{bar}\n", flush=True)
-    return f"Rendered {path} ({len(text)} characters) to the terminal."
-
-
-def create_sql_tools(sqlite_path: str) -> list:
-    """Read-only SQL tools for a SQLite file."""
-
-    @function_tool
-    def sql_db_list_tables(ctx: RunContextWrapper) -> str:
-        """List all tables in the database."""
-        with sqlite3.connect(sqlite_path) as conn:
-            rows = conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            ).fetchall()
-        return ", ".join(r[0] for r in rows) or "No tables found."
-
-    @function_tool
-    def sql_db_schema(ctx: RunContextWrapper, table_names: str) -> str:
-        """CREATE TABLE plus sample rows for comma-separated table names."""
-        names = [n.strip() for n in table_names.split(",") if n.strip()]
-        parts: list[str] = []
-        with sqlite3.connect(sqlite_path) as conn:
-            for name in names:
-                row = conn.execute(
-                    "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-                    (name,),
-                ).fetchone()
-                if not row:
-                    parts.append(f"Table '{name}' not found.")
-                    continue
-                schema = row[0]
-                sample_rows = conn.execute(f"SELECT * FROM {name} LIMIT 3").fetchall()
-                cols = [
-                    d[0]
-                    for d in conn.execute(f"SELECT * FROM {name} LIMIT 0").description
-                ]
-                sample = "\n".join(str(dict(zip(cols, r))) for r in sample_rows)
-                parts.append(f"-- {name}\n{schema}\n\n-- Sample rows:\n{sample}")
-        return "\n\n".join(parts)
-
-    @function_tool
-    def sql_db_query(ctx: RunContextWrapper, query: str) -> str:
-        """Run a read-only SELECT. No INSERT/UPDATE/DELETE/DROP. Use LIMIT if needed."""
-        q = query.strip()
-        upper = q.upper()
-        for forbidden in (
-            "INSERT",
-            "UPDATE",
-            "DELETE",
-            "DROP",
-            "CREATE",
-            "ALTER",
-            "REPLACE",
-        ):
-            if forbidden in upper:
-                return f"Error: {forbidden} not allowed. Use SELECT only."
-        with sqlite3.connect(sqlite_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(q).fetchall()
-        if not rows:
-            return "Query returned no rows."
-        keys = list(rows[0].keys())
-        lines = [" | ".join(keys), "-" * max(20, len(" | ".join(keys)))]
-        for row in rows:
-            lines.append(" | ".join(str(row[k]) for k in keys))
-        return "\n".join(lines)
-
-    return [sql_db_list_tables, sql_db_schema, sql_db_query]
-
+ORCH_DB = str(DBS_DIR / "orchestrator.db")
+WEB_DB = str(DBS_DIR / "web_agent.db")
+WRITER_DB = str(DBS_DIR / "writer.db")
+SQL_CHINOOK_DB = str(DBS_DIR / "sql_chinook.db")
+SQL_NORTHWIND_DB = str(DBS_DIR / "sql_northwind.db")
+PDF_AGENT_DB = str(DBS_DIR / "pdf_agent.db")
 
 web_agent = {
     "name": "web_agent",
     "description": (
-        "Web research: give the full topic list in one call. Searches and extracts content, "
-        "writes notes under /_workspace_/research/, returns file paths."
+        "Web research: give the full topic list in one call. Uses Tavily-backed tools; "
+        "writes notes in the session workspace under a sensible folder, returns file paths."
     ),
     "system_prompt": (
         "You are a web research specialist. Your tools: web_search, web_extract, web_map.\n"
         "You receive a list of research topics in a single call. Research ALL of them, then "
-        "consolidate every finding into ONE markdown file at /_workspace_/research/findings.md.\n"
+        "consolidate findings into **as few markdown files as practical** (often one primary "
+        "file plus optional short sidecars only if separation clearly helps the orchestrator).\n"
+        "Save artifacts in the session workspace (for example a `research/` folder); the "
+        "orchestrator shares that tree with you.\n"
         "Structure: clear headings per topic, key facts in bullets, inline citations [1][2], "
         "sources section at the bottom. Do NOT paste raw tool output.\n"
-        "Return exactly: 'Saved research to: /_workspace_/research/findings.md'"
+        "Return the paths of the files you created so the orchestrator can pass them on."
     ),
     "tools": [web_search, web_extract, web_map],
+    "skills": [str(SKILLS_DIR), str(SKILLS_DIR / "arxiv-search")],
     "interrupt_on": ["web_search"],
-    "checkpointer": "test_demo/demo_agent.db",
+    "checkpointer": WEB_DB,
 }
 
 writer = {
@@ -277,53 +81,110 @@ writer = {
         "It reads the files and writes the polished document to disk, then returns that path."
     ),
     "system_prompt": (
-        "You are a professional technical writer. "
-        "Read the research files you are given with read_file, then write_file to "
-        "/_workspace_/reports/deliverable.md with the complete document (markdown). "
-        "Return exactly one line: the path /_workspace_/reports/deliverable.md"
+        "You are a professional technical writer. Read the research paths you are given with "
+        "`read_file`, then produce the final markdown using `write_file` in the session workspace. "
+        "Choose a clear folder and filename that match the brief. Return the artifact path(s) "
+        "you wrote so the orchestrator can call `render_file`."
     ),
-    "checkpointer": "test_demo/demo_agent.db",
+    "checkpointer": WRITER_DB,
 }
 
-_chinook_db = os.path.join(_DEMO_DIR, "chinook.db")
-_sql_tools = create_sql_tools(_chinook_db) if os.path.exists(_chinook_db) else []
+pdf_agent_spec = {
+    "name": "pdf_agent",
+    "description": (
+        "PDF and form workflows: filling PDFs, extracting form structure, validation images. "
+        "Uses the bundled pdf skill; may run shell commands via `execute` when scripts are needed."
+    ),
+    "system_prompt": (
+        "You specialise in PDF and form tasks. Read the skill entry paths listed in your "
+        "instructions first (`read_file` on each relevant `SKILL.md`), then follow the "
+        "workflows there. Use `execute` for bundled Python scripts when appropriate; keep "
+        "outputs in the session workspace and return paths to anything the orchestrator should read."
+    ),
+    "skills": [str(PDF_SKILLS_DIR)],
+    "checkpointer": PDF_AGENT_DB,
+}
 
-sql_agent_runner = create_deep_agent(
+_chinook_sql = (
+    create_sql_tools(str(CHINOOK_DB), tool_prefix="chinook") if CHINOOK_DB.exists() else []
+)
+_northwind_sql = create_sql_tools(str(NORTHWIND_DB), tool_prefix="northwind")
+
+sql_chinook_runner = (
+    create_deep_agent(
+        model="gpt-5-nano",
+        name="sql_chinook",
+        description=(
+            "Answers questions about the **Chinook** SQLite database using read-only "
+            "chinook_sql_* tools."
+        ),
+        tools=_chinook_sql,
+        skills=[str(SQL_SKILLS_DIR)],
+        system_prompt=(
+            "You are the Chinook database specialist. Use chinook_sql_db_list_tables, "
+            "chinook_sql_db_schema, and chinook_sql_db_query only. "
+            "Read the schema-exploration and query-writing skills when needed. Return clear answers."
+        ),
+        checkpointer=SQL_CHINOOK_DB,
+        backend=DEMO_BACKEND,
+    )
+    if _chinook_sql
+    else None
+)
+
+sql_northwind_runner = create_deep_agent(
     model="gpt-5-nano",
-    name="sql_agent",
-    description="Answers questions about the Chinook SQLite database using read-only SQL tools.",
-    tools=_sql_tools,
-    skills=[_SQL_SKILLS],
+    name="sql_northwind",
+    description=(
+        "Answers questions about the **Northwind** SQLite database using read-only "
+        "northwind_sql_* tools."
+    ),
+    tools=_northwind_sql,
+    skills=[str(SQL_SKILLS_DIR)],
     system_prompt=(
-        "You are the database specialist. Use sql_db_list_tables, sql_db_schema, and sql_db_query. "
+        "You are the Northwind database specialist. Use northwind_sql_db_list_tables, "
+        "northwind_sql_db_schema, and northwind_sql_db_query only. "
         "Read the schema-exploration and query-writing skills when needed. Return clear answers."
     ),
-    checkpointer="test_demo/demo_agent.db",
-    backend=_DEMO_BACKEND,
+    checkpointer=SQL_NORTHWIND_DB,
+    backend=DEMO_BACKEND,
 )
+
+_subagents: list = [web_agent, writer]
+if sql_chinook_runner is not None:
+    _subagents.append(sql_chinook_runner)
+_subagents.append(sql_northwind_runner)
+_subagents.append(pdf_agent_spec)
+
+_orch_tools = [*_chinook_sql, *_northwind_sql, render_file]
 
 agent = create_deep_agent(
     model="gpt-5-nano",
     name="orchestrator",
     description=(
         "General-purpose orchestrator. Handles web research, document writing, "
-        "and text-to-SQL queries against the Chinook database."
+        "text-to-SQL against Chinook and/or Northwind, and PDF/form workflows via pdf_agent."
     ),
-    subagents=[web_agent, writer],
-    tools=[*_sql_tools, render_file],
-    skills=[_DEMO_DIR],
+    subagents=_subagents,
+    tools=_orch_tools,
+    skills=[str(SKILLS_DIR)],
     system_prompt=(
-        "You are the orchestrator. For web research + reports: delegate to web_agent_subagent then "
-        "writer_subagent. For database questions: delegate to sql_agent_subagent. "
+        "You are the orchestrator. For web research plus reports: call the `web_agent` tool, "
+        "then the `writer` tool. For database questions: call `sql_chinook` for the Chinook "
+        "music store schema or `sql_northwind` for the Northwind retail sample—pick the tool "
+        "that matches the user's database. For PDFs, forms, or fillable-field workflows, call "
+        "`pdf_agent`. "
         "Pass file paths between steps; do not paste large file bodies into prompts. "
-        "After the writer returns a report path, call render_file on that path so the user sees it."
+        "When the writer returns a final document path, call `render_file` on that path so the "
+        "user sees it in the terminal."
     ),
     interrupt_on=["web_search"],
-    checkpointer="test_demo/demo_agent.db",
+    checkpointer=ORCH_DB,
     debug=True,
-    backend=_DEMO_BACKEND,
+    backend=DEMO_BACKEND,
 )
 
+# Default one-shot task (switch by uncommenting one block).
 TASK = """
 Investigate the long-term viability of sodium-ion batteries as a sustainable alternative to
 lithium-ion technology in the electric vehicle market. Analyse current energy density limitations,
@@ -332,6 +193,27 @@ for large-scale adoption. Identify key startups leading the sector and compare t
 environmental impact of sodium versus lithium extraction.
 After investigating, write a comprehensive report.
 """
+
+# TASK_DEEP_RESEARCH = """
+# Multi-source deep research: pick a technical controversy in AI safety, gather contrasting
+# positions with citations, and have the writer produce a balanced memo in the session workspace.
+# """
+
+# TASK_CHINOOK_SQL = """
+# Using sql_chinook: list tables, then answer which genre has the most tracks and show the top
+# three artists by total track count (read-only SQL).
+# """
+
+# TASK_NORTHWIND_SQL = """
+# Using sql_northwind: list tables, then write a query that joins customers to orders and returns
+# each customer's total order count (read-only SQL).
+# """
+
+# TASK_PDF = """
+# Using pdf_agent: read the pdf skill, then outline how you would validate a fillable PDF form
+# using the bundled scripts (no need to run if dependencies are missing—describe the steps).
+# """
+
 
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a != "--"]

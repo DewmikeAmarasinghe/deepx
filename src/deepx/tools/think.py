@@ -38,8 +38,8 @@ def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
     plan_block = json.dumps(todos, indent=2) if todos else "(no plan yet — write_todos has not been called)"
 
     return (
-        f"Reflection recorded: {reflection}\n\n"
         f"Current plan:\n{plan_block}\n\n"
         "If the plan needs updating based on your reflection, call update_todos or write_todos. "
         "Otherwise continue with the next step."
+        f"Reflection: {reflection}\n\n"
     )

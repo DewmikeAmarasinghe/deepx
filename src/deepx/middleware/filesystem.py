@@ -11,8 +11,8 @@ from agents.tool import FunctionTool, Tool
 
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
-from deepx.middleware.hitl import HumanInTheLoopHooks
-from deepx.middleware.logs import wrap_tools_for_logging
+from deepx.middleware.hitl import HumanInTheLoopHooks, wrap_tools_for_hitl
+from deepx.middleware.logs import run_log_load_plan, wrap_tools_for_logging
 from deepx.models import Plan
 
 LARGE_OUTPUT_THRESHOLD = 40_000
@@ -30,12 +30,14 @@ class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
         context.context.agent_name = agent.name
         context.context.plan.agent_name = agent.name
         if context.context.resume:
-            saved = self._backend.load_plan(context.context.session_id, agent.name)
+            saved = run_log_load_plan(
+                self._backend, context.context.session_id, agent.name
+            )
             if saved:
                 context.context.plan = Plan.model_validate_json(saved)
         if not context.context.memory:
             rr = self._backend.read(
-                context.context.session_id, "/store/AGENTS.md", 0, 1_000_000
+                context.context.session_id, "/_memory_/AGENTS.md", 0, 1_000_000
             )
             if rr.content is not None and not rr.error:
                 context.context.memory = rr.content
@@ -72,37 +74,6 @@ def wrap_tools_with_large_output_eviction(
         if isinstance(tool, FunctionTool):
             inv = _make_evicting_invoke(tool.on_invoke_tool, backend)
             out.append(dataclasses.replace(tool, on_invoke_tool=inv))
-        else:
-            out.append(tool)
-    return out
-
-
-def wrap_tools_for_hitl(
-    tools: list[Tool],
-    hitl: HumanInTheLoopHooks,
-) -> list[Tool]:
-    """Wrap sensitive FunctionTools so approval runs before invoke; declines become tool output."""
-    out: list[Tool] = []
-    for tool in tools:
-        if isinstance(tool, FunctionTool) and tool.name in hitl._sensitive:
-            inner = tool.on_invoke_tool
-            name = tool.name
-
-            async def hitl_invoke(
-                ctx: Any,
-                args_json: str,
-                *,
-                _inner: Any = inner,
-                _hitl: HumanInTheLoopHooks = hitl,
-                _name: str = name,
-            ) -> Any:
-                agent_name = getattr(ctx.context, "agent_name", "") or "agent"
-                msg = await _hitl.gate_tool(agent_name, _name, args_json)
-                if msg is not None:
-                    return msg
-                return await _inner(ctx, args_json)
-
-            out.append(dataclasses.replace(tool, on_invoke_tool=hitl_invoke))
         else:
             out.append(tool)
     return out

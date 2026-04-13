@@ -8,6 +8,10 @@ from pydantic import BaseModel, Field
 
 from deepx.context import AgentContext
 from deepx.models import Todo, TodoStatus
+from deepx.middleware.logs import (
+    run_log_append_plan_event,
+    run_log_save_plan,
+)
 
 
 class TodoInput(BaseModel):
@@ -74,8 +78,8 @@ def write_todos(
             "agent": ctx.context.agent_name,
             "todos": [{"id": t.id, "content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
         }
-        ctx.context.backend.append_plan_log(
-            ctx.context.session_id, json.dumps(entry)
+        run_log_append_plan_event(
+            ctx.context.backend, ctx.context.session_id, json.dumps(entry)
         )
     return _format_plan(ctx)
 
@@ -109,8 +113,8 @@ def update_todos(
             "agent": ctx.context.agent_name,
             "todos": [{"id": t.id, "content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
         }
-        ctx.context.backend.append_plan_log(
-            ctx.context.session_id, json.dumps(entry)
+        run_log_append_plan_event(
+            ctx.context.backend, ctx.context.session_id, json.dumps(entry)
         )
     return _format_plan(ctx)
 
@@ -132,7 +136,8 @@ def _safe_status(value: str) -> TodoStatus:
 
 def _persist_plan(ctx: RunContextWrapper[AgentContext]) -> None:
     ctx.context.plan.agent_name = ctx.context.agent_name or ctx.context.plan.agent_name
-    ctx.context.backend.save_plan(
+    run_log_save_plan(
+        ctx.context.backend,
         ctx.context.session_id,
         ctx.context.plan.agent_name,
         ctx.context.plan.to_json(),

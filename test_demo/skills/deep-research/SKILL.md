@@ -50,7 +50,7 @@ Use external web tools in this order of preference:
    supports it.
 
 **Saving work:** write structured notes under `/_workspace_/research/` (or similar) with
-`write_file`, then pass **paths** to the writer subagent. Large raw tool JSON belongs in files,
+`write_file`, then pass **paths** to the writer (subagent tool). Large raw tool JSON belongs in files,
 not in chat. Use `read_file` / `grep` / `glob` to re-use what you already saved.
 
 **Cost and breadth:** external search and map calls are billed per vendor rules. Prefer the
@@ -60,15 +60,17 @@ evidence to answer.
 
 ## Subagent capabilities (context)
 
-- `web_agent_subagent` specialises in web research. It can search, map, extract, and write notes
+- The **`web_agent`** tool runs a research specialist. It can search, map, extract, and write notes
   under `/_workspace_/research/` in a single call. Give it the complete list of topics.
-- `writer_subagent` turns research files into polished prose and saves the final document under
-  `/_workspace_/reports/` (for example `deliverable.md`). The orchestrator can call `render_file`
-  on that path so the user sees the file in the terminal.
+- The **`writer`** tool turns research files into polished prose. The orchestrator should agree
+  a **final artifact path** with the writer (for example under `/_workspace_/reports/`) that works
+  well for `render_file`, then pass that expectation in the delegation prompt. After the writer
+  returns the path, the orchestrator calls **`render_file`** so the user sees the document in the
+  terminal.
 
 ## Constraints
 
-- Do not pass research file paths to `writer_subagent` until research files are written.
-- Pass the exact file paths — do not ask `writer_subagent` to discover files on its own.
+- Do not pass research file paths to the writer until research files are written.
+- Pass the exact file paths — do not ask the writer to discover files on its own.
 - Consolidate citation numbers across all research files before passing to the writer so that
   each unique URL has exactly one number throughout the final document.

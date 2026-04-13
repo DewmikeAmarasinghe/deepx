@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import fnmatch
-import json
-import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,10 +16,7 @@ from deepx.backends.protocol import (
     ReadResult,
     WriteResult,
 )
-
-
-def _safe_agent_name(name: str) -> str:
-    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name) or "agent"
+from deepx.data_layout import data_root_for_host
 
 
 def _norm_agent_path(path: str) -> str:
@@ -34,57 +30,69 @@ def _split_scope(agent_path: str) -> tuple[str, str]:
     p = _norm_agent_path(agent_path)
     body = p[1:]
     if body.startswith("_workspace_/"):
-        return "ws", body[len("_workspace_/") :]
+        return "_workspace_", body[len("_workspace_/") :]
     if body == "_workspace_":
-        return "ws", ""
-    if body.startswith("store/"):
-        return "store", body[6:]
-    if body == "store":
-        return "store", ""
+        return "_workspace_", ""
+    if body.startswith("_memory_/"):
+        return "_memory_", body[len("_memory_/") :]
+    if body == "_memory_":
+        return "_memory_", ""
     return "root", body
 
 
 class FilesystemBackend(BackendProtocol):
     def __init__(self, root_dir: str | Path) -> None:
-        self._root = Path(root_dir).expanduser().resolve()
+        self._host_root = Path(root_dir).expanduser().resolve()
+        self._data_root = data_root_for_host(self._host_root)
 
-    def _workspace_base(self, session_id: str) -> Path:
-        return self._root / ".deepx" / "sessions" / session_id / "files"
+    @property
+    def data_root(self) -> Path:
+        return self._data_root
 
-    def _logs_dir(self, session_id: str) -> Path:
-        return self._root / ".deepx" / "sessions" / session_id / "logs"
+    def workspace_dir(self, session_id: str) -> Path:
+        return self._data_root / "sessions" / session_id / "_workspace_"
 
-    def _memory_base(self) -> Path:
-        return self._root / "memory"
+    def _memory_dir(self) -> Path:
+        return self._data_root / "memory"
 
     def _physical_dir(self, session_id: str, scope: str, rel: str) -> Path:
         rel = rel.strip("/").replace("\\", "/")
-        if scope == "ws":
-            return self._workspace_base(session_id) / rel if rel else self._workspace_base(session_id)
-        if scope == "store":
-            return self._memory_base() / rel if rel else self._memory_base()
-        return self._root / rel if rel else self._root
+        if scope == "_workspace_":
+            base = self.workspace_dir(session_id)
+            return base / rel if rel else base
+        if scope == "_memory_":
+            base = self._memory_dir()
+            return base / rel if rel else base
+        return self._host_root / rel if rel else self._host_root
 
     def _physical_file(self, session_id: str, agent_path: str) -> tuple[str, str, Path]:
         scope, rel = _split_scope(agent_path)
         p = self._physical_dir(session_id, scope, rel)
         return scope, rel, p
 
-    def _file_info(self, agent_prefix: str, physical: Path) -> FileInfo:
-        rel = physical.name
-        ap = f"{agent_prefix.rstrip('/')}/{rel}" if agent_prefix else f"/{rel}"
-        if physical.is_dir():
-            return FileInfo(path=ap, is_dir=True)
-        st = physical.stat()
-        ts = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-        return FileInfo(path=ap, is_dir=False, size=st.st_size, modified_at=ts)
+    def _agent_path_for_file(self, session_id: str, f: Path) -> str | None:
+        try:
+            rel = f.relative_to(self.workspace_dir(session_id))
+            return "/_workspace_/" + rel.as_posix()
+        except ValueError:
+            pass
+        try:
+            rel = f.relative_to(self._memory_dir())
+            return "/_memory_/" + rel.as_posix()
+        except ValueError:
+            pass
+        try:
+            rel = f.relative_to(self._host_root)
+            return "/" + rel.as_posix()
+        except ValueError:
+            return None
 
     def ls(self, session_id: str, path: str) -> LsResult:
         p = _norm_agent_path(path)
         scope, rel = _split_scope(p)
         base = self._physical_dir(session_id, scope, rel)
         if not base.exists():
-            if scope == "ws":
+            if scope == "_workspace_":
                 return LsResult(entries=[])
             return LsResult(error=f"Error: directory '{path}' not found.")
         if not base.is_dir():
@@ -92,7 +100,23 @@ class FilesystemBackend(BackendProtocol):
         entries: list[FileInfo] = []
         if p == "/":
             entries.append(FileInfo(path="/_workspace_", is_dir=True))
-            entries.append(FileInfo(path="/store", is_dir=True))
+            entries.append(FileInfo(path="/_memory_", is_dir=True))
+            try:
+                for child in sorted(self._host_root.iterdir(), key=lambda x: x.name.lower()):
+                    ap = "/" + child.name
+                    if child.is_dir():
+                        entries.append(FileInfo(path=ap, is_dir=True))
+                    else:
+                        st = child.stat()
+                        ts = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime(
+                            "%Y-%m-%d %H:%M"
+                        )
+                        entries.append(
+                            FileInfo(path=ap, is_dir=False, size=st.st_size, modified_at=ts)
+                        )
+            except OSError as e:
+                return LsResult(error=f"Error: {e}")
+            return LsResult(entries=entries)
         try:
             for child in sorted(base.iterdir(), key=lambda x: x.name.lower()):
                 ap = f"{p.rstrip('/')}/{child.name}"
@@ -135,23 +159,6 @@ class FilesystemBackend(BackendProtocol):
             )
         return ReadResult(content="\n".join(selected), total_lines=total)
 
-    def _agent_path_for_file(self, session_id: str, f: Path) -> str | None:
-        try:
-            rel = f.relative_to(self._workspace_base(session_id))
-            return "/_workspace_/" + rel.as_posix()
-        except ValueError:
-            pass
-        try:
-            rel = f.relative_to(self._memory_base())
-            return "/store/" + rel.as_posix()
-        except ValueError:
-            pass
-        try:
-            rel = f.relative_to(self._root)
-            return "/" + rel.as_posix()
-        except ValueError:
-            return None
-
     def grep(
         self,
         session_id: str,
@@ -162,7 +169,7 @@ class FilesystemBackend(BackendProtocol):
         base_agent = _norm_agent_path(path or "/_workspace_/")
         _, _, base_phys = self._physical_file(session_id, base_agent)
         if not base_phys.exists():
-            if _split_scope(base_agent)[0] == "ws":
+            if _split_scope(base_agent)[0] == "_workspace_":
                 return GrepResult(matches=[])
             return GrepResult(error=f"Error: path '{base_agent}' not found.")
         candidates: list[Path] = []
@@ -199,7 +206,7 @@ class FilesystemBackend(BackendProtocol):
         scope, rel = _split_scope(base_agent)
         base = self._physical_dir(session_id, scope, rel)
         if not base.exists():
-            if scope == "ws":
+            if scope == "_workspace_":
                 return GlobResult(files=[])
             return GlobResult(error=f"Error: path '{base_agent}' not found.")
         files: list[FileInfo] = []
@@ -255,7 +262,9 @@ class FilesystemBackend(BackendProtocol):
                 )
             )
         new_content = (
-            content.replace(old_string, new_string) if replace_all else content.replace(old_string, new_string, 1)
+            content.replace(old_string, new_string)
+            if replace_all
+            else content.replace(old_string, new_string, 1)
         )
         try:
             p.write_text(new_content, encoding="utf-8")
@@ -263,42 +272,25 @@ class FilesystemBackend(BackendProtocol):
             return EditResult(error=f"Error: {e}")
         return EditResult(path=file_path, occurrences=count if replace_all else 1)
 
-    def _plan_path(self, session_id: str, agent_name: str) -> Path:
-        safe = _safe_agent_name(agent_name)
-        return self._logs_dir(session_id) / "plans" / f"{safe}.json"
-
-    def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None:
-        p = self._plan_path(session_id, agent_name)
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(plan_json, encoding="utf-8")
-
-    def load_plan(self, session_id: str, agent_name: str) -> str | None:
-        p = self._plan_path(session_id, agent_name)
-        return p.read_text(encoding="utf-8") if p.is_file() else None
-
-    def append_plan_log(self, session_id: str, entry_json: str) -> None:
-        p = self._logs_dir(session_id) / "plans" / "plans.json"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        if p.exists():
-            try:
-                arr = json.loads(p.read_text(encoding="utf-8"))
-                if not isinstance(arr, list):
-                    arr = []
-            except json.JSONDecodeError:
-                arr = []
-        else:
-            arr = []
-        try:
-            arr.append(json.loads(entry_json))
-        except json.JSONDecodeError:
-            arr.append({"raw": entry_json})
-        p.write_text(json.dumps(arr, indent=2), encoding="utf-8")
-
-    def save_tool_log(self, session_id: str, log_data: dict) -> None:
-        tool_name = str(log_data["tool_name"])
-        dir_path = self._logs_dir(session_id) / "tools" / tool_name
-        dir_path.mkdir(parents=True, exist_ok=True)
-        existing = [int(x.stem) for x in dir_path.glob("*.json") if x.stem.isdigit()]
-        next_id = max(existing, default=0) + 1
-        entry = {**log_data, "call_id": str(next_id)}
-        (dir_path / f"{next_id}.json").write_text(json.dumps(entry, indent=2), encoding="utf-8")
+    def run_shell_command(
+        self,
+        session_id: str,
+        command: str,
+        *,
+        timeout: float = 120.0,
+        max_chars: int = 50_000,
+    ) -> str:
+        _ = session_id
+        cwd = str(self._host_root)
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        out = (proc.stdout or "") + (proc.stderr or "")
+        if len(out) > max_chars:
+            out = out[:max_chars] + "\n...[truncated]"
+        return f"exit_code={proc.returncode}\n{out}"

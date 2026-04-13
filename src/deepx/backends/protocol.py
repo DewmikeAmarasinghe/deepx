@@ -102,26 +102,3 @@ class BackendProtocol(abc.ABC):
         replace_all: bool = False,
     ) -> EditResult:
         """Replace old_string with new_string; enforce uniqueness unless replace_all."""
-
-    @abc.abstractmethod
-    def save_plan(self, session_id: str, agent_name: str, plan_json: str) -> None:
-        """Persist plan JSON for an agent."""
-
-    @abc.abstractmethod
-    def load_plan(self, session_id: str, agent_name: str) -> str | None:
-        """Load plan JSON if present."""
-
-    @abc.abstractmethod
-    def append_plan_log(self, session_id: str, entry_json: str) -> None:
-        """Append a structured plan history entry."""
-
-    @abc.abstractmethod
-    def save_tool_log(self, session_id: str, log_data: dict) -> None:
-        """Append one tool invocation log entry."""
-
-    @property
-    def supports_execution(self) -> bool:
-        return False
-
-    def execute(self, command: str) -> str:
-        raise NotImplementedError("Shell execution requires a sandbox backend.")

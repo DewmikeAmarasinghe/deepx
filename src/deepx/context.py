@@ -13,8 +13,7 @@ class AgentContext:
     agent_name: str = ""
     plan: Plan = field(init=False)
     memory: str = ""
-    skills_info: str = ""
-    skills_paths: list[str] = field(default_factory=list)
+    skills: str = ""
     debug: bool = False
     hitl_tools: list[str] = field(default_factory=list)
     resume: bool = False

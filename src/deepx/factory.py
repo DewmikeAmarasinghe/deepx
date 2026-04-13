@@ -4,7 +4,6 @@ import asyncio
 import dataclasses
 import re
 import uuid
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +13,7 @@ from agents.lifecycle import RunHooksBase
 from agents.result import RunResultStreaming
 from agents.tool import Tool
 
+from deepx.backends.composite import CompositeBackend
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
@@ -22,12 +22,70 @@ from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.middleware.observability import setup_observability
 from deepx.models import Plan
 from deepx.sessions import create_session
-from deepx.system_prompt import build_system_prompt
+from deepx.system_prompt import (
+    build_system_prompt,
+    format_skills_for_prompt,
+    skills_catalog_for_host,
+)
 from deepx.tools import FILESYSTEM_TOOLS, PLANNING_TOOLS
 
-# Public type alias for dict-based subagent specs.
-# Supported keys mirror the parameters of create_deep_agent.
 SubAgentDict = dict
+
+
+def resolve_host_root(backend: BackendProtocol) -> Path | None:
+    """Host project root for skill paths in prompts (FilesystemBackend default chain only)."""
+    if isinstance(backend, FilesystemBackend):
+        return backend._host_root
+    if isinstance(backend, CompositeBackend):
+        return resolve_host_root(backend._default)
+    return None
+
+
+def _collect_skill_roots(main: list[str] | None, sub_specs: list[Any]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str) -> None:
+        rp = str(Path(raw).expanduser().resolve())
+        if rp not in seen:
+            seen.add(rp)
+            out.append(rp)
+
+    for raw in main or []:
+        add(str(raw))
+    dx = Path.cwd() / ".deepx" / "skills"
+    if dx.is_dir():
+        add(str(dx.resolve()))
+
+    def walk(obj: Any) -> None:
+        if isinstance(obj, dict):
+            for raw in obj.get("skills") or []:
+                add(str(raw))
+            for ch in obj.get("subagents") or []:
+                walk(ch)
+        elif isinstance(obj, DeepAgentRunner):
+            for raw in obj._skill_roots:
+                add(str(raw))
+
+    for spec in sub_specs:
+        walk(spec)
+    return out
+
+
+def _make_hitl(interrupt_tools: list[str]) -> HumanInTheLoopHooks | None:
+    if not interrupt_tools:
+        return None
+    return HumanInTheLoopHooks(list(interrupt_tools))
+
+
+def _skills_prompt_for_backend(
+    backend: BackendProtocol, skill_roots: list[str]
+) -> str:
+    host = resolve_host_root(backend)
+    if host is None:
+        return ""
+    meta = skills_catalog_for_host(host, skill_roots)
+    return format_skills_for_prompt(meta)
 
 
 def create_deep_agent(
@@ -44,19 +102,12 @@ def create_deep_agent(
     backend: BackendProtocol | None = None,
     checkpointer: str = ":memory:",
     interrupt_on: list[str] | None = None,
-    hitl_approval_fn: Callable[[str, str, str], bool | Awaitable[bool]] | None = None,
     debug: bool = False,
     max_turns: int = 1000,
 ) -> "DeepAgentRunner":
     setup_observability()
 
     checkpointer = checkpointer.strip() or ":memory:"
-    resolved_backend = backend or FilesystemBackend(root_dir=Path.home() / ".deepx")
-    mem_content = _load_memory(memory, resolved_backend)
-    skills_paths = skills or []
-    user_tools = list(tools or [])
-    base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
-
     sub_specs = list(subagents or [])
     has_gp = any(
         (isinstance(s, dict) and s.get("name") == "general_purpose")
@@ -72,16 +123,19 @@ def create_deep_agent(
                     "Has access to the same filesystem and planning tools as the main agent."
                 ),
                 "system_prompt": "",
-                "tools": user_tools,
-                "skills": skills_paths,
+                "tools": list(tools or []),
+                "skills": list(skills or []),
             }
         )
 
-    hitl = (
-        HumanInTheLoopHooks(list(interrupt_on), approval_fn=hitl_approval_fn)
-        if interrupt_on
-        else None
-    )
+    skill_roots = _collect_skill_roots(skills, sub_specs)
+    if backend is None:
+        resolved_backend = FilesystemBackend(Path.home())
+    else:
+        resolved_backend = backend
+    mem_content = _load_memory(memory, resolved_backend)
+    user_tools = list(tools or [])
+    base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
     interrupt_list = list(interrupt_on or [])
 
     subagent_tools: list[Tool] = []
@@ -91,17 +145,16 @@ def create_deep_agent(
             parent_model=model,
             parent_backend=resolved_backend,
             checkpointer=checkpointer,
-            parent_hitl=hitl,
             debug=debug,
             mem_content=mem_content,
-            skills_paths=skills_paths,
+            skills_paths=list(skills or []),
             user_tools=user_tools,
             parent_interrupt=interrupt_list,
             max_turns=max_turns,
             parent_response_format=response_format,
         )
         an = runner._agent_name
-        tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", an) + "_subagent"
+        tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", an)
         subagent_tools.append(
             _make_subagent_tool(
                 runner=runner,
@@ -109,7 +162,6 @@ def create_deep_agent(
                 checkpointer=checkpointer,
                 max_turns=max_turns,
                 backend=resolved_backend,
-                hitl=hitl,
                 debug=debug,
             )
         )
@@ -134,8 +186,7 @@ def create_deep_agent(
         backend=resolved_backend,
         checkpointer=checkpointer,
         max_turns=max_turns,
-        hitl=hitl,
-        skills_paths=skills_paths,
+        skill_roots=skill_roots,
         memory=mem_content,
         debug=debug,
         agent_name=name,
@@ -150,7 +201,6 @@ def _resolve_subagent_spec(
     parent_model: str,
     parent_backend: BackendProtocol,
     checkpointer: str,
-    parent_hitl: HumanInTheLoopHooks | None,
     debug: bool,
     mem_content: str,
     skills_paths: list[str],
@@ -159,11 +209,6 @@ def _resolve_subagent_spec(
     max_turns: int,
     parent_response_format: type | None,
 ) -> "DeepAgentRunner":
-    """Normalise a subagent spec (dict or existing DeepAgentRunner) into a DeepAgentRunner.
-
-    Builds the runner directly to avoid the top-level auto-add of general_purpose
-    that would otherwise cause infinite recursion.
-    """
     if isinstance(spec, DeepAgentRunner):
         return spec
 
@@ -177,16 +222,16 @@ def _resolve_subagent_spec(
     spec_response_format = spec.get("response_format", parent_response_format)
     spec_model = spec.get("model", parent_model)
 
-    spec_mem = _load_memory(spec_memory_paths, parent_backend) if spec_memory_paths else mem_content if is_gp else ""
-    if spec_interrupt:
-        ap = parent_hitl.approval_fn if parent_hitl else None
-        spec_hitl = HumanInTheLoopHooks(spec_interrupt, approval_fn=ap)
-    else:
-        spec_hitl = parent_hitl
+    spec_mem = (
+        _load_memory(spec_memory_paths, parent_backend)
+        if spec_memory_paths
+        else (mem_content if is_gp else "")
+    )
+
+    sub_roots = [str(Path(p).expanduser().resolve()) for p in spec_skills]
 
     base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
 
-    # Recursively build nested subagent tools if the spec defines its own subagents
     nested_subagent_tools: list[Tool] = []
     for nested in spec.get("subagents") or []:
         nested_runner = _resolve_subagent_spec(
@@ -194,7 +239,6 @@ def _resolve_subagent_spec(
             parent_model=spec_model,
             parent_backend=parent_backend,
             checkpointer=checkpointer,
-            parent_hitl=spec_hitl,
             debug=debug,
             mem_content=spec_mem,
             skills_paths=spec_skills,
@@ -203,7 +247,7 @@ def _resolve_subagent_spec(
             max_turns=max_turns,
             parent_response_format=spec_response_format,
         )
-        nested_tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", nested_runner._agent_name) + "_subagent"
+        nested_tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", nested_runner._agent_name)
         nested_subagent_tools.append(
             _make_subagent_tool(
                 runner=nested_runner,
@@ -211,13 +255,12 @@ def _resolve_subagent_spec(
                 checkpointer=checkpointer,
                 max_turns=max_turns,
                 backend=parent_backend,
-                hitl=spec_hitl,
                 debug=debug,
             )
         )
 
     custom_prompt = spec.get("system_prompt", "")
-    _spec_checkpointer = checkpointer
+    _spec_checkpointer = str(spec.get("checkpointer", checkpointer))
 
     def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
         return build_system_prompt(
@@ -235,10 +278,9 @@ def _resolve_subagent_spec(
     return DeepAgentRunner(
         agent=agent,
         backend=parent_backend,
-        checkpointer=checkpointer,
+        checkpointer=_spec_checkpointer,
         max_turns=max_turns,
-        hitl=spec_hitl,
-        skills_paths=spec_skills,
+        skill_roots=sub_roots,
         memory=spec_mem,
         debug=debug,
         agent_name=an,
@@ -254,38 +296,27 @@ def _make_subagent_tool(
     checkpointer: str,
     max_turns: int,
     backend: BackendProtocol,
-    hitl: HumanInTheLoopHooks | None,
     debug: bool,
 ) -> Tool:
-    """Create a named FunctionTool that runs a subagent in an isolated context."""
     agent = runner._agent
-    skills_paths_sub = list(runner._skills_paths)
     memory_default = runner._memory
     interrupt_tools = runner._interrupt_tools
 
     async def _invoke(ctx: RunContextWrapper[AgentContext], input: str) -> str:
-        from deepx.system_prompt import format_skills_for_prompt, materialize_skills
-
+        si_sub = _skills_prompt_for_backend(backend, runner._skill_roots)
         sub_sid = f"{ctx.context.session_id}:{agent.name}:{uuid.uuid4().hex[:12]}"
-        si_sub = ""
-        if skills_paths_sub:
-            si_sub = format_skills_for_prompt(
-                materialize_skills(
-                    ctx.context.backend, ctx.context.session_id, skills_paths_sub
-                )
-            )
         sub_ctx = AgentContext(
             session_id=ctx.context.session_id,
             backend=ctx.context.backend,
             agent_name=agent.name,
             memory=memory_default,
-            skills_info=si_sub,
-            skills_paths=skills_paths_sub,
+            skills=si_sub,
             debug=debug,
             hitl_tools=interrupt_tools,
             is_subagent=True,
         )
         session = create_session(sub_sid, checkpointer)
+        hitl = _make_hitl(interrupt_tools)
         wrapped = apply_tool_pipeline(
             list(agent.tools),
             backend,
@@ -293,9 +324,10 @@ def _make_subagent_tool(
             debug=debug,
             hitl=hitl,
         )
+        agent_wrapped = dataclasses.replace(agent, tools=wrapped)
         result = await Runner.run(
-            dataclasses.replace(agent, tools=wrapped),
-            input=input,
+            agent_wrapped,
+            input,
             context=sub_ctx,
             session=session,
             hooks=FilesystemHooks(backend),
@@ -318,8 +350,7 @@ class DeepAgentRunner:
         backend: BackendProtocol,
         checkpointer: str,
         max_turns: int,
-        hitl: HumanInTheLoopHooks | None,
-        skills_paths: list[str],
+        skill_roots: list[str],
         memory: str,
         debug: bool,
         agent_name: str,
@@ -330,8 +361,7 @@ class DeepAgentRunner:
         self._backend = backend
         self._checkpointer = checkpointer
         self._max_turns = max_turns
-        self._hitl = hitl
-        self._skills_paths = skills_paths
+        self._skill_roots = list(skill_roots)
         self._memory = memory
         self._debug = debug
         self._agent_name = agent_name
@@ -339,21 +369,13 @@ class DeepAgentRunner:
         self._interrupt_tools = interrupt_tools
 
     def _make_ctx(self, session_id: str, resume: bool) -> AgentContext:
-        from deepx.system_prompt import format_skills_for_prompt, materialize_skills
-
-        paths = list(self._skills_paths)
-        si = ""
-        if paths:
-            si = format_skills_for_prompt(
-                materialize_skills(self._backend, session_id, paths)
-            )
+        si = _skills_prompt_for_backend(self._backend, self._skill_roots)
         return AgentContext(
             session_id=session_id,
             backend=self._backend,
             agent_name=self._agent_name,
             memory=self._memory,
-            skills_info=si,
-            skills_paths=paths,
+            skills=si,
             debug=self._debug,
             hitl_tools=self._interrupt_tools,
             resume=resume,
@@ -363,12 +385,13 @@ class DeepAgentRunner:
         return FilesystemHooks(self._backend)
 
     def _prepare_agent(self) -> Agent:
+        hitl = _make_hitl(self._interrupt_tools)
         wrapped = apply_tool_pipeline(
             list(self._agent.tools),
             self._backend,
             agent_name=self._agent.name,
             debug=self._debug,
-            hitl=self._hitl,
+            hitl=hitl,
         )
         return dataclasses.replace(self._agent, tools=wrapped)
 
@@ -385,7 +408,7 @@ class DeepAgentRunner:
         agent = self._prepare_agent()
         result = await Runner.run(
             agent,
-            input=task,
+            task,
             context=ctx,
             session=session,
             hooks=self._make_hooks(),
@@ -400,7 +423,6 @@ class DeepAgentRunner:
         session_id: str | None = None,
         resume: bool = False,
     ) -> "DeepRunResult":
-        """Run one agent turn. For multi-turn CLIs, prefer a single event loop + `run()` (see deepx_cli.session)."""
         coro = self.run(task, session_id=session_id, resume=resume)
         try:
             asyncio.get_running_loop()
@@ -424,7 +446,7 @@ class DeepAgentRunner:
         agent = self._prepare_agent()
         stream: RunResultStreaming = Runner.run_streamed(
             agent,
-            input=task,
+            task,
             context=ctx,
             session=session,
             hooks=self._make_hooks(),
@@ -456,8 +478,8 @@ def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
         if p.is_file():
             parts.append(p.read_text(encoding="utf-8", errors="replace"))
         else:
-            ap = path if path.startswith("/") else "/store/" + path.lstrip("/")
-            rr = backend.read("_memory_load", ap, 0, 10_000_000)
+            ap = path if path.startswith("/") else "/_memory_/" + path.lstrip("/")
+            rr = backend.read("default", ap, 0, 10_000_000)
             if rr.content is not None and not rr.error:
                 parts.append(rr.content)
     return "\n\n".join(parts)
