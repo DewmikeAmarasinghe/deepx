@@ -10,15 +10,19 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import httpx
-from agents import RunContextWrapper, function_tool
-from dotenv import load_dotenv
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+import httpx  # noqa: E402
+from agents import RunContextWrapper, function_tool  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
 TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
 DEMO_DIR = Path(__file__).resolve().parent
-REPO_ROOT = DEMO_DIR.parent
+REPO_ROOT = _REPO_ROOT
 SKILLS_DIR = DEMO_DIR / "skills"
 
 
@@ -148,17 +152,18 @@ def web_agent_spec(*, checkpointer: str, interrupt_on: list[str]) -> dict:
             "author final markdown reports in the session workspace. Returns artifact paths."
         ),
         "system_prompt": (
-            "You are the **web_agent**. Tools: `web_search`, `web_extract`, `web_map`.\n"
-            "For any multi-step brief, call **`write_todos` first** (after reading matching "
-            "**deep-research** / **arxiv-search** skill files if relevant), then **`update_todos`** "
-            "after each major step.\n"
-            "Research: consolidate into as few workspace files as practical under a clear folder "
-            "(e.g. `/_workspace_/research/`). Use citations and structured headings per your skills.\n"
-            "When the user (or orchestrator) wants a **deliverable**, produce the final markdown with "
-            "`write_file` (e.g. `/_workspace_/reports/...md`)—executive summary, findings, sources—do "
-            "not rely on a separate writer.\n"
-            "Return all paths you created. Do not paste huge raw JSON into chat; spill files are "
-            "under `/_workspace_/large_tool_results/` when the platform saves them."
+            "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
+            "For any multi-step brief, call **`write_todos` first** after skimming the relevant "
+            "**deep-research** / **arxiv-search** skill files (`read_file` on the paths listed in "
+            "your prompt), then **`update_todos`** after each major step.\n"
+            "Persist research in a small number of well-named files (one topical area per file when "
+            "possible). Use clear headings, inline citations, and a Sources section on written "
+            "deliverables.\n"
+            "When the brief includes a **written deliverable**, produce the full final markdown "
+            "yourself with `write_file`—executive summary, findings, and sources—so the parent agent "
+            "does not need a separate writer.\n"
+            "Return every artifact path you created plus a tight summary. Do not dump large raw "
+            "JSON into chat; keep bulky tool output in files and point to them briefly."
         ),
         "tools": WEB_TOOLS,
         "skills": [
@@ -173,9 +178,6 @@ def web_agent_spec(*, checkpointer: str, interrupt_on: list[str]) -> dict:
 if __name__ == "__main__":
     from deepx import create_deep_agent
     from deepx.backends.local_shell import LocalShellBackend
-
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
 
     DEMO_DIR.joinpath("dbs", "agent_dbs").mkdir(parents=True, exist_ok=True)
     cp = str(DEMO_DIR / "dbs" / "agent_dbs" / "web_agent_standalone.db")
@@ -194,6 +196,8 @@ if __name__ == "__main__":
         debug=True,
     )
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
+    _script = Path(__file__).resolve()
+    _resume = f"{sys.executable} {_script}"
     task = """
 You are helping a product committee decide whether to standardise on **Postgres** or **DuckDB**
 for an analytics lakehouse MVP (10–50 TB, mostly Parquet on object storage, daily batch + a few
@@ -210,4 +214,10 @@ in week one on our own data, and a one-page experiment plan (datasets, queries, 
 
 4) Paths to every file you created plus a 5-line summary in your final message.
 """
-    print(runner.run_sync(task, session_id=sid).output)
+    result = runner.run_sync(task, session_id=sid)
+    print(result.output)
+    print(
+        f"\nSession: {result.session_id}\n"
+        "To continue with the same session, use your runner’s resume flow; this script was:\n"
+        f"  {_resume}\n"
+    )

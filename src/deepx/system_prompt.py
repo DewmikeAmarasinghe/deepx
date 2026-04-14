@@ -8,6 +8,7 @@ from typing import TypedDict
 import yaml
 from agents import Agent, RunContextWrapper
 
+from deepx.backends.filesystem import resolve_data_root, resolve_host_root
 from deepx.context import AgentContext
 
 # ---------------------------------------------------------------------------
@@ -44,6 +45,11 @@ When the user asks you to do something:
 Keep working until the task is fully complete. Don't stop partway and explain what you would do
 — just do it. Only yield back to the user when the task is done or you're genuinely blocked.
 
+**Autonomy:** for standard work, do **not** ask the user where to put drafts (session scratch vs
+project files). Use file tools as designed, keep working, and return a **finished** outcome—not a
+“phase 1” partial that waits for confirmation to continue unless you are **truly blocked** on
+missing facts only the user can supply.
+
 **When things go wrong:** stop and analyse *why* — don't keep retrying the same approach.
 
 ## Progress and final messages
@@ -61,6 +67,12 @@ Return structured results: include the exact file paths of every file you create
 findings, and any data the orchestrator needs to proceed. Be direct and concise — the
 orchestrator reads your output programmatically.
 
+**Deliverables vs scratch:** `/_workspace_/` is fine for drafts and intermediate notes. When the
+parent will **`render_files`** or otherwise ship your work to a **human**, the files you point at
+must be **complete and self-contained** (full report body, not "see scratch file X for details"
+as the only substance). Internal pointers are OK only for optional extras the parent will not
+present as the final user-visible artifact.
+
 **Planning:** you have the same `write_todos`, `update_todos`, and `think_tool` as the main agent.
 For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
 on relevant skills), then `update_todos` after each major step. Skipping todos on multi-step work
@@ -75,6 +87,11 @@ PLANNING_PROMPT = """\
    **Subagents:** this applies to you too—your plans are persisted like the main agent’s. After
    each substantial tool or subagent call, use `update_todos` to record progress. Never skip
    planning just because you are “only” helping another agent.
+
+0b. **No storage meta-questions.** Do not ask the user to pick between “private session tree” vs
+   “project folder” for routine saves—decide with the rules in **FILESYSTEM** and proceed. If you
+   must ask something, make it substantive (missing inputs, ambiguous requirements), not filing
+   trivia.
 
 1. **Understand your capabilities before planning.** Review your tool list, identify every
    tool that delegates to a **subagent** (full nested agents) from its description, and check
@@ -94,9 +111,11 @@ PLANNING_PROMPT = """\
    If the plan structure must change a lot, use `write_todos` to replace the todo list, or combine
    `update_todos` patches as needed.
 
-4. **Deliver final results inline.** When responding to a human user, write all content
+4. **Deliver final results inline.** When responding to a **human** user, write all content
    directly in your response — do not reference internal file paths in the user-visible text.
-   (Not applicable when you are a subagent returning results to an orchestrator.)
+   **Subagents:** you still return paths and summaries to the orchestrator, but any file the parent
+   will **`render_files`** or quote to the user must read like a finished deliverable (complete
+   markdown in-file), not a pointer to incomplete scratch under `/_workspace_/` only.
 
 ## Session filesystem conventions (suggested layout)
 
@@ -165,42 +184,55 @@ THEN:
 - Never call `write_todos` in parallel with other planning tools.\
 """
 
-def _build_filesystem_prompt(session_id: str, checkpointer: str) -> str:
-    """Build the filesystem section with the actual session scope injected."""
-    scope_note: str
-    if checkpointer == ":memory:":
-        scope_note = (
-            "Your workspace is **ephemeral** (in-memory). Paths are scoped to this run and "
-            f"session `{session_id}`."
-        )
-    else:
-        scope_note = (
-            f"Persistent session data for this conversation is tied to session `{session_id}`. "
-            "Paths under `/_workspace_/` persist for this session across runs when a checkpointer "
-            "is configured."
-        )
-
+def _build_filesystem_prompt(
+    session_id: str,
+    *,
+    host_root: str | None,
+    data_root: str | None,
+) -> str:
+    """Filesystem + shell semantics (virtual paths vs host `execute`)."""
+    hr = host_root or "(not exposed for this backend)"
+    dr = data_root or "(not exposed for this backend)"
     return f"""\
-## Filesystem
+## Filesystem and shell
 
-{scope_note}
+### Path model (file tools)
 
-### Scope (on disk vs agent paths)
+File tools accept agent paths starting with **`/`**. Exactly two prefixes are **virtual** and
+handled by the backend:
 
-On the host, session data lives under a canonical `.deepx` data directory: `data_root` is the
-host workspace directory plus `/.deepx` (unless the host path already *is* a `.deepx` folder).
-Under that: `sessions/{{id}}/_workspace_/` is exposed as **`/_workspace_/`**; cross-session files
-live in `data_root/memory/` and appear as **`/_memory_/`** (for example `memory/AGENTS.md` ↔
-`/_memory_/AGENTS.md`).
+- **`/_workspace_/`** — per-session private working tree (scratch, drafts, handoff between tools).
+  On disk this lives under the **session/memory data root** (see CONTEXT), not under the host
+  `root_dir` as a normal subfolder.
+- **`/_memory_/`** — persistent cross-session store. On disk this is under **`<data_root>/memory/`**
+  — it is **not** the same place as the host `root_dir` and not “the current directory”.
 
-All paths start with `/`. **What you can access is enforced by the backend**, not by the tools.
+**Everything else** — any path **`/foo/bar`** that does **not** start with `/_workspace_/` or
+`/_memory_/` — is resolved under the **configured host `root_dir`** (the attached project tree),
+e.g. `/README.md`, `/src/...`. Use such paths when the user needs a normal project file they can
+open in their editor.
 
-- **`/_workspace_/`** — your private working tree for this session. Prefer this for agent-created files.
-- **`/_memory_/`** — persistent memory shared across sessions (for example `/_memory_/AGENTS.md`).
-- **Paths like `/src/...` or `/skills/...`** — files under the host project root the backend
-  attached; use for repository sources, bundled skills, and anything else that lives on disk
-  under that root. Skill entries in your prompt list concrete paths here — read them with
-  `read_file` / `glob` like any other file (respect repository layout; do not invent mount namespaces).
+**User-facing text:** avoid naming the internal session-tree prefix to end users; describe
+outcomes and, when needed, “a file in the project” or a concrete path under the host root—not
+storage mechanics.
+
+**Do not** ask humans to choose between session scratch vs project paths for routine work—use the
+session tree for working files via file tools, and project paths when the deliverable should live
+in the repo tree.
+
+### File tools (`ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`)
+
+**Rule:** `/_workspace_/` and `/_memory_/` are rewritten by the backend. You do not translate them
+yourself when using these tools.
+
+### `execute` — host shell (no path rewriting)
+
+**`execute` runs on the real machine.** Typical cwd is the **host `root_dir`**: `{hr}`.
+
+Strings such as `/_workspace_/report.md` inside a shell command are **not** rewritten. For shell
+access to session files, use the real directory, e.g.
+**`{dr}/sessions/{session_id}/_workspace_/`** (when `data_root` is available in CONTEXT).
+Prefer **`write_file` / `read_file`** when you can avoid shell path arithmetic.
 
 ### `ls` — list directory contents
 Use before `read_file` or `edit_file` to confirm a file exists and explore the structure.
@@ -209,13 +241,16 @@ Use before `read_file` or `edit_file` to confirm a file exists and explore the s
 - Reads up to `limit` lines starting at `offset` (0-indexed, default limit=100).
 - Paginate large files: `read_file(path, limit=100)`, then `read_file(path, offset=100, ...)`.
 - Always read a file before editing it.
-- File contents are returned as plain text (binary files are decoded with replacement for invalid UTF-8).
+- Binary files are decoded as UTF-8 with replacement characters where needed.
 
 ### `grep` — search file contents
-Literal pattern search under an optional directory or glob filter.
+**Literal substring** search (not regex). Optional `glob_pattern` filters which files under `path`
+are scanned (glob semantics: `*`, `**`, brace groups supported via `wcmatch`).
 
 ### `glob` — match paths by pattern
-Find files relative to a directory using glob syntax.
+Returns file paths under the given directory matching `pattern` (supports `**` and extended
+glob features via `wcmatch`). Results are capped (hundreds of paths); narrow `pattern` or `path`
+if needed.
 
 ### `write_file` — create a new file
 Fails if the file already exists. Prefer editing over recreating.
@@ -448,12 +483,19 @@ def build_system_prompt(
     sections.append(_section("CORE BEHAVIOR", BASE_AGENT_PROMPT))
 
     utc_now = datetime.now(timezone.utc)
-    sections.append(
-        _section(
-            "CONTEXT",
-            f"Current date and time (UTC): {utc_now.strftime('%Y-%m-%d %H:%M:%S')} ({utc_now.date().isoformat()}).",
+    host_p = resolve_host_root(ctx.context.backend)
+    data_p = resolve_data_root(ctx.context.backend)
+    ctx_lines = [
+        f"Current date and time (UTC): {utc_now.strftime('%Y-%m-%d %H:%M:%S')} ({utc_now.date().isoformat()}).",
+        f"Session id: `{ctx.context.session_id}`.",
+    ]
+    if host_p is not None:
+        ctx_lines.append(f"Configured host root (`root_dir`): `{host_p}`")
+    if data_p is not None:
+        ctx_lines.append(
+            f"Session/memory data root: `{data_p}` (on-disk backing for `/_workspace_/` and `/_memory_/`)."
         )
-    )
+    sections.append(_section("CONTEXT", "\n".join(ctx_lines)))
 
     if ctx.context.is_subagent:
         sections.append(_section("YOUR ROLE", SUBAGENT_ROLE_PROMPT))
@@ -473,7 +515,11 @@ def build_system_prompt(
     sections.append(
         _section(
             "FILESYSTEM",
-            _build_filesystem_prompt(ctx.context.session_id, checkpointer),
+            _build_filesystem_prompt(
+                ctx.context.session_id,
+                host_root=str(host_p) if host_p else None,
+                data_root=str(data_p) if data_p else None,
+            ),
         )
     )
 

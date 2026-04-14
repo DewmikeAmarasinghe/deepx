@@ -24,17 +24,19 @@ The skill provides a Python script that searches arXiv and returns formatted res
 
 **Note:** Always use the absolute path from your skills directory (shown in the system prompt above).
 
-If running deepagents from a virtual environment:
+Use the **absolute directory** for this skill from your system prompt (the row for `arxiv-search`
+points at `SKILL.md`; the script is `arxiv_search.py` in that same folder). With a venv and the
+`arxiv` package installed:
 ```bash
-.venv/bin/python [YOUR_SKILLS_DIR]/arxiv-search/arxiv_search.py "your search query" [--max-papers N]
+.venv/bin/python [SKILLS_DIR]/arxiv-search/arxiv_search.py "your search query" [--max-papers N]
 ```
 
-Or for system Python:
+Or with system Python:
 ```bash
-python3 [YOUR_SKILLS_DIR]/arxiv-search/arxiv_search.py "your search query" [--max-papers N]
+python3 [SKILLS_DIR]/arxiv-search/arxiv_search.py "your search query" [--max-papers N]
 ```
 
-Replace `[YOUR_SKILLS_DIR]` with the absolute skills directory path from your system prompt (e.g., `~/.deepagents/agent/skills` or the full absolute path).
+Replace `[SKILLS_DIR]/arxiv-search` with the real path from the prompt.
 
 **Arguments:**
 - `query` (required): The search query string (e.g., "neural networks protein structure", "single cell RNA-seq")
@@ -44,17 +46,17 @@ Replace `[YOUR_SKILLS_DIR]` with the absolute skills directory path from your sy
 
 Search for machine learning papers:
 ```bash
-.venv/bin/python ~/.deepagents/agent/skills/arxiv-search/arxiv_search.py "deep learning drug discovery" --max-papers 5
+.venv/bin/python [SKILLS_DIR]/arxiv-search/arxiv_search.py "deep learning drug discovery" --max-papers 5
 ```
 
 Search for computational biology papers:
 ```bash
-.venv/bin/python ~/.deepagents/agent/skills/arxiv-search/arxiv_search.py "protein folding prediction"
+.venv/bin/python [SKILLS_DIR]/arxiv-search/arxiv_search.py "protein folding prediction"
 ```
 
 Search for bioinformatics methods:
 ```bash
-.venv/bin/python ~/.deepagents/agent/skills/arxiv-search/arxiv_search.py "genome assembly algorithms"
+.venv/bin/python [SKILLS_DIR]/arxiv-search/arxiv_search.py "genome assembly algorithms"
 ```
 
 ## Output Format
@@ -78,7 +80,7 @@ This skill requires the `arxiv` Python package. The script will detect if it's m
 
 **If you see "Error: arxiv package not installed":**
 
-If running deepagents from a virtual environment (recommended), use the venv's Python:
+If using the project virtual environment (recommended), use the venv's Python:
 ```bash
 .venv/bin/python -m pip install arxiv
 ```
@@ -88,7 +90,7 @@ Or for system-wide install:
 python3 -m pip install arxiv
 ```
 
-The package is not included in deepagents by default since it's skill-specific. Install it on-demand when first using this skill.
+The package is not installed with Deepx core; install on-demand when first using this skill.
 
 ## Notes
 

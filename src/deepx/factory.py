@@ -13,8 +13,7 @@ from agents.lifecycle import RunHooksBase
 from agents.result import RunResultStreaming
 from agents.tool import Tool
 
-from deepx.backends.composite import CompositeBackend
-from deepx.backends.filesystem import FilesystemBackend
+from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
@@ -30,15 +29,6 @@ from deepx.system_prompt import (
 from deepx.tools import FILESYSTEM_TOOLS, PLANNING_TOOLS
 
 SubAgentDict = dict
-
-
-def resolve_host_root(backend: BackendProtocol) -> Path | None:
-    """Host project root for skill paths in prompts (FilesystemBackend default chain only)."""
-    if isinstance(backend, FilesystemBackend):
-        return backend._host_root
-    if isinstance(backend, CompositeBackend):
-        return resolve_host_root(backend._default)
-    return None
 
 
 def _collect_skill_roots(main: list[str] | None) -> list[str]:
@@ -80,7 +70,7 @@ def _skills_prompt_for_backend(
 
 
 def create_deep_agent(
-    model: str = "gpt-5-mini",
+    model: str = "gpt-5-nano",
     tools: list | None = None,
     *,
     name: str = "agent",

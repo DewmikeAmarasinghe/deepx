@@ -122,7 +122,14 @@ def grep(
     path: str | None = None,
     glob_pattern: str | None = None,
 ) -> str:
-    """Search for a literal text pattern in files under an optional directory path."""
+    """Search file contents for a **literal substring** (not a regex).
+
+    - **path:** directory or file to search (agent path, default session workspace root).
+    - **glob_pattern:** optional filter so only paths matching this glob are scanned (supports
+      ``*``, ``**``, brace expansion—same family as ``glob``).
+    - Returns ``path:line_number:line`` per hit, up to 500 matches (then a truncation notice).
+    - Skips binary/unreadable files; text is read as UTF-8 with replacement for invalid bytes.
+    """
     gr = ctx.context.backend.grep(
         ctx.context.session_id, pattern, path=path, glob=glob_pattern
     )
@@ -144,7 +151,13 @@ def glob(
     pattern: str,
     path: str = "/",
 ) -> str:
-    """Find file paths matching a glob pattern relative to a directory."""
+    """List files under ``path`` whose names match ``pattern`` (glob / wcmatch semantics).
+
+    - **path:** agent directory to search (e.g. ``/``, ``/_workspace_/``, ``/src``).
+    - **pattern:** glob relative to that directory (e.g. ``**/*.py``, ``*.md``). Extended glob
+      features (``**``, braces, etc.) are supported.
+    - Returns up to 500 paths, one per line, sorted; says if more matched.
+    """
     gr = ctx.context.backend.glob(ctx.context.session_id, pattern, path)
     if gr.error:
         return gr.error

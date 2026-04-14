@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import fnmatch
+from wcmatch import fnmatch as wc_fnmatch
 
 from deepx.backends.protocol import (
     BackendProtocol,
@@ -39,8 +39,11 @@ def _split_scope(agent_path: str) -> tuple[str, str]:
 def _glob_match(rel: str, pattern: str) -> bool:
     if pattern in ("**/*", "**", "*"):
         return True
+    flags = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
     base = rel.split("/")[-1]
-    return fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(base, pattern)
+    return wc_fnmatch.fnmatch(rel, pattern, flags=flags) or wc_fnmatch.fnmatch(
+        base, pattern, flags=flags
+    )
 
 
 class InMemoryBackend(BackendProtocol):
@@ -166,11 +169,13 @@ class InMemoryBackend(BackendProtocol):
         scope, rel = _split_scope(base)
         matches: list[GrepMatch] = []
 
+        _fg = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
+
         def scan(ap: str, content: str) -> None:
             rel_path = ap.rsplit("/", 1)[-1]
             if glob and not (
-                fnmatch.fnmatch(rel_path, glob)
-                or fnmatch.fnmatch(ap, glob)
+                wc_fnmatch.fnmatch(rel_path, glob, flags=_fg)
+                or wc_fnmatch.fnmatch(ap, glob, flags=_fg)
             ):
                 return
             for i, line in enumerate(content.splitlines(), start=1):

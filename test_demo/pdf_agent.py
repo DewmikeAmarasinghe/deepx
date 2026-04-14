@@ -6,9 +6,16 @@ import os
 import sys
 import uuid
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 DEMO_DIR = Path(__file__).resolve().parent
-REPO_ROOT = DEMO_DIR.parent
+REPO_ROOT = _REPO_ROOT
 PDF_SKILLS_DIR = DEMO_DIR / "skills" / "pdf"
 
 
@@ -50,9 +57,6 @@ if __name__ == "__main__":
     from deepx import create_deep_agent
     from deepx.backends.local_shell import LocalShellBackend
 
-    if str(REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(REPO_ROOT))
-
     DEMO_DIR.joinpath("dbs", "agent_dbs").mkdir(parents=True, exist_ok=True)
     cp = str(DEMO_DIR / "dbs" / "agent_dbs" / "pdf_agent_standalone.db")
     runner = create_deep_agent(
@@ -67,4 +71,12 @@ if __name__ == "__main__":
     )
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
     task = TASK
-    print(runner.run_sync(task, session_id=sid).output)
+    _script = Path(__file__).resolve()
+    _resume = f"{sys.executable} {_script}"
+    result = runner.run_sync(task, session_id=sid)
+    print(result.output)
+    print(
+        f"\nSession: {result.session_id}\n"
+        "To continue with the same session, use your runner’s resume flow; this script was:\n"
+        f"  {_resume}\n"
+    )

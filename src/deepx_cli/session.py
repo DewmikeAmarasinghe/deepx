@@ -12,6 +12,7 @@ def run_interactive(
     *,
     session_id: str | None = None,
     user_name: str = "You",
+    resume_hint: str | None = None,
 ) -> None:
     """Run an interactive multi-turn session in the terminal.
 
@@ -27,11 +28,16 @@ def run_interactive(
         runner: A configured DeepAgentRunner instance.
         session_id: Optional session ID. If omitted, uses SESSION_ID env var or generates one.
         user_name: Label shown before each user prompt. Defaults to "You".
+        resume_hint: Exact shell command prefix to resume (e.g. ``python /path/to/script.py``);
+            session id is appended in the printed line when helpful.
     """
     agent_label = runner._agent_name.replace("_", " ").title()
     sid = session_id or os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
 
-    print(f"\n[Session: {sid}]  Run `python <script> {sid}` to resume this session later.\n")
+    if resume_hint:
+        print(f"\n[Session: {sid}]  To resume later: `{resume_hint} {sid}`\n")
+    else:
+        print(f"\n[Session: {sid}]  Run `python <script> {sid}` to resume this session later.\n")
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

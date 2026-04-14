@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import fnmatch
 from datetime import datetime, timezone
 from pathlib import Path
+
+import wcmatch.glob as wcglob
+from wcmatch import fnmatch as wc_fnmatch
 
 from deepx.backends.protocol import (
     BackendProtocol,
@@ -15,7 +17,14 @@ from deepx.backends.protocol import (
     ReadResult,
     WriteResult,
 )
-from deepx.data_layout import data_root_for_host
+
+
+def data_root_for_host(host_root: Path) -> Path:
+    """Canonical `.deepx` data directory under the configured host project root."""
+    r = host_root.expanduser().resolve()
+    if r.name == ".deepx":
+        return r
+    return r / ".deepx"
 
 
 def _norm_agent_path(path: str) -> str:
@@ -172,6 +181,7 @@ class FilesystemBackend(BackendProtocol):
                 return GrepResult(matches=[])
             return GrepResult(error=f"Error: path '{base_agent}' not found.")
         candidates: list[Path] = []
+        _gflags = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
         if base_phys.is_file():
             candidates = [base_phys]
         else:
@@ -180,9 +190,8 @@ class FilesystemBackend(BackendProtocol):
                     continue
                 rel = f.relative_to(base_phys).as_posix()
                 if glob and not (
-                    fnmatch.fnmatch(f.name, glob)
-                    or fnmatch.fnmatch(rel, glob)
-                    or fnmatch.fnmatch(rel.split("/")[-1], glob)
+                    wc_fnmatch.fnmatch(rel, glob, flags=_gflags)
+                    or wc_fnmatch.fnmatch(f.name, glob, flags=_gflags)
                 ):
                     continue
                 candidates.append(f)
@@ -210,7 +219,19 @@ class FilesystemBackend(BackendProtocol):
             return GlobResult(error=f"Error: path '{base_agent}' not found.")
         files: list[FileInfo] = []
         try:
-            for f in base.glob(pattern):
+            _flags = wcglob.GLOBSTAR | wcglob.EXTGLOB | wcglob.BRACE | wcglob.DOTGLOB
+            rel_hits = wcglob.glob(
+                pattern,
+                root_dir=str(base),
+                flags=_flags,
+                limit=5001,
+            )
+            for rel in sorted(rel_hits)[:500]:
+                f = (base / rel).resolve()
+                try:
+                    f.relative_to(base.resolve())
+                except ValueError:
+                    continue
                 if not f.is_file():
                     continue
                 ap = self._agent_path_for_file(session_id, f)
@@ -284,3 +305,25 @@ class FilesystemBackend(BackendProtocol):
             "Shell execution is not available on FilesystemBackend. "
             "Use LocalShellBackend (or another backend that implements execute) for the execute tool."
         )
+
+
+def resolve_host_root(backend: BackendProtocol) -> Path | None:
+    """Host project root when the default backend chain is Filesystem-backed."""
+    from deepx.backends.composite import CompositeBackend
+
+    if isinstance(backend, FilesystemBackend):
+        return backend._host_root
+    if isinstance(backend, CompositeBackend):
+        return resolve_host_root(backend._default)
+    return None
+
+
+def resolve_data_root(backend: BackendProtocol) -> Path | None:
+    """`.deepx` data root (sessions, memory) when the backend exposes it."""
+    from deepx.backends.composite import CompositeBackend
+
+    if isinstance(backend, FilesystemBackend):
+        return backend.data_root
+    if isinstance(backend, CompositeBackend):
+        return resolve_data_root(backend._default)
+    return None
