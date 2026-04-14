@@ -127,6 +127,21 @@ def build_orchestrator_runner(*, hitl_approval_fn: HitlApprovalFn | None = None)
     )
 
 
+def chat_profile_agent_names() -> list[str]:
+    """Stable names for Chainlit chat profiles (orchestrator + configured subagents)."""
+    names = ["orchestrator"]
+    for spec in _subagents:
+        if isinstance(spec, dict):
+            n = spec.get("name")
+            if isinstance(n, str) and n.strip():
+                names.append(n.strip())
+        else:
+            an = getattr(spec, "_agent_name", None)
+            if isinstance(an, str) and an.strip():
+                names.append(an.strip())
+    return names
+
+
 agent = build_orchestrator_runner()
 
 TASK = """

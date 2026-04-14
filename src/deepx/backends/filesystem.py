@@ -6,8 +6,6 @@ from pathlib import Path
 import wcmatch.glob as wcglob
 from wcmatch import fnmatch as wc_fnmatch
 
-from deepx.backends.utils import LARGE_TOOL_RESULTS_PREFIX
-
 from deepx.backends.protocol import (
     BackendProtocol,
     EditResult,
@@ -19,6 +17,61 @@ from deepx.backends.protocol import (
     ReadResult,
     WriteResult,
 )
+
+# --- Tool-result size helpers (used by middleware eviction) ---
+
+NUM_CHARS_PER_TOKEN = 4
+TOOL_RESULT_TOKEN_LIMIT = 20_000
+OUTPUTS_LARGE_TOOL_RESULTS_PREFIX = "/_outputs/large_tool_results"
+
+
+def sanitize_tool_call_id(tool_call_id: str) -> str:
+    return tool_call_id.replace(".", "_").replace("/", "_").replace("\\", "_")
+
+
+TOOLS_EXCLUDED_FROM_EVICTION = (
+    "ls",
+    "glob",
+    "grep",
+    "read_file",
+    "edit_file",
+    "write_file",
+)
+
+
+TOO_LARGE_TOOL_MSG = """Tool result too large, the result of this tool call {tool_call_id} was saved in the filesystem at this path: {file_path}
+
+You can read the result from the filesystem by using the read_file tool, but make sure to only read part of the result at a time.
+
+You can do this by specifying an offset and limit in the read_file tool call. For example, to read the first 100 lines, you can use the read_file tool with offset=0 and limit=100.
+
+Here is a preview showing the head and tail of the result (lines of the form `... [N lines truncated] ...` indicate omitted lines in the middle of the content):
+
+{content_sample}
+"""
+
+
+def create_large_tool_result_preview(
+    content_str: str, *, head_lines: int = 5, tail_lines: int = 5
+) -> str:
+    lines = content_str.splitlines()
+    if len(lines) <= head_lines + tail_lines:
+        return "\n".join(line[:1000] for line in lines)
+
+    head = [line[:1000] for line in lines[:head_lines]]
+    tail = [line[:1000] for line in lines[-tail_lines:]]
+    omitted = len(lines) - head_lines - tail_lines
+    return (
+        "\n".join(head)
+        + f"\n\n... [{omitted} lines truncated] ...\n\n"
+        + "\n".join(tail)
+    )
+
+
+def tool_result_char_budget(*, token_limit: int | None = None) -> int | None:
+    if token_limit is None:
+        return None
+    return NUM_CHARS_PER_TOKEN * int(token_limit)
 
 
 def data_root_for_host(host_root: Path) -> Path:
@@ -68,7 +121,9 @@ def _under_data_root(physical: Path, data_root: Path) -> bool:
 def _physical_for_tools(
     host_root: Path, data_root: Path, agent_path: str
 ) -> tuple[Path | None, str | None]:
-    rel = _rel_from_agent_path(_norm_agent_path(_coerce_agent_path(host_root, agent_path)))
+    rel = _rel_from_agent_path(
+        _norm_agent_path(_coerce_agent_path(host_root, agent_path))
+    )
     hr = host_root.expanduser().resolve()
     try:
         p = (hr / rel if rel else hr).resolve()
@@ -254,7 +309,7 @@ class FilesystemBackend(BackendProtocol):
         p, err = self._physical(file_path)
         if err or p is None:
             return WriteResult(error=err or "Cannot write: invalid path.")
-        allow_replace = canonical.startswith(LARGE_TOOL_RESULTS_PREFIX + "/")
+        allow_replace = canonical.startswith(OUTPUTS_LARGE_TOOL_RESULTS_PREFIX + "/")
         if p.exists() and not allow_replace:
             return WriteResult(
                 error=f"Cannot write to {canonical} because it already exists."

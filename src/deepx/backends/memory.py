@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from wcmatch import fnmatch as wc_fnmatch
 
+from deepx.backends.filesystem import OUTPUTS_LARGE_TOOL_RESULTS_PREFIX
+
 from deepx.backends.protocol import (
     BackendProtocol,
     EditResult,
@@ -53,7 +55,8 @@ class InMemoryBackend(BackendProtocol):
                 continue
             head, _, tail = rest.partition("/")
             is_dir = bool(tail) or any(
-                k[0] == session_id and k[1].startswith(pfx + head + "/") for k in self._files.keys()
+                k[0] == session_id and k[1].startswith(pfx + head + "/")
+                for k in self._files.keys()
             )
             cur = out.get(head, False)
             out[head] = cur or is_dir
@@ -65,7 +68,10 @@ class InMemoryBackend(BackendProtocol):
         kids = self._child_names(session_id, rel)
         base = p.rstrip("/") or "/"
         return LsResult(
-            entries=[FileInfo(path=f"{base}/{n}" if base != "/" else f"/{n}", is_dir=d) for n, d in sorted(kids.items())]
+            entries=[
+                FileInfo(path=f"{base}/{n}" if base != "/" else f"/{n}", is_dir=d)
+                for n, d in sorted(kids.items())
+            ]
         )
 
     def read(
@@ -139,9 +145,13 @@ class InMemoryBackend(BackendProtocol):
 
     def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
         r = _rel(file_path)
+        canonical = _norm_agent_path(file_path)
+        allow_replace = canonical.startswith(OUTPUTS_LARGE_TOOL_RESULTS_PREFIX + "/")
         k = (session_id, r)
-        if k in self._files:
-            return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
+        if k in self._files and not allow_replace:
+            return WriteResult(
+                error=f"Cannot write to {file_path} because it already exists."
+            )
         self._files[k] = content
         return WriteResult(path=file_path, files_update=None)
 

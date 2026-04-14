@@ -172,6 +172,7 @@ THEN:
 - Never call `write_todos` in parallel with other planning tools.\
 """
 
+
 def _build_filesystem_prompt(
     session_id: str,
     *,
@@ -193,12 +194,15 @@ Project root for this run: `{hr}`.
 
 ### `execute`
 
-Shell **`cwd`** is the same project root. Prefer file tools for project files.
+Prefer file tools for project files. Commands use a
+**timeout** (capped); unsupported backends return a clear error instead of running a shell.
 
 ### File tools
 
 `ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob` — paginate large reads, read before
-edit, literal substring `grep`.
+edit, literal substring `grep`. **`grep`** supports `output_mode` (`content`, `count`,
+`files_with_matches`). **`glob`** is time-bounded. **`read_file`** truncates extremely long
+lines in the numbered view.
 
 ### Deliverables (project tree)
 
@@ -208,10 +212,9 @@ tree tidy: remove scratch files when done.
 ### Large tool results
 
 When a tool return exceeds the context budget, the framework **writes the full text** under
-**`/large_tool_results/<sanitized_id>`** (same layout as LangChain deepagents) and replaces the
-tool message with instructions plus a **head/tail preview**. Use **`read_file(path, offset=0,
-limit=100)`** (and paginate) to pull the saved content back into context — never paste the entire
-file into chat.
+**`/_outputs/large_tool_results/<readable_name>.txt`** and replaces the tool message with
+instructions plus a **head/tail preview**. Use **`read_file(path, offset=0, limit=100)`** (and
+paginate) to pull the saved content back into context — never paste the entire file into chat.
 """
 
 
@@ -261,6 +264,7 @@ _SEP = "\n\n" + "=" * 80 + "\n\n"
 # ---------------------------------------------------------------------------
 # Skill discovery
 # ---------------------------------------------------------------------------
+
 
 class SkillMetadata(TypedDict, total=False):
     name: str
@@ -322,7 +326,9 @@ def _skill_roots_ordered(skill_root_dirs: list[str]) -> list[str]:
     return out
 
 
-def skills_catalog_for_host(host_root: Path, skill_root_dirs: list[str]) -> list[SkillMetadata]:
+def skills_catalog_for_host(
+    host_root: Path, skill_root_dirs: list[str]
+) -> list[SkillMetadata]:
     """Skill entries for the prompt using paths under the backend host root (agent paths `/...`)."""
     host_resolved = host_root.expanduser().resolve()
     roots = _skill_roots_ordered(skill_root_dirs)
@@ -410,6 +416,7 @@ def _parse_skill_frontmatter(content: str, path: str) -> SkillMetadata | None:
 # System prompt assembly
 # ---------------------------------------------------------------------------
 
+
 def _section(title: str, content: str) -> str:
     return f"# {title}\n\n{content}"
 
@@ -446,7 +453,9 @@ def build_system_prompt(
     all_skills = ctx.context.skills.strip()
 
     if all_skills:
-        sections.append(_section("SKILLS", SKILLS_PROMPT.format(skills_list=all_skills)))
+        sections.append(
+            _section("SKILLS", SKILLS_PROMPT.format(skills_list=all_skills))
+        )
 
     if ctx.context.memory:
         sections.append(
@@ -474,8 +483,7 @@ def build_system_prompt(
 
     if ctx.context.plan.todos:
         lines = [
-            f"[{t.id}] ({t.status.value}) {t.title}"
-            for t in ctx.context.plan.todos
+            f"[{t.id}] ({t.status.value}) {t.title}" for t in ctx.context.plan.todos
         ]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 

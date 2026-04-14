@@ -1,10 +1,8 @@
+"""Chainlit helpers: map SDK stream events and poll Temporal workflow hook logs."""
+
 from __future__ import annotations
 
 import asyncio
-import json
-import time
-from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import Any
 
 from agents.stream_events import (
@@ -18,14 +16,6 @@ def _trunc(s: str, n: int = 8000) -> str:
     if len(s) <= n:
         return s
     return s[:n] + "…"
-
-
-def append_ndjson(path: Path, obj: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    line = json.dumps(obj, ensure_ascii=False, default=str) + "\n"
-    with path.open("a", encoding="utf-8") as f:
-        f.write(line)
-        f.flush()
 
 
 def serialize_stream_event(ev: Any) -> dict[str, Any]:
@@ -66,65 +56,14 @@ def serialize_stream_event(ev: Any) -> dict[str, Any]:
     return {"kind": "other", "repr": _trunc(repr(ev), 500)}
 
 
-async def tail_ndjson_events(
-    path: Path,
-    *,
-    poll_interval: float = 0.2,
-    wait_for_exists_s: float = 90.0,
-    result_task: asyncio.Task | None = None,
-) -> AsyncIterator[dict[str, Any]]:
-    deadline = time.monotonic() + wait_for_exists_s
-    while not path.exists():
-        if result_task is not None and result_task.done():
-            return
-        if time.monotonic() > deadline:
-            return
-        await asyncio.sleep(poll_interval)
-    consumed = 0
-    while True:
-        if result_task is not None and result_task.done():
-            try:
-                raw = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                return
-            lines = raw.splitlines()
-            while consumed < len(lines):
-                line = lines[consumed]
-                consumed += 1
-                try:
-                    obj = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(obj, dict):
-                    yield obj
-            return
-        await asyncio.sleep(poll_interval)
-        try:
-            raw = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        lines = raw.splitlines()
-        while consumed < len(lines):
-            line = lines[consumed]
-            consumed += 1
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(obj, dict):
-                yield obj
-                if obj.get("kind") == "done":
-                    return
-
-
 async def poll_workflow_stream_events(
     handle: Any,
     *,
     workflow_cls: type,
     poll_interval: float = 0.2,
     result_task: asyncio.Task | None = None,
-) -> AsyncIterator[dict[str, Any]]:
-    """Tail stream rows via a workflow query (``get_stream_events`` on ``workflow_cls``)."""
+):
+    """Yield rows from ``workflow_cls.get_stream_events`` until a ``kind=done`` record."""
     seen = 0
     q = workflow_cls.get_stream_events
 

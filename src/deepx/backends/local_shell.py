@@ -23,6 +23,7 @@ class LocalShellBackend(FilesystemBackend):
         if not cmd:
             return "No command provided."
         cwd = str(self._host_root)
+        cap = min(float(timeout), 600.0)
         try:
             proc = subprocess.run(
                 cmd,
@@ -30,10 +31,10 @@ class LocalShellBackend(FilesystemBackend):
                 cwd=cwd,
                 capture_output=True,
                 text=True,
-                timeout=timeout,
+                timeout=cap,
             )
         except subprocess.TimeoutExpired:
-            return f"Error: command timed out after {timeout} seconds."
+            return f"Error: command timed out after {cap} seconds."
         except OSError as e:
             return f"Error: {e}"
         out = (proc.stdout or "") + (proc.stderr or "")

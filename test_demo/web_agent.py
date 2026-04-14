@@ -44,7 +44,7 @@ async def web_search(ctx: RunContextWrapper, queries: list[str]) -> str:
     Search the public web using the **Tavily** API (hosted index).
 
     Many parallel queries return one large JSON string; oversized returns may be written under
-    ``/large_tool_results/...`` (see framework prompt) with a preview in the tool message.
+    ``/_outputs/large_tool_results/...`` (see framework prompt) with a preview in the tool message.
     """
     _ = ctx
     if not TAVILY_KEY:
@@ -104,7 +104,10 @@ async def web_extract(
         r.raise_for_status()
         data = r.json()
     out = _strip_images(
-        {"results": data.get("results", []), "failed_results": data.get("failed_results", [])}
+        {
+            "results": data.get("results", []),
+            "failed_results": data.get("failed_results", []),
+        }
     )
     return json.dumps(out, indent=2)
 

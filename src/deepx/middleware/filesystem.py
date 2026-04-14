@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from agents.agent import Agent
@@ -9,16 +11,16 @@ from agents.lifecycle import RunHooksBase
 from agents.run_context import AgentHookContext
 from agents.tool import FunctionTool, Tool
 
-from deepx.backends.protocol import BackendProtocol
-from deepx.backends.utils import (
-    LARGE_TOOL_RESULTS_PREFIX,
+from deepx.backends.filesystem import (
+    OUTPUTS_LARGE_TOOL_RESULTS_PREFIX,
     TOO_LARGE_TOOL_MSG,
+    TOOL_RESULT_TOKEN_LIMIT,
     TOOLS_EXCLUDED_FROM_EVICTION,
     create_large_tool_result_preview,
     sanitize_tool_call_id,
     tool_result_char_budget,
-    TOOL_RESULT_TOKEN_LIMIT,
 )
+from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.hitl import HumanInTheLoopHooks, wrap_tools_for_hitl
 from deepx.middleware.logs import run_log_load_plan, wrap_tools_for_logging
@@ -32,6 +34,18 @@ def _tool_call_id(ctx: Any) -> str:
     return "unknown_tool_call"
 
 
+def _readable_large_tool_agent_path(tool_name: str, tool_call_id: str) -> str:
+    base = re.sub(r"[^a-zA-Z0-9_-]+", "_", (tool_name or "tool").strip()).strip("_")[
+        :48
+    ] or "tool"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if tool_call_id == "unknown_tool_call":
+        suffix = uuid.uuid4().hex[:8]
+    else:
+        suffix = sanitize_tool_call_id(tool_call_id)[:32]
+    return f"{OUTPUTS_LARGE_TOOL_RESULTS_PREFIX}/{base}_{stamp}_{suffix}.txt"
+
+
 def _make_large_tool_results_invoke(
     original_invoke: Any,
     backend: BackendProtocol,
@@ -39,7 +53,7 @@ def _make_large_tool_results_invoke(
     tool_name: str,
     token_limit: int | None = TOOL_RESULT_TOKEN_LIMIT,
 ) -> Any:
-    """Evict oversized tool returns to ``/large_tool_results/…`` (deepagents-style)."""
+    """Evict oversized tool returns under ``/_outputs/large_tool_results/``."""
 
     budget = tool_result_char_budget(token_limit=token_limit)
 
@@ -52,11 +66,7 @@ def _make_large_tool_results_invoke(
             return result
 
         call_id = _tool_call_id(ctx)
-        if call_id == "unknown_tool_call":
-            safe = uuid.uuid4().hex
-        else:
-            safe = sanitize_tool_call_id(call_id)
-        agent_path = f"{LARGE_TOOL_RESULTS_PREFIX}/{safe}"
+        agent_path = _readable_large_tool_agent_path(tool_name, call_id)
         session_id = ctx.context.session_id
         wr = backend.write(session_id, agent_path, text)
         if wr.error:
