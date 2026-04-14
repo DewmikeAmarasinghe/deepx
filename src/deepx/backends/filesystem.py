@@ -6,6 +6,8 @@ from pathlib import Path
 import wcmatch.glob as wcglob
 from wcmatch import fnmatch as wc_fnmatch
 
+from deepx.backends.utils import LARGE_TOOL_RESULTS_PREFIX
+
 from deepx.backends.protocol import (
     BackendProtocol,
     EditResult,
@@ -20,7 +22,6 @@ from deepx.backends.protocol import (
 
 
 def data_root_for_host(host_root: Path) -> Path:
-    """Canonical `.deepx` data directory under the configured host project root."""
     r = host_root.expanduser().resolve()
     if r.name == ".deepx":
         return r
@@ -34,18 +35,52 @@ def _norm_agent_path(path: str) -> str:
     return p
 
 
-def _split_scope(agent_path: str) -> tuple[str, str]:
-    p = _norm_agent_path(agent_path)
-    body = p[1:]
-    if body.startswith("_workspace_/"):
-        return "_workspace_", body[len("_workspace_/") :]
-    if body == "_workspace_":
-        return "_workspace_", ""
-    if body.startswith("_memory_/"):
-        return "_memory_", body[len("_memory_/") :]
-    if body == "_memory_":
-        return "_memory_", ""
-    return "root", body
+def _rel_from_agent_path(agent_path: str) -> str:
+    return _norm_agent_path(agent_path).lstrip("/")
+
+
+def _coerce_agent_path(host_root: Path, raw: str) -> str:
+    """Normalize user/model paths: virtual ``/…`` under host, or absolute host paths → ``/rel``."""
+    s = (raw or "").replace("\\", "/").strip()
+    if not s:
+        return "/"
+    hr = host_root.expanduser().resolve()
+    # OS-absolute path that lies under project root → agent path
+    if s.startswith("/") and len(s) > 1:
+        try:
+            candidate = Path(s).expanduser().resolve()
+            rel = candidate.relative_to(hr)
+            return "/" + rel.as_posix()
+        except (ValueError, OSError):
+            pass
+    return _norm_agent_path(s)
+
+
+def _under_data_root(physical: Path, data_root: Path) -> bool:
+    try:
+        pr = physical.resolve()
+        dr = data_root.resolve()
+    except OSError:
+        return True
+    return pr == dr or pr.is_relative_to(dr)
+
+
+def _physical_for_tools(
+    host_root: Path, data_root: Path, agent_path: str
+) -> tuple[Path | None, str | None]:
+    rel = _rel_from_agent_path(_norm_agent_path(_coerce_agent_path(host_root, agent_path)))
+    hr = host_root.expanduser().resolve()
+    try:
+        p = (hr / rel if rel else hr).resolve()
+    except OSError:
+        return None, "Error: invalid path."
+    try:
+        p.relative_to(hr)
+    except ValueError:
+        return None, "Error: path escapes project root."
+    if _under_data_root(p, data_root):
+        return None, "Error: paths under .deepx are not accessible via file tools."
+    return p, None
 
 
 class FilesystemBackend(BackendProtocol):
@@ -57,77 +92,33 @@ class FilesystemBackend(BackendProtocol):
     def data_root(self) -> Path:
         return self._data_root
 
-    def workspace_dir(self, session_id: str) -> Path:
-        return self._data_root / "sessions" / session_id / "_workspace_"
+    def _physical(self, agent_path: str) -> tuple[Path | None, str | None]:
+        return _physical_for_tools(self._host_root, self._data_root, agent_path)
 
-    def _memory_dir(self) -> Path:
-        return self._data_root / "memory"
-
-    def _physical_dir(self, session_id: str, scope: str, rel: str) -> Path:
-        rel = rel.strip("/").replace("\\", "/")
-        if scope == "_workspace_":
-            base = self.workspace_dir(session_id)
-            return base / rel if rel else base
-        if scope == "_memory_":
-            base = self._memory_dir()
-            return base / rel if rel else base
-        return self._host_root / rel if rel else self._host_root
-
-    def _physical_file(self, session_id: str, agent_path: str) -> tuple[str, str, Path]:
-        scope, rel = _split_scope(agent_path)
-        p = self._physical_dir(session_id, scope, rel)
-        return scope, rel, p
-
-    def _agent_path_for_file(self, session_id: str, f: Path) -> str | None:
+    def _agent_path_for_file(self, f: Path) -> str | None:
         try:
-            rel = f.relative_to(self.workspace_dir(session_id))
-            return "/_workspace_/" + rel.as_posix()
-        except ValueError:
-            pass
-        try:
-            rel = f.relative_to(self._memory_dir())
-            return "/_memory_/" + rel.as_posix()
-        except ValueError:
-            pass
-        try:
-            rel = f.relative_to(self._host_root)
+            rel = f.resolve().relative_to(self._host_root.resolve())
             return "/" + rel.as_posix()
         except ValueError:
             return None
 
     def ls(self, session_id: str, path: str) -> LsResult:
-        p = _norm_agent_path(path)
-        scope, rel = _split_scope(p)
-        base = self._physical_dir(session_id, scope, rel)
-        if not base.exists():
-            if scope == "_workspace_":
-                return LsResult(entries=[])
+        _ = session_id
+        p, err = self._physical(path)
+        if err or p is None:
+            return LsResult(error=err or "Error: path not found.")
+        if not p.exists():
             return LsResult(error=f"Error: directory '{path}' not found.")
-        if not base.is_dir():
+        if not p.is_dir():
             return LsResult(error=f"Error: '{path}' is not a directory.")
         entries: list[FileInfo] = []
-        if p == "/":
-            entries.append(FileInfo(path="/_workspace_", is_dir=True))
-            entries.append(FileInfo(path="/_memory_", is_dir=True))
-            try:
-                for child in sorted(self._host_root.iterdir(), key=lambda x: x.name.lower()):
-                    ap = "/" + child.name
-                    if child.is_dir():
-                        entries.append(FileInfo(path=ap, is_dir=True))
-                    else:
-                        st = child.stat()
-                        ts = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime(
-                            "%Y-%m-%d %H:%M"
-                        )
-                        entries.append(
-                            FileInfo(path=ap, is_dir=False, size=st.st_size, modified_at=ts)
-                        )
-            except OSError as e:
-                return LsResult(error=f"Error: {e}")
-            return LsResult(entries=entries)
         try:
-            for child in sorted(base.iterdir(), key=lambda x: x.name.lower()):
-                ap = f"{p.rstrip('/')}/{child.name}"
+            for child in sorted(p.iterdir(), key=lambda x: x.name.lower()):
+                if _under_data_root(child, self._data_root):
+                    continue
+                ap = self._agent_path_for_file(child)
+                if ap is None:
+                    continue
                 if child.is_dir():
                     entries.append(FileInfo(path=ap, is_dir=True))
                 else:
@@ -149,7 +140,10 @@ class FilesystemBackend(BackendProtocol):
         offset: int = 0,
         limit: int = 2000,
     ) -> ReadResult:
-        _, _, p = self._physical_file(session_id, file_path)
+        _ = session_id
+        p, err = self._physical(file_path)
+        if err or p is None:
+            return ReadResult(error=err or f"Error: '{file_path}' not found.")
         if not p.is_file():
             return ReadResult(error=f"Error: '{file_path}' not found.")
         try:
@@ -174,11 +168,12 @@ class FilesystemBackend(BackendProtocol):
         path: str | None = None,
         glob: str | None = None,
     ) -> GrepResult:
-        base_agent = _norm_agent_path(path or "/_workspace_/")
-        _, _, base_phys = self._physical_file(session_id, base_agent)
+        _ = session_id
+        base_agent = _norm_agent_path(path or "/")
+        base_phys, err = self._physical(base_agent)
+        if err or base_phys is None:
+            return GrepResult(error=err or f"Error: path '{base_agent}' not found.")
         if not base_phys.exists():
-            if _split_scope(base_agent)[0] == "_workspace_":
-                return GrepResult(matches=[])
             return GrepResult(error=f"Error: path '{base_agent}' not found.")
         candidates: list[Path] = []
         _gflags = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
@@ -187,6 +182,8 @@ class FilesystemBackend(BackendProtocol):
         else:
             for f in sorted(base_phys.rglob("*")):
                 if not f.is_file():
+                    continue
+                if _under_data_root(f, self._data_root):
                     continue
                 rel = f.relative_to(base_phys).as_posix()
                 if glob and not (
@@ -197,7 +194,7 @@ class FilesystemBackend(BackendProtocol):
                 candidates.append(f)
         matches: list[GrepMatch] = []
         for fp in candidates:
-            ap = self._agent_path_for_file(session_id, fp)
+            ap = self._agent_path_for_file(fp)
             if ap is None:
                 continue
             try:
@@ -210,12 +207,12 @@ class FilesystemBackend(BackendProtocol):
         return GrepResult(matches=matches)
 
     def glob(self, session_id: str, pattern: str, path: str = "/") -> GlobResult:
+        _ = session_id
         base_agent = _norm_agent_path(path)
-        scope, rel = _split_scope(base_agent)
-        base = self._physical_dir(session_id, scope, rel)
+        base, err = self._physical(base_agent)
+        if err or base is None:
+            return GlobResult(error=err or f"Error: path '{base_agent}' not found.")
         if not base.exists():
-            if scope == "_workspace_":
-                return GlobResult(files=[])
             return GlobResult(error=f"Error: path '{base_agent}' not found.")
         files: list[FileInfo] = []
         try:
@@ -232,29 +229,42 @@ class FilesystemBackend(BackendProtocol):
                     f.relative_to(base.resolve())
                 except ValueError:
                     continue
+                if _under_data_root(f, self._data_root):
+                    continue
                 if not f.is_file():
                     continue
-                ap = self._agent_path_for_file(session_id, f)
+                ap = self._agent_path_for_file(f)
                 if ap is None:
                     continue
                 st = f.stat()
-                ts = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-                files.append(FileInfo(path=ap, is_dir=False, size=st.st_size, modified_at=ts))
+                ts = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+                files.append(
+                    FileInfo(path=ap, is_dir=False, size=st.st_size, modified_at=ts)
+                )
         except OSError as e:
             return GlobResult(error=f"Error: {e}")
         files.sort(key=lambda x: x.path)
         return GlobResult(files=files)
 
     def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
-        _, _, p = self._physical_file(session_id, file_path)
-        if p.exists():
-            return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
+        _ = session_id
+        canonical = _norm_agent_path(_coerce_agent_path(self._host_root, file_path))
+        p, err = self._physical(file_path)
+        if err or p is None:
+            return WriteResult(error=err or "Cannot write: invalid path.")
+        allow_replace = canonical.startswith(LARGE_TOOL_RESULTS_PREFIX + "/")
+        if p.exists() and not allow_replace:
+            return WriteResult(
+                error=f"Cannot write to {canonical} because it already exists."
+            )
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
         except OSError as e:
             return WriteResult(error=f"Error: {e}")
-        return WriteResult(path=file_path, files_update=None)
+        return WriteResult(path=canonical, files_update=None)
 
     def edit(
         self,
@@ -264,7 +274,10 @@ class FilesystemBackend(BackendProtocol):
         new_string: str,
         replace_all: bool = False,
     ) -> EditResult:
-        _, _, p = self._physical_file(session_id, file_path)
+        _ = session_id
+        p, err = self._physical(file_path)
+        if err or p is None:
+            return EditResult(error=err or f"Error: '{file_path}' not found.")
         if not p.is_file():
             return EditResult(error=f"Error: '{file_path}' not found.")
         try:
@@ -308,22 +321,12 @@ class FilesystemBackend(BackendProtocol):
 
 
 def resolve_host_root(backend: BackendProtocol) -> Path | None:
-    """Host project root when the default backend chain is Filesystem-backed."""
-    from deepx.backends.composite import CompositeBackend
-
     if isinstance(backend, FilesystemBackend):
         return backend._host_root
-    if isinstance(backend, CompositeBackend):
-        return resolve_host_root(backend._default)
     return None
 
 
 def resolve_data_root(backend: BackendProtocol) -> Path | None:
-    """`.deepx` data root (sessions, memory) when the backend exposes it."""
-    from deepx.backends.composite import CompositeBackend
-
     if isinstance(backend, FilesystemBackend):
         return backend.data_root
-    if isinstance(backend, CompositeBackend):
-        return resolve_data_root(backend._default)
     return None

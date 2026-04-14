@@ -10,12 +10,103 @@ from agents.run_context import AgentHookContext
 from agents.tool import FunctionTool, Tool
 
 from deepx.backends.protocol import BackendProtocol
+from deepx.backends.utils import (
+    LARGE_TOOL_RESULTS_PREFIX,
+    TOO_LARGE_TOOL_MSG,
+    TOOLS_EXCLUDED_FROM_EVICTION,
+    create_large_tool_result_preview,
+    sanitize_tool_call_id,
+    tool_result_char_budget,
+    TOOL_RESULT_TOKEN_LIMIT,
+)
 from deepx.context import AgentContext
 from deepx.middleware.hitl import HumanInTheLoopHooks, wrap_tools_for_hitl
 from deepx.middleware.logs import run_log_load_plan, wrap_tools_for_logging
 from deepx.tools.planning import Plan
 
-LARGE_OUTPUT_THRESHOLD = 80_000
+
+def _tool_call_id(ctx: Any) -> str:
+    tid = getattr(ctx, "tool_call_id", None)
+    if isinstance(tid, str) and tid.strip():
+        return tid.strip()
+    return "unknown_tool_call"
+
+
+def _make_large_tool_results_invoke(
+    original_invoke: Any,
+    backend: BackendProtocol,
+    *,
+    tool_name: str,
+    token_limit: int | None = TOOL_RESULT_TOKEN_LIMIT,
+) -> Any:
+    """Evict oversized tool returns to ``/large_tool_results/…`` (deepagents-style)."""
+
+    budget = tool_result_char_budget(token_limit=token_limit)
+
+    async def invoke(ctx: Any, args_json: str) -> Any:
+        result = await original_invoke(ctx, args_json)
+        if budget is None or tool_name in TOOLS_EXCLUDED_FROM_EVICTION:
+            return result
+        text = str(result)
+        if len(text) <= budget:
+            return result
+
+        call_id = _tool_call_id(ctx)
+        if call_id == "unknown_tool_call":
+            safe = uuid.uuid4().hex
+        else:
+            safe = sanitize_tool_call_id(call_id)
+        agent_path = f"{LARGE_TOOL_RESULTS_PREFIX}/{safe}"
+        session_id = ctx.context.session_id
+        wr = backend.write(session_id, agent_path, text)
+        if wr.error:
+            return result
+
+        preview = create_large_tool_result_preview(text)
+        return TOO_LARGE_TOOL_MSG.format(
+            tool_call_id=call_id,
+            file_path=agent_path,
+            content_sample=preview,
+        )
+
+    return invoke
+
+
+def wrap_tools_for_large_tool_results(
+    tools: list[Tool],
+    backend: BackendProtocol,
+    *,
+    token_limit: int | None = TOOL_RESULT_TOKEN_LIMIT,
+) -> list[Tool]:
+    out: list[Tool] = []
+    for tool in tools:
+        if isinstance(tool, FunctionTool):
+            inv = _make_large_tool_results_invoke(
+                tool.on_invoke_tool,
+                backend,
+                tool_name=tool.name,
+                token_limit=token_limit,
+            )
+            out.append(dataclasses.replace(tool, on_invoke_tool=inv))
+        else:
+            out.append(tool)
+    return out
+
+
+def apply_tool_pipeline(
+    tools: list[Tool],
+    backend: BackendProtocol,
+    *,
+    agent_name: str,
+    debug: bool,
+    hitl: HumanInTheLoopHooks | None = None,
+) -> list[Tool]:
+    wrapped = wrap_tools_for_large_tool_results(tools, backend)
+    if debug:
+        wrapped = wrap_tools_for_logging(wrapped, backend, agent_name)
+    if hitl is not None:
+        wrapped = wrap_tools_for_hitl(wrapped, hitl)
+    return wrapped
 
 
 class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
@@ -36,60 +127,15 @@ class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
             if saved:
                 context.context.plan = Plan.model_validate_json(saved)
         if not context.context.memory:
-            rr = self._backend.read(
-                context.context.session_id, "/_memory_/AGENTS.md", 0, 1_000_000
-            )
-            if rr.content is not None and not rr.error:
-                context.context.memory = rr.content
+            from deepx.backends.filesystem import resolve_data_root
 
-
-def _make_evicting_invoke(original_invoke: Any, backend: BackendProtocol) -> Any:
-    async def invoke(ctx: Any, args_json: str) -> Any:
-        result = await original_invoke(ctx, args_json)
-        text = str(result)
-        if len(text) <= LARGE_OUTPUT_THRESHOLD:
-            return result
-        session_id = ctx.context.session_id
-
-        call_id = uuid.uuid4().hex[:12]
-        dest = f"/_workspace_/large_tool_results/{call_id}.txt"
-        wr = backend.write(session_id, dest, text)
-        if wr.error:
-            return result
-        preview = "\n".join(text.splitlines()[:10])
-        return (
-            f"[Output was large and saved to {dest}. Use read_file to access it. "
-            f"Preview:\n{preview}]"
-        )
-
-    return invoke
-
-
-def wrap_tools_with_large_output_eviction(
-    tools: list[Tool],
-    backend: BackendProtocol,
-) -> list[Tool]:
-    out: list[Tool] = []
-    for tool in tools:
-        if isinstance(tool, FunctionTool):
-            inv = _make_evicting_invoke(tool.on_invoke_tool, backend)
-            out.append(dataclasses.replace(tool, on_invoke_tool=inv))
-        else:
-            out.append(tool)
-    return out
-
-
-def apply_tool_pipeline(
-    tools: list[Tool],
-    backend: BackendProtocol,
-    *,
-    agent_name: str,
-    debug: bool,
-    hitl: HumanInTheLoopHooks | None = None,
-) -> list[Tool]:
-    wrapped = wrap_tools_with_large_output_eviction(tools, backend)
-    if debug:
-        wrapped = wrap_tools_for_logging(wrapped, backend, agent_name)
-    if hitl is not None:
-        wrapped = wrap_tools_for_hitl(wrapped, hitl)
-    return wrapped
+            dr = resolve_data_root(self._backend)
+            if dr is not None:
+                p = dr / "AGENTS.md"
+                if p.is_file():
+                    try:
+                        context.context.memory = p.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                    except OSError:
+                        pass

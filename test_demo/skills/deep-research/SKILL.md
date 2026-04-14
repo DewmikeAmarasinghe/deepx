@@ -49,9 +49,9 @@ Use external web tools in this order of preference:
    a tight URL list. Optional `query` plus `chunks_per_source` can focus extraction when the API
    supports it.
 
-**Saving work:** write structured notes under `/_workspace_/research/` (or similar) with
+**Saving work:** write structured notes under a sensible project path (e.g. `research/` or `docs/`) with
 `write_file`. When the brief includes a **final written deliverable**, produce the polished
-markdown yourself with `write_file` (for example under `/_workspace_/reports/`)—clear structure,
+markdown yourself with `write_file` (for example under `reports/`)—clear structure,
 citations, and a **Sources** section. Large raw tool JSON belongs in files, not in chat; use
 `read_file` / `grep` / `glob` to re-use what you already saved.
 

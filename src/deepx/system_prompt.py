@@ -45,8 +45,8 @@ When the user asks you to do something:
 Keep working until the task is fully complete. Don't stop partway and explain what you would do
 — just do it. Only yield back to the user when the task is done or you're genuinely blocked.
 
-**Autonomy:** for standard work, do **not** ask the user where to put drafts (session scratch vs
-project files). Use file tools as designed, keep working, and return a **finished** outcome—not a
+**Autonomy:** for standard work, do **not** ask the user where to put drafts. Use file tools under
+the project tree, keep working, and return a **finished** outcome—not a
 “phase 1” partial that waits for confirmation to continue unless you are **truly blocked** on
 missing facts only the user can supply.
 
@@ -67,11 +67,10 @@ Return structured results: include the exact file paths of every file you create
 findings, and any data the orchestrator needs to proceed. Be direct and concise — the
 orchestrator reads your output programmatically.
 
-**Deliverables vs scratch:** `/_workspace_/` is fine for drafts and intermediate notes. When the
-parent will **`render_files`** or otherwise ship your work to a **human**, the files you point at
-must be **complete and self-contained** (full report body, not "see scratch file X for details"
-as the only substance). Internal pointers are OK only for optional extras the parent will not
-present as the final user-visible artifact.
+**Deliverables:** write real project paths the orchestrator can `read_file`. When the parent will
+**`render_files`** or ship work to a **human**, artifacts must be **complete** (not “see other file”
+stubs). Remove drafts and scratch files when the task is done; keep only final outputs the user or the orchestrator
+needs.
 
 **Planning:** you have the same `write_todos`, `update_todos`, and `think_tool` as the main agent.
 For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
@@ -88,10 +87,8 @@ PLANNING_PROMPT = """\
    each substantial tool or subagent call, use `update_todos` to record progress. Never skip
    planning just because you are “only” helping another agent.
 
-0b. **No storage meta-questions.** Do not ask the user to pick between “private session tree” vs
-   “project folder” for routine saves—decide with the rules in **FILESYSTEM** and proceed. If you
-   must ask something, make it substantive (missing inputs, ambiguous requirements), not filing
-   trivia.
+0b. **No storage meta-questions.** Do not ask the user where to save routine files—use sensible
+   paths under the project root. Ask only substantive questions (missing inputs, ambiguity).
 
 1. **Understand your capabilities before planning.** Review your tool list, identify every
    tool that delegates to a **subagent** (full nested agents) from its description, and check
@@ -115,19 +112,10 @@ PLANNING_PROMPT = """\
    directly in your response — do not reference internal file paths in the user-visible text.
    **Subagents:** you still return paths and summaries to the orchestrator, but any file the parent
    will **`render_files`** or quote to the user must read like a finished deliverable (complete
-   markdown in-file), not a pointer to incomplete scratch under `/_workspace_/` only.
+   markdown in-file).
 
-## Session filesystem conventions (suggested layout)
-
-These are conventions only — the backend does not enforce folder names. Prefer paths under
-`/_workspace_/` for everything the agent creates.
-
-- **`/_workspace_/scratch/`** — optional notes, drafts, and scratch work.
-- **`/_workspace_/research/`** — web research notes, scraped summaries, topic digests (if you split them out).
-- **`/_workspace_/large_tool_results/`** — where oversized tool output is spilled automatically; use `read_file` there.
-
-Keep the number of files **reasonable** (prefer fewer, well-structured files when it helps), but
-you may use multiple files when the task warrants it.
+**Cleanup:** delete intermediate scratch files when the job is finished; leave final deliverables
+only.
 
 ---
 
@@ -149,7 +137,7 @@ you may use multiple files when the task warrants it.
    ```
    [1] Assess capabilities and read matching skill files   (in_progress)
    [2] Call the appropriate subagent tool ONCE with the full scope of its work; ask it to
-       consolidate outputs into as few session files as practical and return paths.
+       consolidate outputs into as few files as practical and return paths.
    [3] Integrate results (or call the next specialist) using paths only — no huge pastes
    [4] Return the final result inline to the user (or paths to artifacts for the orchestrator)
    ```
@@ -174,7 +162,7 @@ THEN:
 - Ask subagents to **use as few files as practical** (fewer files usually means fewer follow-up
   reads). They may still use multiple files when the task requires it.
 - **Pass file paths between agents** — do not read large file bodies only to paste them back
-  into the next prompt. Subagents share the same session filesystem.
+  into the next prompt. Subagents share the same project tree.
 - Parallelise subagent calls only when there is **zero data dependency** between them.
 
 ## Rules for `write_todos` and `update_todos`
@@ -190,79 +178,40 @@ def _build_filesystem_prompt(
     host_root: str | None,
     data_root: str | None,
 ) -> str:
-    """Filesystem + shell semantics (virtual paths vs host `execute`)."""
-    hr = host_root or "(not exposed for this backend)"
-    dr = data_root or "(not exposed for this backend)"
+    _ = session_id, data_root
+    hr = host_root or "the configured project root"
     return f"""\
 ## Filesystem and shell
 
-### Path model (file tools)
+### Paths (file tools)
 
-File tools accept agent paths starting with **`/`**. Exactly two prefixes are **virtual** and
-handled by the backend:
+Paths start with **`/`** and are **under the project root** (`root_dir`): `/README.md` →
+`<root_dir>/README.md`, `/test_demo/foo.py` → `<root_dir>/test_demo/foo.py`. You cannot read or
+write the runtime `.deepx` tree via file tools; use **`save_memory`** for durable facts.
 
-- **`/_workspace_/`** — per-session private working tree (scratch, drafts, handoff between tools).
-  On disk this lives under the **session/memory data root** (see CONTEXT), not under the host
-  `root_dir` as a normal subfolder.
-- **`/_memory_/`** — persistent cross-session store. On disk this is under **`<data_root>/memory/`**
-  — it is **not** the same place as the host `root_dir` and not “the current directory”.
+Project root for this run: `{hr}`.
 
-**Everything else** — any path **`/foo/bar`** that does **not** start with `/_workspace_/` or
-`/_memory_/` — is resolved under the **configured host `root_dir`** (the attached project tree),
-e.g. `/README.md`, `/src/...`. Use such paths when the user needs a normal project file they can
-open in their editor.
+### `execute`
 
-**User-facing text:** avoid naming the internal session-tree prefix to end users; describe
-outcomes and, when needed, “a file in the project” or a concrete path under the host root—not
-storage mechanics.
+Shell **`cwd`** is the same project root. Prefer file tools for project files.
 
-**Do not** ask humans to choose between session scratch vs project paths for routine work—use the
-session tree for working files via file tools, and project paths when the deliverable should live
-in the repo tree.
+### File tools
 
-### File tools (`ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`)
+`ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob` — paginate large reads, read before
+edit, literal substring `grep`.
 
-**Rule:** `/_workspace_/` and `/_memory_/` are rewritten by the backend. You do not translate them
-yourself when using these tools.
+### Deliverables (project tree)
 
-### `execute` — host shell (no path rewriting)
+Put user-facing artifacts under **`/_outputs/`** (for example `/_outputs/report.md`). Keep the
+tree tidy: remove scratch files when done.
 
-**`execute` runs on the real machine.** Typical cwd is the **host `root_dir`**: `{hr}`.
+### Large tool results
 
-Strings such as `/_workspace_/report.md` inside a shell command are **not** rewritten. For shell
-access to session files, use the real directory, e.g.
-**`{dr}/sessions/{session_id}/_workspace_/`** (when `data_root` is available in CONTEXT).
-Prefer **`write_file` / `read_file`** when you can avoid shell path arithmetic.
-
-### `ls` — list directory contents
-Use before `read_file` or `edit_file` to confirm a file exists and explore the structure.
-
-### `read_file` — read a file
-- Reads up to `limit` lines starting at `offset` (0-indexed, default limit=100).
-- Paginate large files: `read_file(path, limit=100)`, then `read_file(path, offset=100, ...)`.
-- Always read a file before editing it.
-- Binary files are decoded as UTF-8 with replacement characters where needed.
-
-### `grep` — search file contents
-**Literal substring** search (not regex). Optional `glob_pattern` filters which files under `path`
-are scanned (glob semantics: `*`, `**`, brace groups supported via `wcmatch`).
-
-### `glob` — match paths by pattern
-Returns file paths under the given directory matching `pattern` (supports `**` and extended
-glob features via `wcmatch`). Results are capped (hundreds of paths); narrow `pattern` or `path`
-if needed.
-
-### `write_file` — create a new file
-Fails if the file already exists. Prefer editing over recreating.
-
-### `edit_file` — replace an exact string in a file
-Read the file first. Provide enough context in `old_string` to uniquely identify the location.
-Use `replace_all=True` to replace every occurrence.
-
-## Large tool results
-
-When a tool result is too large, it is saved under `/_workspace_/large_tool_results/<call_id>.txt`.
-Use `read_file` with pagination to inspect it.\
+When a tool return exceeds the context budget, the framework **writes the full text** under
+**`/large_tool_results/<sanitized_id>`** (same layout as LangChain deepagents) and replaces the
+tool message with instructions plus a **head/tail preview**. Use **`read_file(path, offset=0,
+limit=100)`** (and paginate) to pull the saved content back into context — never paste the entire
+file into chat.
 """
 
 
@@ -271,16 +220,12 @@ MEMORY_PROMPT = """\
 {agent_memory}
 </agent_memory>
 
-The above memory was loaded from your persistent store (`/_memory_/` paths). Treat it as prior knowledge.
+Loaded from persistent memory for this agent. Treat it as prior knowledge.
 
-**When to update memory** (use `read_file` then `edit_file` on the same `/_memory_/...` path):
-- User explicitly asks you to remember something
-- User corrects your behaviour or describes how you should work
-- You discover a pattern or convention worth retaining for future sessions
+**When to call `save_memory`:** user asks you to remember something; stable conventions worth
+keeping across sessions. **Never** store secrets.
 
-**When NOT to update memory:**
-- Temporary or one-time information (task requests, transient state, small talk)
-- Credentials or API keys — never store these\
+**When not to:** one-off task state, transient chat.\
 """
 
 SKILLS_PROMPT = """\
@@ -490,11 +435,7 @@ def build_system_prompt(
         f"Session id: `{ctx.context.session_id}`.",
     ]
     if host_p is not None:
-        ctx_lines.append(f"Configured host root (`root_dir`): `{host_p}`")
-    if data_p is not None:
-        ctx_lines.append(
-            f"Session/memory data root: `{data_p}` (on-disk backing for `/_workspace_/` and `/_memory_/`)."
-        )
+        ctx_lines.append(f"Project root (`root_dir`): `{host_p}`")
     sections.append(_section("CONTEXT", "\n".join(ctx_lines)))
 
     if ctx.context.is_subagent:
@@ -537,14 +478,5 @@ def build_system_prompt(
             for t in ctx.context.plan.todos
         ]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
-
-    gf = ctx.context.backend.glob(ctx.context.session_id, "**/*", "/_workspace_/")
-    if not gf.error and gf.files:
-        paths = sorted({f.path for f in gf.files if not f.is_dir})[:50]
-        if paths:
-            block = "\n".join(paths)
-            if len(paths) >= 50:
-                block += "\n... use `glob` or `ls` under `/_workspace_/` to explore further."
-            sections.append(_section("SESSION WORKSPACE FILES", block))
 
     return _SEP.join(sections)

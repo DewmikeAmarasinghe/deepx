@@ -1,4 +1,3 @@
-from deepx.backends.composite import CompositeBackend
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.local_shell import LocalShellBackend
 from deepx.backends.memory import InMemoryBackend
@@ -27,5 +26,4 @@ __all__ = [
     "FilesystemBackend",
     "LocalShellBackend",
     "InMemoryBackend",
-    "CompositeBackend",
 ]

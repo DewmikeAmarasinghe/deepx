@@ -30,7 +30,7 @@ def pdf_agent_spec(*, checkpointer: str) -> dict:
             "You specialise in PDF tasks. For multi-step work, call **`write_todos` first** (after "
             "`read_file` on **pdf** / **forms** skill entry paths), then **`update_todos`** as you go.\n"
             "Follow the skill workflows; use `execute` for repo scripts when the environment has the "
-            "needed Python packages. Keep outputs under the session workspace and return paths.\n"
+            "needed Python packages. Write outputs under sensible project paths and return paths.\n"
             "**OCR / scanned PDFs:** if the user needs OCR, say clearly that **Tesseract** (or similar) "
             "must be installed on the host system—pip packages alone are not enough."
         ),
@@ -49,7 +49,7 @@ Then compare them and explain how the ideas evolved over time.
 
 If there are any important tables or quantitative results, extract them.
 
-At the end, create a clean report I can keep under the session workspace, and also combine the two
+At the end, create a clean report under the project tree, and also combine the two
 PDFs into a single file. Return all paths.
 """
 

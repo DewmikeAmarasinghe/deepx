@@ -23,13 +23,10 @@ def _safe_agent_name(name: str) -> str:
 
 def resolve_data_root(backend: BackendProtocol) -> Path | None:
     """Return `.deepx` data root for on-disk run logs, or None if not file-backed."""
-    from deepx.backends.composite import CompositeBackend
     from deepx.backends.filesystem import FilesystemBackend
 
     if isinstance(backend, FilesystemBackend):
         return backend.data_root
-    if isinstance(backend, CompositeBackend):
-        return resolve_data_root(backend._default)
     return None
 
 

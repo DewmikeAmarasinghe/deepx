@@ -22,18 +22,8 @@ def _norm_agent_path(path: str) -> str:
     return p
 
 
-def _split_scope(agent_path: str) -> tuple[str, str]:
-    p = _norm_agent_path(agent_path)
-    body = p[1:]
-    if body.startswith("_workspace_/"):
-        return "_workspace_", body[len("_workspace_/") :]
-    if body == "_workspace_":
-        return "_workspace_", ""
-    if body.startswith("_memory_/"):
-        return "_memory_", body[len("_memory_/") :]
-    if body == "_memory_":
-        return "_memory_", ""
-    return "root", body
+def _rel(file_path: str) -> str:
+    return _norm_agent_path(file_path).lstrip("/")
 
 
 def _glob_match(rel: str, pattern: str) -> bool:
@@ -48,14 +38,12 @@ def _glob_match(rel: str, pattern: str) -> bool:
 
 class InMemoryBackend(BackendProtocol):
     def __init__(self) -> None:
-        self._ws: dict[tuple[str, str], str] = {}
-        self._root: dict[tuple[str, str], str] = {}
-        self._memory: dict[str, str] = {}
+        self._files: dict[tuple[str, str], str] = {}
 
-    def _child_names_ws(self, session_id: str, prefix: str) -> dict[str, bool]:
+    def _child_names(self, session_id: str, prefix: str) -> dict[str, bool]:
         pfx = prefix + "/" if prefix else ""
         out: dict[str, bool] = {}
-        for sid, r in self._ws.keys():
+        for sid, r in self._files.keys():
             if sid != session_id:
                 continue
             if prefix and not (r == prefix or r.startswith(pfx)):
@@ -65,72 +53,20 @@ class InMemoryBackend(BackendProtocol):
                 continue
             head, _, tail = rest.partition("/")
             is_dir = bool(tail) or any(
-                k[0] == session_id and k[1].startswith(pfx + head + "/") for k in self._ws.keys()
+                k[0] == session_id and k[1].startswith(pfx + head + "/") for k in self._files.keys()
             )
-            cur = out.get(head, False)
-            out[head] = cur or is_dir
-        return out
-
-    def _child_names_root(self, session_id: str, prefix: str) -> dict[str, bool]:
-        pfx = prefix + "/" if prefix else ""
-        out: dict[str, bool] = {}
-        for sid, r in self._root.keys():
-            if sid != session_id:
-                continue
-            if prefix and not (r == prefix or r.startswith(pfx)):
-                continue
-            rest = r[len(pfx) :] if pfx else r
-            if not rest:
-                continue
-            head, _, tail = rest.partition("/")
-            is_dir = bool(tail) or any(
-                k[0] == session_id and k[1].startswith(pfx + head + "/") for k in self._root.keys()
-            )
-            cur = out.get(head, False)
-            out[head] = cur or is_dir
-        return out
-
-    def _child_names_memory(self, prefix: str) -> dict[str, bool]:
-        pfx = prefix + "/" if prefix else ""
-        out: dict[str, bool] = {}
-        for r in self._memory.keys():
-            if prefix and not (r == prefix or r.startswith(pfx)):
-                continue
-            rest = r[len(pfx) :] if pfx else r
-            if not rest:
-                continue
-            head, _, tail = rest.partition("/")
-            is_dir = bool(tail) or any(sk.startswith(pfx + head + "/") for sk in self._memory)
             cur = out.get(head, False)
             out[head] = cur or is_dir
         return out
 
     def ls(self, session_id: str, path: str) -> LsResult:
         p = _norm_agent_path(path)
-        if p == "/":
-            entries = [
-                FileInfo(path="/_workspace_", is_dir=True),
-                FileInfo(path="/_memory_", is_dir=True),
-            ]
-            for name, is_dir in sorted(self._child_names_root(session_id, "").items()):
-                entries.append(FileInfo(path=f"/{name}", is_dir=is_dir))
-            return LsResult(entries=entries)
-        scope, rel = _split_scope(p)
-        if scope == "_workspace_":
-            kids = self._child_names_ws(session_id, rel)
-            base = p.rstrip("/")
-            return LsResult(
-                entries=[FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())]
-            )
-        if scope == "_memory_":
-            kids = self._child_names_memory(rel)
-            base = p.rstrip("/")
-            return LsResult(
-                entries=[FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())]
-            )
-        kids = self._child_names_root(session_id, rel)
-        base = p.rstrip("/")
-        return LsResult(entries=[FileInfo(path=f"{base}/{n}", is_dir=d) for n, d in sorted(kids.items())])
+        rel = p.lstrip("/")
+        kids = self._child_names(session_id, rel)
+        base = p.rstrip("/") or "/"
+        return LsResult(
+            entries=[FileInfo(path=f"{base}/{n}" if base != "/" else f"/{n}", is_dir=d) for n, d in sorted(kids.items())]
+        )
 
     def read(
         self,
@@ -139,13 +75,8 @@ class InMemoryBackend(BackendProtocol):
         offset: int = 0,
         limit: int = 2000,
     ) -> ReadResult:
-        scope, rel = _split_scope(file_path)
-        if scope == "_workspace_":
-            raw = self._ws.get((session_id, rel.strip("/")))
-        elif scope == "_memory_":
-            raw = self._memory.get(rel.strip("/"))
-        else:
-            raw = self._root.get((session_id, rel.strip("/")))
+        r = _rel(file_path)
+        raw = self._files.get((session_id, r))
         if raw is None:
             return ReadResult(error=f"Error: '{file_path}' not found.")
         lines = raw.splitlines()
@@ -165,97 +96,53 @@ class InMemoryBackend(BackendProtocol):
         path: str | None = None,
         glob: str | None = None,
     ) -> GrepResult:
-        base = _norm_agent_path(path or "/_workspace_/")
-        scope, rel = _split_scope(base)
+        base = _norm_agent_path(path or "/")
+        rel = base.lstrip("/")
         matches: list[GrepMatch] = []
-
         _fg = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
 
-        def scan(ap: str, content: str) -> None:
-            rel_path = ap.rsplit("/", 1)[-1]
+        for (sid, r), content in self._files.items():
+            if sid != session_id:
+                continue
+            if rel and not (r == rel or r.startswith(rel + "/")):
+                continue
+            ap = "/" + r
+            rel_path = r.rsplit("/", 1)[-1]
             if glob and not (
                 wc_fnmatch.fnmatch(rel_path, glob, flags=_fg)
                 or wc_fnmatch.fnmatch(ap, glob, flags=_fg)
             ):
-                return
+                continue
             for i, line in enumerate(content.splitlines(), start=1):
                 if pattern in line:
                     matches.append(GrepMatch(path=ap, line_number=i, line=line))
-
-        if scope == "_workspace_":
-            for (sid, r), content in self._ws.items():
-                if sid != session_id:
-                    continue
-                if rel and not (r == rel or r.startswith(rel + "/")):
-                    continue
-                scan("/_workspace_/" + r, content)
-        elif scope == "_memory_":
-            for k, content in self._memory.items():
-                if rel and not (k == rel or k.startswith(rel + "/")):
-                    continue
-                scan("/_memory_/" + k, content)
-        else:
-            for (sid, r), content in self._root.items():
-                if sid != session_id:
-                    continue
-                if rel and not (r == rel or r.startswith(rel + "/")):
-                    continue
-                scan("/" + r, content)
         return GrepResult(matches=matches)
 
     def glob(self, session_id: str, pattern: str, path: str = "/") -> GlobResult:
         base = _norm_agent_path(path)
-        scope, rel = _split_scope(base)
+        rel = base.lstrip("/")
         files: list[FileInfo] = []
-        if scope == "_workspace_":
-            for (sid, r), _ in self._ws.items():
-                if sid != session_id:
-                    continue
-                if rel and not (r == rel or r.startswith(rel + "/")):
-                    continue
-                rel_part = r[len(rel) + 1 :] if rel and r.startswith(rel + "/") else r
-                if rel and r == rel:
-                    rel_part = ""
-                check = r if not rel_part else rel_part
-                if not _glob_match(check, pattern):
-                    continue
-                files.append(FileInfo(path="/_workspace_/" + r, is_dir=False))
-        elif scope == "_memory_":
-            for k, _ in self._memory.items():
-                if rel and not (k == rel or k.startswith(rel + "/")):
-                    continue
-                if not _glob_match(k, pattern):
-                    continue
-                files.append(FileInfo(path="/_memory_/" + k, is_dir=False))
-        else:
-            for (sid, r), _ in self._root.items():
-                if sid != session_id:
-                    continue
-                if rel and not (r == rel or r.startswith(rel + "/")):
-                    continue
-                if not _glob_match(r, pattern):
-                    continue
-                files.append(FileInfo(path="/" + r, is_dir=False))
+        for (sid, r), _ in self._files.items():
+            if sid != session_id:
+                continue
+            if rel and not (r == rel or r.startswith(rel + "/")):
+                continue
+            rel_part = r[len(rel) + 1 :] if rel and r.startswith(rel + "/") else r
+            if rel and r == rel:
+                rel_part = ""
+            check = r if not rel_part else rel_part
+            if not _glob_match(check, pattern):
+                continue
+            files.append(FileInfo(path="/" + r, is_dir=False))
         files.sort(key=lambda x: x.path)
         return GlobResult(files=files)
 
     def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
-        scope, rel = _split_scope(file_path)
-        rel = rel.strip("/")
-        if scope == "_workspace_":
-            k = (session_id, rel)
-            if k in self._ws:
-                return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
-            self._ws[k] = content
-        elif scope == "_memory_":
-            if rel in self._memory:
-                return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
-            self._memory[rel] = content
-        else:
-            k = (session_id, rel)
-            if k in self._root:
-                return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
-            self._root[k] = content
+        r = _rel(file_path)
+        k = (session_id, r)
+        if k in self._files:
+            return WriteResult(error=f"Cannot write to {file_path} because it already exists.")
+        self._files[k] = content
         return WriteResult(path=file_path, files_update=None)
 
     def edit(
@@ -266,17 +153,8 @@ class InMemoryBackend(BackendProtocol):
         new_string: str,
         replace_all: bool = False,
     ) -> EditResult:
-        scope, rel = _split_scope(file_path)
-        rel = rel.strip("/")
-        if scope == "_workspace_":
-            k = (session_id, rel)
-            content = self._ws.get(k)
-        elif scope == "_memory_":
-            k = rel
-            content = self._memory.get(rel)
-        else:
-            k = (session_id, rel)
-            content = self._root.get(k)
+        k = (session_id, _rel(file_path))
+        content = self._files.get(k)
         if content is None:
             return EditResult(error=f"Error: '{file_path}' not found.")
         count = content.count(old_string)
@@ -294,12 +172,7 @@ class InMemoryBackend(BackendProtocol):
             if replace_all
             else content.replace(old_string, new_string, 1)
         )
-        if scope == "_workspace_":
-            self._ws[(session_id, rel)] = new_content
-        elif scope == "_memory_":
-            self._memory[rel] = new_content
-        else:
-            self._root[(session_id, rel)] = new_content
+        self._files[k] = new_content
         return EditResult(path=file_path, occurrences=count if replace_all else 1)
 
     def execute(

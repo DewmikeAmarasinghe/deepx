@@ -43,8 +43,8 @@ async def web_search(ctx: RunContextWrapper, queries: list[str]) -> str:
     """
     Search the public web using the **Tavily** API (hosted index).
 
-    Many parallel queries return one large JSON string; the framework may spill oversized
-    tool output to the session workspace under ``large_tool_results/`` — use ``read_file`` there if needed.
+    Many parallel queries return one large JSON string; oversized returns may be written under
+    ``/large_tool_results/...`` (see framework prompt) with a preview in the tool message.
     """
     _ = ctx
     if not TAVILY_KEY:
@@ -149,7 +149,7 @@ def web_agent_spec(*, checkpointer: str, interrupt_on: list[str]) -> dict:
         "name": "web_agent",
         "description": (
             "Web research specialist: Tavily search/extract/map; saves structured notes and can "
-            "author final markdown reports in the session workspace. Returns artifact paths."
+            "author final markdown reports under the project tree. Returns artifact paths."
         ),
         "system_prompt": (
             "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
@@ -209,7 +209,7 @@ interactive dashboards). I need:
 2) A **risk register** (top 8 risks) with mitigations—not generic bullets; tie each risk to how we
 said we work.
 
-3) A **decision memo** in the workspace: recommendation, **three** acceptance tests we should run
+3) A **decision memo** as a project markdown file: recommendation, **three** acceptance tests we should run
 in week one on our own data, and a one-page experiment plan (datasets, queries, success metrics).
 
 4) Paths to every file you created plus a 5-line summary in your final message.

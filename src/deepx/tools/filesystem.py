@@ -153,7 +153,7 @@ def glob(
 ) -> str:
     """List files under ``path`` whose names match ``pattern`` (glob / wcmatch semantics).
 
-    - **path:** agent directory to search (e.g. ``/``, ``/_workspace_/``, ``/src``).
+    - **path:** directory under the project root (e.g. ``/``, ``/src``).
     - **pattern:** glob relative to that directory (e.g. ``**/*.py``, ``*.md``). Extended glob
       features (``**``, braces, etc.) are supported.
     - Returns up to 500 paths, one per line, sorted; says if more matched.

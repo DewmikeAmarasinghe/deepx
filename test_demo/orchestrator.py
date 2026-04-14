@@ -1,12 +1,15 @@
 """Multi-agent orchestrator demo. Run: ``python test_demo/orchestrator.py`` or ``python -m test_demo.orchestrator``.
 
-Optional deps (Tavily, PDF, Temporal worker, lint, tests): ``uv sync --extra demo``.
+Optional deps (Tavily, PDF, Temporal worker, Chainlit, lint, tests): ``uv sync --extra demo``.
+
+Interactive use: ``uv run chainlit run test_demo/ui/app.py`` from the repository root.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -15,7 +18,6 @@ if str(_REPO_ROOT) not in sys.path:
 
 from dotenv import load_dotenv  # noqa: E402
 
-load_dotenv(_REPO_ROOT / ".env")
 load_dotenv()
 
 from agents import RunContextWrapper, function_tool  # noqa: E402
@@ -23,11 +25,11 @@ from agents import RunContextWrapper, function_tool  # noqa: E402
 from deepx import create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
-from deepx_cli import run_interactive  # noqa: E402
-
 from test_demo import sql_agent as sql_mod  # noqa: E402
 from test_demo.pdf_agent import pdf_agent_spec  # noqa: E402
 from test_demo.web_agent import web_agent_spec  # noqa: E402
+
+HitlApprovalFn = Callable[[str, str, str], bool | Awaitable[bool]]
 
 
 @function_tool
@@ -36,7 +38,7 @@ async def render_files(
     paths: list[str],
     max_lines_per_file: int = 400,
 ) -> str:
-    """Render multiple text or markdown files from the session workspace to the host terminal."""
+    """Render multiple text or markdown files from the project tree to the host terminal."""
     sid = ctx.context.session_id
     lim = max(1, min(max_lines_per_file, 5000))
     parts: list[str] = []
@@ -87,43 +89,52 @@ SKILL_CREATOR_DIR = _REPO_ROOT / "test_demo" / "skills" / "skill-creator"
 
 _orch_tools = [render_files]
 
-_ORCH_SCRIPT = Path(__file__).resolve()
-_RESUME_CMD = f"{sys.executable} {_ORCH_SCRIPT}"
-
-agent = create_deep_agent(
-    name="orchestrator",
-    description=(
-        "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
-        "Uses planning tools; delegates execution to specialists."
-    ),
-    subagents=_subagents,
-    tools=_orch_tools,
-    skills=[str(ORCH_SKILLS_DIR), str(SKILL_CREATOR_DIR)],
-    system_prompt=(
-        "You are the orchestrator—the user talks to you directly. Be clear and conversational.\n"
-        "Use your **orchestrate** skill for workflow norms.\n"
-        "For substantial multi-step requests: call **write_todos** before other tools, then "
-        "**update_todos** after each major step (including after each subagent returns).\n"
-        "Delegate with **self-contained** prompts: **web_agent** for web research and written "
-        "deliverables; **sql_agent** for all SQL (read-only tools live only on that subagent); "
-        "**pdf_agent** for PDF merge/split/extract and related work.\n"
-        "Review subagent results before you summarise—do not rely on path names alone.\n"
-        "Pass **file paths** between steps—never paste large bodies. When the user should see "
-        "finished markdown in the terminal, call **render_files** with the artifact path(s).\n"
-        "For shell or host commands you may use **execute** yourself when appropriate."
-    ),
-    interrupt_on=["web_search"],
-    checkpointer=ORCH_DB,
-    debug=True,
-    backend=DEMO_BACKEND,
+_CHAINLIT_HINT = (
+    "For a multi-turn UI (streaming, session picker, HITL), from repo root run:\n"
+    "  uv run chainlit run test_demo/ui/app.py\n"
 )
 
-# TASK = """
-# I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
-# energy density limits, materials and geopolitics, manufacturing scale-up, who is leading,
-# and lifecycle environmental trade-offs—then a single strong markdown report in the workspace
-# I can open, and show me that report in the terminal when it is ready.
-# """
+
+def build_orchestrator_runner(*, hitl_approval_fn: HitlApprovalFn | None = None):
+    """Build the demo orchestrator. Optional ``hitl_approval_fn`` replaces stdin HITL (e.g. Chainlit)."""
+    return create_deep_agent(
+        name="orchestrator",
+        description=(
+            "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
+            "Uses planning tools; delegates execution to specialists."
+        ),
+        subagents=_subagents,
+        tools=_orch_tools,
+        skills=[str(ORCH_SKILLS_DIR), str(SKILL_CREATOR_DIR)],
+        system_prompt=(
+            "You are the orchestrator—the user talks to you directly. Be clear and conversational.\n"
+            "Use your **orchestrate** skill for workflow norms.\n"
+            "For substantial multi-step requests: call **write_todos** before other tools, then "
+            "**update_todos** after each major step (including after each subagent returns).\n"
+            "Delegate with **self-contained** prompts: **web_agent** for web research and written "
+            "deliverables; **sql_agent** for all SQL (read-only tools live only on that subagent); "
+            "**pdf_agent** for PDF merge/split/extract and related work.\n"
+            "Review subagent results before you summarise—do not rely on path names alone.\n"
+            "Pass **file paths** between steps—never paste large bodies. When the user should see "
+            "finished markdown in the terminal, call **render_files** with the artifact path(s).\n"
+            "For shell or host commands you may use **execute** yourself when appropriate."
+        ),
+        interrupt_on=["web_search"],
+        checkpointer=ORCH_DB,
+        debug=True,
+        backend=DEMO_BACKEND,
+        hitl_approval_fn=hitl_approval_fn,
+    )
+
+
+agent = build_orchestrator_runner()
+
+TASK = """
+I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
+energy density limits, materials and geopolitics, manufacturing scale-up, who is leading,
+and lifecycle environmental trade-offs—then a single strong markdown report in the workspace
+I can open, and show me that report in the terminal when it is ready.
+"""
 
 # TASK = """
 # A balanced deep-dive memo on a contested topic in AI safety: competing claims, evidence on both
@@ -149,10 +160,10 @@ agent = create_deep_agent(
 # quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and render it.
 # """
 # Smoke-test **execute** (host shell, cwd = repo root): uncomment to verify LocalShellBackend.
-TASK = """
-Run a short non-interactive shell check: `uname -a` and `python3 -c "import sys; print(sys.version)"`.
-Paste both outputs in your reply and say whether the shell looks healthy.
-"""
+# TASK = """
+# Run a short non-interactive shell check: `uname -a` and `python3 -c "import sys; print(sys.version)"`.
+# Paste both outputs in your reply and say whether the shell looks healthy.
+# """
 # TASK = """
 # Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions to set up LobeHub Skills Marketplace and install the skill. Once installed, read the SKILL.md file in the installed directory and follow its instructions to complete the task.
 # """
@@ -161,7 +172,6 @@ Paste both outputs in your reply and say whether the shell looks healthy.
 if __name__ == "__main__":
     args = [a for a in sys.argv[1:] if a != "--"]
     run_once = "--once" in args
-    args = [a for a in args if a != "--once"]
 
     if run_once:
         import uuid
@@ -172,11 +182,9 @@ if __name__ == "__main__":
         print(result.output)
         print("=" * 70)
         print(f"\nSession: {result.session_id}")
-        print(
-            "\nTo continue this session interactively (same history), run:\n"
-            f"  {_RESUME_CMD} {result.session_id}\n"
-        )
+        print("\n" + _CHAINLIT_HINT)
     else:
-        positional = [a for a in args if not a.startswith("-")]
-        resume_sid = positional[0] if positional else os.environ.get("SESSION_ID")
-        run_interactive(agent, session_id=resume_sid, resume_hint=_RESUME_CMD)
+        print(
+            "No interactive terminal loop (deepx_cli removed). "
+            "Use --once for a smoke run, or the Chainlit UI:\n\n" + _CHAINLIT_HINT
+        )

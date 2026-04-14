@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 import re
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +27,11 @@ from deepx.system_prompt import (
     format_skills_for_prompt,
     skills_catalog_for_host,
 )
-from deepx.tools import FILESYSTEM_TOOLS, PLANNING_TOOLS
+from deepx.tools import FILESYSTEM_TOOLS, MEMORY_TOOLS, PLANNING_TOOLS
 
 SubAgentDict = dict
+
+HitlApprovalFn = Callable[[str, str, str], bool | Awaitable[bool]]
 
 
 def _collect_skill_roots(main: list[str] | None) -> list[str]:
@@ -53,10 +56,14 @@ def _collect_skill_roots(main: list[str] | None) -> list[str]:
     return out
 
 
-def _make_hitl(interrupt_tools: list[str]) -> HumanInTheLoopHooks | None:
+def _make_hitl(
+    interrupt_tools: list[str],
+    *,
+    approval_fn: HitlApprovalFn | None = None,
+) -> HumanInTheLoopHooks | None:
     if not interrupt_tools:
         return None
-    return HumanInTheLoopHooks(list(interrupt_tools))
+    return HumanInTheLoopHooks(list(interrupt_tools), approval_fn=approval_fn)
 
 
 def _skills_prompt_for_backend(
@@ -85,6 +92,7 @@ def create_deep_agent(
     interrupt_on: list[str] | None = None,
     debug: bool = False,
     max_turns: int = 1000,
+    hitl_approval_fn: HitlApprovalFn | None = None,
 ) -> "DeepAgentRunner":
     setup_observability()
 
@@ -116,7 +124,7 @@ def create_deep_agent(
         resolved_backend = backend
     mem_content = _load_memory(memory, resolved_backend)
     user_tools = list(tools or [])
-    base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
+    base_tools = [*FILESYSTEM_TOOLS, *MEMORY_TOOLS, *PLANNING_TOOLS]
     interrupt_list = list(interrupt_on or [])
 
     subagent_tools: list[Tool] = []
@@ -133,6 +141,7 @@ def create_deep_agent(
             parent_interrupt=interrupt_list,
             max_turns=max_turns,
             parent_response_format=response_format,
+            hitl_approval_fn=hitl_approval_fn,
         )
         an = runner._agent_name
         tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", an)
@@ -173,6 +182,7 @@ def create_deep_agent(
         agent_name=name,
         description=description,
         interrupt_tools=interrupt_list,
+        hitl_approval_fn=hitl_approval_fn,
     )
 
 
@@ -189,6 +199,7 @@ def _resolve_subagent_spec(
     parent_interrupt: list[str],
     max_turns: int,
     parent_response_format: type | None,
+    hitl_approval_fn: HitlApprovalFn | None,
 ) -> "DeepAgentRunner":
     if isinstance(spec, DeepAgentRunner):
         return spec
@@ -211,7 +222,7 @@ def _resolve_subagent_spec(
 
     sub_roots = [str(Path(p).expanduser().resolve()) for p in spec_skills]
 
-    base_tools = [*FILESYSTEM_TOOLS, *PLANNING_TOOLS]
+    base_tools = [*FILESYSTEM_TOOLS, *MEMORY_TOOLS, *PLANNING_TOOLS]
 
     nested_subagent_tools: list[Tool] = []
     for nested in spec.get("subagents") or []:
@@ -227,6 +238,7 @@ def _resolve_subagent_spec(
             parent_interrupt=spec_interrupt,
             max_turns=max_turns,
             parent_response_format=spec_response_format,
+            hitl_approval_fn=hitl_approval_fn,
         )
         nested_tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", nested_runner._agent_name)
         nested_subagent_tools.append(
@@ -267,6 +279,7 @@ def _resolve_subagent_spec(
         agent_name=an,
         description=spec.get("description", ""),
         interrupt_tools=spec_interrupt,
+        hitl_approval_fn=hitl_approval_fn,
     )
 
 
@@ -297,7 +310,9 @@ def _make_subagent_tool(
             is_subagent=True,
         )
         session = create_session(sub_sid, checkpointer)
-        hitl = _make_hitl(interrupt_tools)
+        hitl = _make_hitl(
+            interrupt_tools, approval_fn=runner._hitl_approval_fn
+        )
         wrapped = apply_tool_pipeline(
             list(agent.tools),
             backend,
@@ -337,6 +352,7 @@ class DeepAgentRunner:
         agent_name: str,
         description: str,
         interrupt_tools: list[str],
+        hitl_approval_fn: HitlApprovalFn | None = None,
     ) -> None:
         self._agent = agent
         self._backend = backend
@@ -348,6 +364,7 @@ class DeepAgentRunner:
         self._agent_name = agent_name
         self.description = description
         self._interrupt_tools = interrupt_tools
+        self._hitl_approval_fn = hitl_approval_fn
 
     def _make_ctx(self, session_id: str, resume: bool) -> AgentContext:
         si = _skills_prompt_for_backend(self._backend, self._skill_roots)
@@ -366,7 +383,9 @@ class DeepAgentRunner:
         return FilesystemHooks(self._backend)
 
     def _prepare_agent(self) -> Agent:
-        hitl = _make_hitl(self._interrupt_tools)
+        hitl = _make_hitl(
+            self._interrupt_tools, approval_fn=self._hitl_approval_fn
+        )
         wrapped = apply_tool_pipeline(
             list(self._agent.tools),
             self._backend,
@@ -420,6 +439,7 @@ class DeepAgentRunner:
         *,
         session_id: str | None = None,
         resume: bool = False,
+        stream_sink: Callable[[Any], Awaitable[None]] | None = None,
     ):
         sid = session_id or uuid.uuid4().hex
         ctx = self._make_ctx(sid, resume)
@@ -434,7 +454,33 @@ class DeepAgentRunner:
             max_turns=self._max_turns,
         )
         async for event in stream.stream_events():
+            if stream_sink is not None:
+                await stream_sink(event)
             yield event
+
+    async def run_with_stream_sink(
+        self,
+        task: str,
+        *,
+        session_id: str | None = None,
+        resume: bool = False,
+        stream_sink: Callable[[Any], Awaitable[None]],
+    ) -> DeepRunResult:
+        sid = session_id or uuid.uuid4().hex
+        ctx = self._make_ctx(sid, resume)
+        session = create_session(sid, self._checkpointer)
+        agent = self._prepare_agent()
+        stream: RunResultStreaming = Runner.run_streamed(
+            agent,
+            task,
+            context=ctx,
+            session=session,
+            hooks=self._make_hooks(),
+            max_turns=self._max_turns,
+        )
+        async for event in stream.stream_events():
+            await stream_sink(event)
+        return DeepRunResult(output=stream.final_output, session_id=sid, plan=ctx.plan)
 
 
 class DeepRunResult:
@@ -451,18 +497,14 @@ class DeepRunResult:
 
 
 def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
+    _ = backend
     if not memory:
         return ""
     parts: list[str] = []
     for path in memory:
-        p = Path(path)
+        p = Path(path).expanduser()
         if p.is_file():
             parts.append(p.read_text(encoding="utf-8", errors="replace"))
-        else:
-            ap = path if path.startswith("/") else "/_memory_/" + path.lstrip("/")
-            rr = backend.read("default", ap, 0, 10_000_000)
-            if rr.content is not None and not rr.error:
-                parts.append(rr.content)
     return "\n\n".join(parts)
 
 

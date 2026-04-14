@@ -1,0 +1,7 @@
+[project]
+watch = false
+
+[UI]
+layout = "wide"
+cot = "tool"
+name = "Deepx"
