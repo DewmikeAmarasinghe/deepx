@@ -17,7 +17,6 @@ load_dotenv()
 
 from deepx import create_deep_agent  # noqa: E402
 from deepx.backends.protocol import BackendProtocol  # noqa: E402
-
 from test_demo.sql_tools import create_sql_tools  # noqa: E402
 
 DEMO_DIR = _DEMO_DIR
@@ -136,4 +135,6 @@ if __name__ == "__main__":
     _resume = f"{sys.executable} {_script}"
     out = runner.run_sync(default_task_for_current_db(), session_id=sid)
     print(out.output)
-    print(f"\nSession: {out.session_id}\nTo resume with this script + same history: `{_resume}` (see script help for session args).\n")
+    print(
+        f"\nSession: {out.session_id}\nTo resume with this script + same history: `{_resume}` (see script help for session args).\n"
+    )

@@ -3,13 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
 from typing import Any
 
 from dotenv import load_dotenv
 from temporalio.client import Client, WorkflowHandle
-from temporalio.common import RetryPolicy
-from temporalio.contrib.openai_agents import ModelActivityParameters, OpenAIAgentsPlugin
 
 from test_demo.temporal.workflows import (
     TASK_QUEUE,
@@ -20,18 +17,7 @@ from test_demo.temporal.workflows import (
 
 async def connect_temporal_client() -> Client:
     load_dotenv()
-    return await Client.connect(
-        "localhost:7233",
-        namespace="default",
-        plugins=[
-            OpenAIAgentsPlugin(
-                model_params=ModelActivityParameters(
-                    start_to_close_timeout=timedelta(minutes=15),
-                    retry_policy=RetryPolicy(maximum_attempts=5),
-                ),
-            ),
-        ],
-    )
+    return await Client.connect("localhost:7233", namespace="default")
 
 
 async def start_orchestrator_workflow(

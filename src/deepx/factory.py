@@ -19,8 +19,8 @@ from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
 from deepx.middleware.hitl import HumanInTheLoopHooks
-from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.middleware.observability import setup_observability
+from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.sessions import create_session
 from deepx.system_prompt import (
     build_system_prompt,
@@ -209,7 +209,9 @@ def _resolve_subagent_spec(
     max_turns: int,
     parent_response_format: type | None,
     hitl_approval_fn: HitlApprovalFn | None,
-    parent_run_middleware: tuple[RunHooksBase[AgentContext, AgentType[AgentContext]], ...] = (),
+    parent_run_middleware: tuple[
+        RunHooksBase[AgentContext, AgentType[AgentContext]], ...
+    ] = (),
 ) -> "DeepAgentRunner":
     if isinstance(spec, DeepAgentRunner):
         return spec
@@ -368,7 +370,9 @@ class DeepAgentRunner:
         description: str,
         interrupt_tools: list[str],
         hitl_approval_fn: HitlApprovalFn | None = None,
-        middleware_hooks: tuple[RunHooksBase[AgentContext, AgentType[AgentContext]], ...] = (),
+        middleware_hooks: tuple[
+            RunHooksBase[AgentContext, AgentType[AgentContext]], ...
+        ] = (),
     ) -> None:
         self._agent = agent
         self._backend = backend

@@ -6,7 +6,7 @@ from agents import RunContextWrapper, function_tool
 
 from deepx.context import AgentContext
 
-_THINK_DESCRIPTION = """\
+THINK_DESCRIPTION = """\
 Use this tool when you need to think out loud before deciding what to do next.
 
 Good times to call it:
@@ -28,14 +28,18 @@ help you reason through an ambiguous or unexpected situation.\
 """
 
 
-@function_tool(description_override=_THINK_DESCRIPTION)
+@function_tool(description_override=THINK_DESCRIPTION)
 def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
     """Think through the current situation before acting or before updating your plan."""
     todos = [
         {"id": t.id, "title": t.title, "status": t.status.value}
         for t in ctx.context.plan.todos
     ]
-    plan_block = json.dumps(todos, indent=2) if todos else "(no plan yet — write_todos has not been called)"
+    plan_block = (
+        json.dumps(todos, indent=2)
+        if todos
+        else "(no plan yet — write_todos has not been called)"
+    )
 
     return (
         f"Current plan:\n{plan_block}\n\n"

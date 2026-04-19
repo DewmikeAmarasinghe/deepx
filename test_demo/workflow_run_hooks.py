@@ -99,7 +99,6 @@ class WorkflowRunHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
                 {
                     "kind": "llm",
                     "agent_name": agent.name,
-                    "output_preview": preview
-                    + ("…" if len(preview) >= 4000 else ""),
+                    "output_preview": preview + ("…" if len(preview) >= 4000 else ""),
                 }
             )

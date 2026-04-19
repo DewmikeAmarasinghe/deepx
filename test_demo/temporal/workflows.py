@@ -1,15 +1,16 @@
-"""Temporal workflow: OpenAI Agents SDK runs inside the workflow task (OpenAIAgentsPlugin).
+"""Temporal workflow: delegates the Agents SDK run to an activity (avoids workflow sandbox limits).
 
-Model and tool steps are recorded as Temporal activities by the plugin — do not wrap the full
-orchestrator in a single custom activity. Discrete run snapshots are exposed via
-``get_stream_events`` for the Chainlit demo (query polling; no token streaming in workflow).
+Stream rows are sent from the activity via signals and exposed through ``get_stream_events`` for
+Chainlit polling. See https://docs.temporal.io/ai-cookbook/openai-agents-sdk-python
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
 TASK_QUEUE = "deepx-orchestrator-demo"
 
@@ -30,28 +31,34 @@ class DeepxOrchestratorWorkflow:
         """Hook-fed rows for UI polling (tool boundaries, optional LLM summaries)."""
         return list(self._stream_events)
 
+    @workflow.signal
+    def append_stream_events(self, rows: list[dict]) -> None:
+        """Activity → workflow: batched stream rows for Chainlit."""
+        for row in rows:
+            if isinstance(row, dict):
+                self._stream_events.append(row)
+        if len(self._stream_events) > 12_000:
+            self._stream_events[:] = self._stream_events[-8000:]
+
     @workflow.run
     async def run(self, inp: DeepxOrchestratorInput) -> str:
         with workflow.unsafe.imports_passed_through():
-            from deepx.middleware.filesystem import FilesystemHooks
-            from deepx.middleware.run_hooks import compose_run_hooks
-            from test_demo import orchestrator as orch
-            from test_demo.workflow_run_hooks import WorkflowRunHooks
+            from test_demo.temporal.activities import (
+                DeepxOrchestratorActivityInput,
+                run_orchestrator_activity,
+            )
 
-            runner = orch.build_orchestrator_runner(
-                hitl_approval_fn=lambda *_a, **_k: True,
-            )
-            wf_hooks = compose_run_hooks(
-                FilesystemHooks(runner.backend),
-                WorkflowRunHooks(self._stream_events),
-            )
-            result = await runner.run(
-                inp.prompt,
-                session_id=inp.session_id,
-                resume=False,
-                hooks=wf_hooks,
-            )
-            self._stream_events.append(
-                {"kind": "done", "output_preview": str(result.output)[:8000]},
-            )
-            return str(result.output)
+        act_inp = DeepxOrchestratorActivityInput(
+            prompt=inp.prompt,
+            session_id=inp.session_id,
+        )
+        result = await workflow.execute_activity(
+            run_orchestrator_activity,
+            act_inp,
+            start_to_close_timeout=timedelta(minutes=45),
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+        self._stream_events.append(
+            {"kind": "done", "output_preview": str(result)[:8000]},
+        )
+        return str(result)

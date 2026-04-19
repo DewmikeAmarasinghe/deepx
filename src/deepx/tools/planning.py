@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -12,6 +13,23 @@ from deepx.middleware.logs import (
     run_log_append_plan_event,
     run_log_save_plan,
 )
+
+
+def _slug_id(title: str, *, used: set[str]) -> str:
+    """Short kebab-case id from a todo title; guarantees uniqueness within ``used``."""
+    s = (title or "").strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+    if not s:
+        s = "task"
+    base = s[:48]
+    cand = base
+    n = 2
+    while cand in used:
+        suf = f"-{n}"
+        cand = base[: max(1, 48 - len(suf))] + suf
+        n += 1
+    used.add(cand)
+    return cand
 
 
 class TodoStatus(str, Enum):
@@ -40,9 +58,16 @@ class Plan(BaseModel):
 
     @model_validator(mode="after")
     def ensure_todo_ids(self) -> Plan:
+        used: set[str] = set()
         new: list[Todo] = []
-        for i, t in enumerate(self.todos):
-            nid = t.id if t.id else str(i + 1)
+        for t in self.todos:
+            nid = (t.id or "").strip()
+            if not nid:
+                nid = _slug_id(t.title, used=used)
+            elif nid in used:
+                nid = _slug_id(t.title, used=used)
+            else:
+                used.add(nid)
             new.append(t.model_copy(update={"id": nid}))
         self.todos = new
         return self
@@ -66,13 +91,16 @@ class TodoInput(BaseModel):
 
 
 class TodoPatch(BaseModel):
-    id: str = Field(description="Numeric todo id from the plan, e.g. '1', '2'.")
+    id: str = Field(
+        description="Todo id from the plan (short kebab-case slug), e.g. 'fetch-docs', 'run-sql'."
+    )
     title: str | None = None
     status: str | None = None
 
 
 WRITE_TODOS_TOOL_DESCRIPTION = """\
-Replace the entire task list (initial plan or full reset). Assigns todo ids `1`, `2`, `3`, … in order.
+Replace the entire task list (initial plan or full reset). Each todo gets a **short kebab-case id**
+derived from its title (e.g. `draft-outline`, `fetch-pricing`).
 
 **When to call:** First time you need a plan for multi-step work, or when you want to discard the
 current list and start fresh.
@@ -89,14 +117,15 @@ current list and start fresh.
 
 
 UPDATE_TODOS_TOOL_DESCRIPTION = """\
-Patch existing todos by id (ids are `1`, `2`, `3`, … as shown in the plan). Use this for most updates
-after the plan exists — cheaper than rewriting the full list.
+Patch existing todos by **id** (the slug shown in brackets in the plan, e.g. `[fetch-docs]`). Use this
+for most updates after the plan exists — cheaper than rewriting the full list.
 
 For each patch, provide `id` and optionally `title` and/or `status`. Omitted fields stay unchanged.
 
 **Examples:**
-- Mark step 1 done and step 2 active: two patches `{id: "1", status: "completed"}` and `{id: "2", status: "in_progress"}`.
-- Rename step 3: `{id: "3", title: "New title"}`.
+- Mark `draft-outline` done and `gather-sources` active: two patches
+  `{id: "draft-outline", status: "completed"}` and `{id: "gather-sources", status: "in_progress"}`.
+- Rename a step: `{id: "run-sql", title: "Run read-only revenue query"}`.
 
 If an id does not exist, the tool returns an error listing valid ids.
 """
@@ -107,14 +136,15 @@ def write_todos(
     ctx: RunContextWrapper[AgentContext],
     todos: list[TodoInput],
 ) -> str:
-    """Replace the full todo list; ids are reassigned 1..n."""
+    """Replace the full todo list; ids are unique slugs from titles."""
+    used: set[str] = set()
     ctx.context.plan.todos = [
         Todo(
-            id=str(i + 1),
+            id=_slug_id(t.content, used=used),
             title=t.content,
             status=_safe_status(t.status),
         )
-        for i, t in enumerate(todos)
+        for t in todos
     ]
     ctx.context.plan.updated_at = datetime.now(timezone.utc).isoformat()
     _persist_plan(ctx)
@@ -122,7 +152,10 @@ def write_todos(
         entry = {
             "timestamp": ctx.context.plan.updated_at,
             "agent": ctx.context.agent_name,
-            "todos": [{"id": t.id, "content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
+            "todos": [
+                {"id": t.id, "content": t.title, "status": t.status.value}
+                for t in ctx.context.plan.todos
+            ],
         }
         run_log_append_plan_event(
             ctx.context.backend, ctx.context.session_id, json.dumps(entry)
@@ -139,9 +172,7 @@ def update_todos(
     if not ctx.context.plan.todos:
         return "No plan yet. Call write_todos first."
     by_id = {t.id: t for t in ctx.context.plan.todos}
-    valid = ", ".join(
-        sorted(by_id.keys(), key=lambda x: int(x) if x.isdigit() else 0)
-    )
+    valid = ", ".join(sorted(by_id.keys(), key=str))
     for p in patches:
         if p.id not in by_id:
             return f"Unknown todo id {p.id!r}. Valid ids: {valid}"
@@ -157,7 +188,10 @@ def update_todos(
         entry = {
             "timestamp": ctx.context.plan.updated_at,
             "agent": ctx.context.agent_name,
-            "todos": [{"id": t.id, "content": t.title, "status": t.status.value} for t in ctx.context.plan.todos],
+            "todos": [
+                {"id": t.id, "content": t.title, "status": t.status.value}
+                for t in ctx.context.plan.todos
+            ],
         }
         run_log_append_plan_event(
             ctx.context.backend, ctx.context.session_id, json.dumps(entry)
@@ -166,10 +200,7 @@ def update_todos(
 
 
 def _format_plan(ctx: RunContextWrapper[AgentContext]) -> str:
-    lines = [
-        f"[{t.id}] ({t.status.value}) {t.title}"
-        for t in ctx.context.plan.todos
-    ]
+    lines = [f"[{t.id}] ({t.status.value}) {t.title}" for t in ctx.context.plan.todos]
     return "Plan saved:\n" + "\n".join(lines)
 
 

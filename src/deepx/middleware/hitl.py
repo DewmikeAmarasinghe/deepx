@@ -47,11 +47,7 @@ class HumanInTheLoopHooks:
             if inspect.iscoroutinefunction(fn):
                 approved = await fn(agent_name, tool_name, tool_args_json)
             else:
-                loop = asyncio.get_event_loop()
-                approved = await loop.run_in_executor(
-                    None,
-                    lambda: fn(agent_name, tool_name, tool_args_json),
-                )
+                approved = fn(agent_name, tool_name, tool_args_json)
             if not approved:
                 return (
                     f"[Human-in-the-loop] The human declined approval for tool {tool_name!r}. "

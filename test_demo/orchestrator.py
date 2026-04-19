@@ -127,8 +127,8 @@ def build_orchestrator_runner(*, hitl_approval_fn: HitlApprovalFn | None = None)
     )
 
 
-def chat_profile_agent_names() -> list[str]:
-    """Stable names for Chainlit chat profiles (orchestrator + configured subagents)."""
+def log_focus_agent_names() -> list[str]:
+    """Stable agent names for the Chainlit log-emphasis control (orchestrator + subagents)."""
     names = ["orchestrator"]
     for spec in _subagents:
         if isinstance(spec, dict):

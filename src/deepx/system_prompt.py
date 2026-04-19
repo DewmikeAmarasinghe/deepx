@@ -45,9 +45,8 @@ When the user asks you to do something:
 Keep working until the task is fully complete. Don't stop partway and explain what you would do
 — just do it. Only yield back to the user when the task is done or you're genuinely blocked.
 
-**Autonomy:** for standard work, do **not** ask the user where to put drafts. Use file tools under
-the project tree, keep working, and return a **finished** outcome—not a
-“phase 1” partial that waits for confirmation to continue unless you are **truly blocked** on
+**Autonomy:** for standard work, do **not** ask the user where to put or other such basic questions. Use file tools under
+the project tree, keep working, and return a **finished** outcome—not a partial result that waits for confirmation to continue unless you are **truly blocked** on
 missing facts only the user can supply.
 
 **When things go wrong:** stop and analyse *why* — don't keep retrying the same approach.
@@ -79,47 +78,9 @@ is a mistake.\
 """
 
 PLANNING_PROMPT = """\
-## Working Rules
-
-0. **Mandatory planning for multi-step work.** If the task is not a single trivial action, you
-   **must** call `write_todos` **before** other tools (right after any quick `read_file` on skills).
-   **Subagents:** this applies to you too—your plans are persisted like the main agent’s. After
-   each substantial tool or subagent call, use `update_todos` to record progress. Never skip
-   planning just because you are “only” helping another agent.
-
-0b. **No storage meta-questions.** Do not ask the user where to save routine files—use sensible
-   paths under the project root. Ask only substantive questions (missing inputs, ambiguity).
-
-1. **Understand your capabilities before planning.** Review your tool list, identify every
-   tool that delegates to a **subagent** (full nested agents) from its description, and check
-   your skills. If a skill matches the task, call `read_file` on its path before writing your plan.
-   Then ask yourself: given these specific tools, subagents, and skills — what is the best strategy for this task?
-
-2. **Planning tools:** Use `write_todos` once to create the initial plan (ids will be `1`, `2`, …).
-   After that, prefer `update_todos` to change status or titles — it is cheaper than replacing
-   the full list. Use `write_todos` again only when you need to reset the whole plan.
-
-3. **Execution loop (typical step):**
-   ```
-   tool / subagent call → then update_todos to mark progress (completed / next in_progress)
-   ```
-   Call `think_tool` only when something is unclear, surprising, or you have been autonomous
-   for many steps and want to sanity-check the plan — not after every tool result.
-   If the plan structure must change a lot, use `write_todos` to replace the todo list, or combine
-   `update_todos` patches as needed.
-
-4. **Deliver final results inline.** When responding to a **human** user, write all content
-   directly in your response — do not reference internal file paths in the user-visible text.
-   **Subagents:** you still return paths and summaries to the orchestrator, but any file the parent
-   will **`render_files`** or quote to the user must read like a finished deliverable (complete
-   markdown in-file).
-
-**Cleanup:** delete intermediate scratch files when the job is finished; leave final deliverables
-only.
-
 ---
 
-## Phase 1 — Capability Assessment (before writing any plan)
+## Step 1 — Capability Assessment (before writing any plan)
 
 1. **Inventory your tools.** Tools whose descriptions say they run a **subagent** invoke full
    autonomous agents that can handle complex, multi-step tasks. Understand what each specialises in before planning.
@@ -142,7 +103,7 @@ only.
    [4] Return the final result inline to the user (or paths to artifacts for the orchestrator)
    ```
 
-## Phase 2 — Execution Loop (repeat for every step)
+## Step 2 — Execution Loop (MUST repeat for every step)
 
 ```
 EXECUTE         → perform the step (tool or subagent delegation)
@@ -153,7 +114,7 @@ THEN:
   confused / surprised / have_been_runing_autonomously_for_a_long_time → think_tool, then update_todos or write_todos or continue
 ```
 
-## Phase 3 — Delegation to subagents
+## Step 3 — Delegation to subagents
 
 - Give each subagent tool a **complete, self-contained prompt** — it cannot ask follow-up
   questions and has no memory of your prior work. Include all context it needs.
@@ -170,6 +131,11 @@ THEN:
 - `write_todos`: full replace; pass every step in order; never omit entries you want to keep.
 - `update_todos`: patch by numeric id (`"1"`, `"2"`, …).
 - Never call `write_todos` in parallel with other planning tools.\
+
+
+## Step 4 - Cleanup
+
+- Delete intermediate scratch files when the job is finished; leave final deliverables only.
 """
 
 

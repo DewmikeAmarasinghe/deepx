@@ -6,6 +6,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,6 +38,7 @@ def pdf_agent_spec(*, checkpointer: str) -> dict:
         "skills": [str(PDF_SKILLS_DIR)],
         "checkpointer": checkpointer,
     }
+
 
 TASK = """
 I have two research PDFs at `/test_demo/pdfs/attention.pdf` and `/test_demo/pdfs/gpt4.pdf` and I

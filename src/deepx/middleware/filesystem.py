@@ -35,9 +35,10 @@ def _tool_call_id(ctx: Any) -> str:
 
 
 def _readable_large_tool_agent_path(tool_name: str, tool_call_id: str) -> str:
-    base = re.sub(r"[^a-zA-Z0-9_-]+", "_", (tool_name or "tool").strip()).strip("_")[
-        :48
-    ] or "tool"
+    base = (
+        re.sub(r"[^a-zA-Z0-9_-]+", "_", (tool_name or "tool").strip()).strip("_")[:48]
+        or "tool"
+    )
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     if tool_call_id == "unknown_tool_call":
         suffix = uuid.uuid4().hex[:8]

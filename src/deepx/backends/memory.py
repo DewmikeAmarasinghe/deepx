@@ -3,7 +3,6 @@ from __future__ import annotations
 from wcmatch import fnmatch as wc_fnmatch
 
 from deepx.backends.filesystem import OUTPUTS_LARGE_TOOL_RESULTS_PREFIX
-
 from deepx.backends.protocol import (
     BackendProtocol,
     EditResult,
