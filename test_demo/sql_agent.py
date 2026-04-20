@@ -1,8 +1,7 @@
-"""SQLite demo subagent: set ``SQLITE_DB`` (filename under test_dbs) or ``SQLITE_DB_PATH`` (any .db file)."""
+"""SQLite demo subagent: multi-database tools under ``test_demo/dbs/test_dbs``."""
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -15,31 +14,15 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from deepx import create_deep_agent  # noqa: E402
 from deepx.backends.protocol import BackendProtocol  # noqa: E402
+from deepx.defaults import DEFAULT_MODEL  # noqa: E402
+from deepx.factory import create_deep_agent  # noqa: E402
 from test_demo.sql_tools import create_sql_tools  # noqa: E402
 
 DEMO_DIR = _DEMO_DIR
 REPO_ROOT = _REPO_ROOT
 TEST_DBS = DEMO_DIR / "dbs" / "test_dbs"
 SQL_SKILLS_DIR = DEMO_DIR / "skills" / "sql"
-
-
-def _db_path() -> Path:
-    """Resolve DB: ``SQLITE_DB_PATH`` (absolute file) or ``SQLITE_DB`` (name or path; default ``chinook.db`` under ``test_dbs``)."""
-    raw_path = os.environ.get("SQLITE_DB_PATH", "").strip()
-    if raw_path:
-        p = Path(raw_path).expanduser().resolve()
-        if not p.is_file():
-            raise FileNotFoundError(f"SQLITE_DB_PATH is not a file: {p}")
-        return p
-    raw = os.environ.get("SQLITE_DB", "chinook.db").strip() or "chinook.db"
-    p = Path(raw).expanduser()
-    if p.is_absolute() or p.parent != Path("."):
-        p = p.resolve()
-    else:
-        p = (TEST_DBS / raw).resolve()
-    return p
 
 
 TASK_BY_STEM: dict[str, str] = {
@@ -74,67 +57,43 @@ and a short narrative for a developer who has not seen this file before.
 """
 
 
-def build_sql_agent_runner(*, backend: BackendProtocol, checkpointer: str):
-    try:
-        path = _db_path()
-    except (FileNotFoundError, OSError):
+def build_sql_runner(*, backend: BackendProtocol, checkpointer: str, debug: bool = False):
+    """Runner for read-only SQL over *.db files in ``test_dbs`` (pass ``db`` on each tool call)."""
+    if not TEST_DBS.is_dir():
         return None
-    if not path.is_file():
+    if not any(TEST_DBS.glob("*.db")):
         return None
-    tools = create_sql_tools(str(path), tool_prefix="sql")
+    tools = create_sql_tools(TEST_DBS, tool_prefix="sql")
+    available = ", ".join(sorted(p.name for p in TEST_DBS.glob("*.db"))) or "(none)"
     return create_deep_agent(
+        model=DEFAULT_MODEL,
         name="sql_agent",
         description=(
-            "Read-only SQL over the configured SQLite database "
-            "(sql_db_list_tables, sql_db_schema, sql_db_query)."
+            "Read-only SQL over allowlisted SQLite files in test_dbs "
+            "(sql_db_list_tables, sql_db_schema, sql_db_query). "
+            "Pass ``db`` (e.g. chinook.db or northwind.db) on every tool call. "
+            "Use handoff for long exploratory sessions."
         ),
         tools=tools,
         skills=[str(SQL_SKILLS_DIR)],
         system_prompt=(
-            "You answer questions about the **configured** SQLite database only. "
-            "Use sql_db_list_tables, sql_db_schema, and sql_db_query. "
+            "You answer questions using the **sql_*** tools only against databases under "
+            "**test_demo/dbs/test_dbs**. Each tool requires a ``db`` argument: a filename present "
+            f"there (available now: {available}).\n"
+            "Use **chinook.db** for music retail demos and **northwind.db** for classic retail "
+            "scenarios unless the user specifies otherwise.\n"
             "Read schema-exploration and query-writing skills when the task is non-trivial. "
-            "For multi-part asks, call write_todos first, then update_todos as you finish each part. "
+            "For multi-part asks, call write_todos first, then call write_todos again with an updated "
+            "full list as you finish each part. "
             "Return clear tables and explicit SQL."
         ),
-        checkpointer=checkpointer,
         backend=backend,
+        checkpointer=checkpointer,
+        debug=debug,
+        include_general_purpose=False,
+        subagents=None,
     )
 
 
-def default_task_for_current_db() -> str:
-    stem = _db_path().stem
+def default_task_for_stem(stem: str) -> str:
     return TASK_BY_STEM.get(stem, DEFAULT_TASK)
-
-
-if __name__ == "__main__":
-    import uuid
-
-    from deepx.backends.local_shell import LocalShellBackend
-
-    TEST_DBS.mkdir(parents=True, exist_ok=True)
-    (DEMO_DIR / "dbs" / "agent_dbs").mkdir(parents=True, exist_ok=True)
-
-    try:
-        db_path = _db_path()
-    except FileNotFoundError as e:
-        print(e, file=sys.stderr)
-        sys.exit(1)
-
-    stem = db_path.stem
-    cp = str(DEMO_DIR / "dbs" / "agent_dbs" / f"sql_agent_{stem}.db")
-    runner = build_sql_agent_runner(
-        backend=LocalShellBackend(REPO_ROOT),
-        checkpointer=cp,
-    )
-    if runner is None:
-        print(f"Missing database file: {db_path}", file=sys.stderr)
-        sys.exit(1)
-    sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-    _script = Path(__file__).resolve()
-    _resume = f"{sys.executable} {_script}"
-    out = runner.run_sync(default_task_for_current_db(), session_id=sid)
-    print(out.output)
-    print(
-        f"\nSession: {out.session_id}\nTo resume with this script + same history: `{_resume}` (see script help for session args).\n"
-    )

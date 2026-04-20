@@ -16,7 +16,6 @@ from deepx.middleware.logs import (
 
 
 def _slug_id(title: str, *, used: set[str]) -> str:
-    """Short kebab-case id from a todo title; guarantees uniqueness within ``used``."""
     s = (title or "").strip().lower()
     s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
     if not s:
@@ -36,14 +35,13 @@ class TodoStatus(str, Enum):
     pending = "pending"
     in_progress = "in_progress"
     completed = "completed"
-    cancelled = "cancelled"
 
 
 class Todo(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     id: str = ""
-    title: str
+    content: str = Field(default="", description="Todo description.")
     status: TodoStatus = TodoStatus.pending
 
 
@@ -63,9 +61,9 @@ class Plan(BaseModel):
         for t in self.todos:
             nid = (t.id or "").strip()
             if not nid:
-                nid = _slug_id(t.title, used=used)
+                nid = _slug_id(t.content, used=used)
             elif nid in used:
-                nid = _slug_id(t.title, used=used)
+                nid = _slug_id(t.content, used=used)
             else:
                 used.add(nid)
             new.append(t.model_copy(update={"id": nid}))
@@ -90,44 +88,85 @@ class TodoInput(BaseModel):
     status: str = "pending"
 
 
-class TodoPatch(BaseModel):
-    id: str = Field(
-        description="Todo id from the plan (short kebab-case slug), e.g. 'fetch-docs', 'run-sql'."
-    )
-    title: str | None = None
-    status: str | None = None
+WRITE_TODOS_TOOL_DESCRIPTION = """Use this tool to create and manage a structured task list for your current work session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 
+Only use this tool if you think it will be helpful in staying organized. If the user's request is trivial and takes less than 3 steps, it is better to NOT use this tool and just do the task directly.
 
-WRITE_TODOS_TOOL_DESCRIPTION = """\
-Replace the entire task list (initial plan or full reset). Each todo gets a **short kebab-case id**
-derived from its title (e.g. `draft-outline`, `fetch-pricing`).
+## When to Use This Tool
+Use this tool in these scenarios:
 
-**When to call:** First time you need a plan for multi-step work, or when you want to discard the
-current list and start fresh.
+1. Complex multi-step tasks - When a task requires 3 or more distinct steps or actions
+2. Non-trivial and complex tasks - Tasks that require careful planning or multiple operations
+3. User explicitly requests todo list - When the user directly asks you to use the todo list
+4. User provides multiple tasks - When users provide a list of things to be done (numbered or comma-separated)
+5. The plan may need future revisions or updates based on results from the first few steps
 
-**Prefer `update_todos`** for small changes after a plan exists (mark one step completed, tweak a title).
+## How to Use This Tool
+1. When you start working on a task - Mark it as in_progress BEFORE beginning work.
+2. After completing a task - Mark it as completed and add any new follow-up tasks discovered during implementation.
+3. You can also update future tasks, such as deleting them if they are no longer necessary, or adding new tasks that are necessary. Don't change previously completed tasks.
+4. You can make several updates to the todo list at once. For example, when you complete a task, you can mark the next task you need to start as in_progress.
 
-**Rules:**
-- Pass every step in order. Mark the first step `in_progress`, later steps `pending` until you advance.
-- When a step completes, use `update_todos` to set it `completed` and the next `in_progress`.
-- Never call `write_todos` in parallel with other planning tools.
+## When NOT to Use This Tool
+It is important to skip using this tool when:
+1. There is only a single, straightforward task
+2. The task is trivial and tracking it provides no benefit
+3. The task can be completed in less than 3 trivial steps
+4. The task is purely conversational or informational
 
-**States:** `pending`, `in_progress`, `completed`, `cancelled`
+## Task States and Management
+
+1. **Task States**: Use these states to track progress:
+   - pending: Task not yet started
+   - in_progress: Currently working on (you can have multiple tasks in_progress at a time if they are not related to each other and can be run in parallel)
+   - completed: Task finished successfully
+
+2. **Task Management**:
+   - Update task status in real-time as you work
+   - Mark tasks complete IMMEDIATELY after finishing (don't batch completions)
+   - Complete current tasks before starting new ones
+   - Remove tasks that are no longer relevant from the list entirely
+   - IMPORTANT: When you write this todo list, you should mark your first task (or tasks) as in_progress immediately!.
+   - IMPORTANT: Unless all tasks are completed, you should always have at least one task in_progress to show the user that you are working on something.
+
+3. **Task Completion Requirements**:
+   - ONLY mark a task as completed when you have FULLY accomplished it
+   - If you encounter errors, blockers, or cannot finish, keep the task as in_progress
+   - When blocked, create a new task describing what needs to be resolved
+   - Never mark a task as completed if:
+     - There are unresolved issues or errors
+     - Work is partial or incomplete
+     - You encountered blockers that prevent completion
+     - You couldn't find necessary resources or dependencies
+     - Quality standards haven't been met
+
+4. **Task Breakdown**:
+   - Create specific, actionable items
+   - Break complex tasks into smaller, manageable steps
+   - Use clear, descriptive task names
+
+Being proactive with task management demonstrates attentiveness and ensures you complete all requirements successfully
+Remember: If you only need to make a few tool calls to complete a task, and it is clear what you need to do, it is better to just do the task directly and NOT call this tool at all.
+
+**Full list replace:** Each call replaces the entire todo list. Pass every item you want to keep, in order.
+
+**Parallel calls:** Never call `write_todos` multiple times in parallel in the same model turn.
 """
 
 
-UPDATE_TODOS_TOOL_DESCRIPTION = """\
-Patch existing todos by **id** (the slug shown in brackets in the plan, e.g. `[fetch-docs]`). Use this
-for most updates after the plan exists — cheaper than rewriting the full list.
+WRITE_TODOS_SYSTEM_APPENDIX = """## `write_todos`
 
-For each patch, provide `id` and optionally `title` and/or `status`. Omitted fields stay unchanged.
+You have access to the `write_todos` tool to help you manage and plan complex objectives.
+Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
+This tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.
 
-**Examples:**
-- Mark `draft-outline` done and `gather-sources` active: two patches
-  `{id: "draft-outline", status: "completed"}` and `{id: "gather-sources", status: "in_progress"}`.
-- Rename a step: `{id: "run-sql", title: "Run read-only revenue query"}`.
+It is critical that you mark todos as completed as soon as you are done with a step. Do not batch up multiple steps before marking them as completed.
+For simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.
+Writing todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.
 
-If an id does not exist, the tool returns an error listing valid ids.
+## Important To-Do List Usage Notes to Remember
+- The `write_todos` tool should never be called multiple times in parallel.
+- Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
 """
 
 
@@ -136,12 +175,12 @@ def write_todos(
     ctx: RunContextWrapper[AgentContext],
     todos: list[TodoInput],
 ) -> str:
-    """Replace the full todo list; ids are unique slugs from titles."""
+    """Create and manage a structured task list for your current work session (full replace)."""
     used: set[str] = set()
     ctx.context.plan.todos = [
         Todo(
             id=_slug_id(t.content, used=used),
-            title=t.content,
+            content=t.content,
             status=_safe_status(t.status),
         )
         for t in todos
@@ -153,43 +192,7 @@ def write_todos(
             "timestamp": ctx.context.plan.updated_at,
             "agent": ctx.context.agent_name,
             "todos": [
-                {"id": t.id, "content": t.title, "status": t.status.value}
-                for t in ctx.context.plan.todos
-            ],
-        }
-        run_log_append_plan_event(
-            ctx.context.backend, ctx.context.session_id, json.dumps(entry)
-        )
-    return _format_plan(ctx)
-
-
-@function_tool(description_override=UPDATE_TODOS_TOOL_DESCRIPTION)
-def update_todos(
-    ctx: RunContextWrapper[AgentContext],
-    patches: list[TodoPatch],
-) -> str:
-    """Apply patches to existing todos by id."""
-    if not ctx.context.plan.todos:
-        return "No plan yet. Call write_todos first."
-    by_id = {t.id: t for t in ctx.context.plan.todos}
-    valid = ", ".join(sorted(by_id.keys(), key=str))
-    for p in patches:
-        if p.id not in by_id:
-            return f"Unknown todo id {p.id!r}. Valid ids: {valid}"
-    for p in patches:
-        t = by_id[p.id]
-        if p.title is not None:
-            t.title = p.title
-        if p.status is not None:
-            t.status = _safe_status(p.status)
-    ctx.context.plan.updated_at = datetime.now(timezone.utc).isoformat()
-    _persist_plan(ctx)
-    if ctx.context.debug:
-        entry = {
-            "timestamp": ctx.context.plan.updated_at,
-            "agent": ctx.context.agent_name,
-            "todos": [
-                {"id": t.id, "content": t.title, "status": t.status.value}
+                {"id": t.id, "content": t.content, "status": t.status.value}
                 for t in ctx.context.plan.todos
             ],
         }
@@ -200,7 +203,7 @@ def update_todos(
 
 
 def _format_plan(ctx: RunContextWrapper[AgentContext]) -> str:
-    lines = [f"[{t.id}] ({t.status.value}) {t.title}" for t in ctx.context.plan.todos]
+    lines = [f"[{t.id}] ({t.status.value}) {t.content}" for t in ctx.context.plan.todos]
     return "Plan saved:\n" + "\n".join(lines)
 
 

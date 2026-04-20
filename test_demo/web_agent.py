@@ -6,7 +6,6 @@ import asyncio
 import json
 import os
 import sys
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,10 @@ if str(_REPO_ROOT) not in sys.path:
 import httpx  # noqa: E402
 from agents import RunContextWrapper, function_tool  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
+
+from deepx.backends.protocol import BackendProtocol  # noqa: E402
+from deepx.defaults import DEFAULT_MODEL  # noqa: E402
+from deepx.factory import create_deep_agent  # noqa: E402
 
 load_dotenv()
 
@@ -38,13 +41,18 @@ def _strip_images(obj: Any) -> Any:
     return obj
 
 
-@function_tool
+@function_tool(needs_approval=True)
 async def web_search(ctx: RunContextWrapper, queries: list[str]) -> str:
     """
     Search the public web using the **Tavily** API (hosted index).
 
-    Many parallel queries return one large JSON string; oversized returns may be written under
-    ``/_outputs/large_tool_results/...`` (see framework prompt) with a preview in the tool message.
+    **Output:** JSON array of objects, one per query. Each object includes:
+    ``query``, optional ``answer`` summary, and ``results`` (up to **5** URL hits per query with
+    title, url, and snippet-style fields from Tavily).
+
+    Multiple queries run **in parallel**; the tool returns one JSON string for all of them.
+    Oversized returns may be written under ``/_outputs/large_tool_results/...`` (see framework
+    prompt) with a preview in the tool message.
     """
     _ = ctx
     if not TAVILY_KEY:
@@ -84,7 +92,16 @@ async def web_extract(
     query: str | None = None,
     chunks_per_source: int | None = None,
 ) -> str:
-    """Extract readable text from specific URLs using the **Tavily** extract API."""
+    """
+    Extract readable text from specific URLs using the **Tavily** extract API.
+
+    **Input:** ``urls`` (non-empty list of HTTP(S) targets). Optional ``query`` steers extraction
+    toward passages relevant to a question. ``chunks_per_source`` (1–5) caps chunks returned per URL.
+
+    **Output:** JSON object with ``results`` (per-URL raw content, excerpts, metadata fields returned
+    by Tavily) and ``failed_results`` (URLs that could not be fetched). Large payloads may be
+    offloaded by the host to ``/_outputs/large_tool_results/`` with a preview in the tool message.
+    """
     _ = ctx
     if not TAVILY_KEY:
         return "TAVILY_API_KEY not set. Cannot extract content."
@@ -121,7 +138,16 @@ async def web_map(
     max_breadth: int = 12,
     limit: int = 40,
 ) -> str:
-    """Map outbound links from a root URL using the **Tavily** map API (single-site crawl)."""
+    """
+    Map outbound links from a root URL using the **Tavily** map API (bounded site crawl).
+
+    **Parameters:** ``max_depth`` (1–5) how many hops from the root, ``max_breadth`` (1–500) fan-out
+    per page, ``limit`` max URLs returned. Optional ``instructions`` natural-language filter for
+    which links to follow.
+
+    **Output:** JSON document from Tavily (typically including discovered URLs and crawl metadata).
+    Use after ``web_search`` when you need a structured link graph for one origin site.
+    """
     _ = ctx
     if not TAVILY_KEY:
         return "TAVILY_API_KEY not set. Cannot map site."
@@ -147,18 +173,30 @@ async def web_map(
 WEB_TOOLS = [web_search, web_extract, web_map]
 
 
-def web_agent_spec(*, checkpointer: str, interrupt_on: list[str]) -> dict:
-    return {
-        "name": "web_agent",
-        "description": (
+def build_web_runner(
+    *,
+    backend: BackendProtocol,
+    checkpointer: str,
+    debug: bool = False,
+):
+    """Web research specialist as a :class:`deepx.factory.DeepAgentRunner`."""
+    return create_deep_agent(
+        model=DEFAULT_MODEL,
+        name="web_agent",
+        description=(
             "Web research specialist: Tavily search/extract/map; saves structured notes and can "
             "author final markdown reports under the project tree. Returns artifact paths."
         ),
-        "system_prompt": (
+        tools=WEB_TOOLS,
+        skills=[
+            str(SKILLS_DIR / "deep-research"),
+            str(SKILLS_DIR / "arxiv-search"),
+        ],
+        system_prompt=(
             "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
             "For any multi-step brief, call **`write_todos` first** after skimming the relevant "
             "**deep-research** / **arxiv-search** skill files (`read_file` on the paths listed in "
-            "your prompt), then **`update_todos`** after each major step.\n"
+            "your prompt), then call **`write_todos` again** with an updated full list after each major step.\n"
             "Persist research in a small number of well-named files (one topical area per file when "
             "possible). Use clear headings, inline citations, and a Sources section on written "
             "deliverables.\n"
@@ -168,59 +206,9 @@ def web_agent_spec(*, checkpointer: str, interrupt_on: list[str]) -> dict:
             "Return every artifact path you created plus a tight summary. Do not dump large raw "
             "JSON into chat; keep bulky tool output in files and point to them briefly."
         ),
-        "tools": WEB_TOOLS,
-        "skills": [
-            str(SKILLS_DIR / "deep-research"),
-            str(SKILLS_DIR / "arxiv-search"),
-        ],
-        "interrupt_on": interrupt_on,
-        "checkpointer": checkpointer,
-    }
-
-
-if __name__ == "__main__":
-    from deepx import create_deep_agent
-    from deepx.backends.local_shell import LocalShellBackend
-
-    DEMO_DIR.joinpath("dbs", "agent_dbs").mkdir(parents=True, exist_ok=True)
-    cp = str(DEMO_DIR / "dbs" / "agent_dbs" / "web_agent_standalone.db")
-    runner = create_deep_agent(
-        name="web_agent",
-        description="Standalone web research + report agent.",
-        tools=list(WEB_TOOLS),
-        skills=[
-            str(SKILLS_DIR / "deep-research"),
-            str(SKILLS_DIR / "arxiv-search"),
-        ],
-        system_prompt=web_agent_spec(checkpointer=cp, interrupt_on=[])["system_prompt"],
-        checkpointer=cp,
-        backend=LocalShellBackend(REPO_ROOT),
-        interrupt_on=["web_search"],
-        debug=True,
-    )
-    sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-    _script = Path(__file__).resolve()
-    _resume = f"{sys.executable} {_script}"
-    task = """
-You are helping a product committee decide whether to standardise on **Postgres** or **DuckDB**
-for an analytics lakehouse MVP (10–50 TB, mostly Parquet on object storage, daily batch + a few
-interactive dashboards). I need:
-
-1) A tight comparison on strengths/weaknesses for our shape of work (join-heavy SQL, windowing,
-   semi-structured JSON, operational cost, ecosystem, hosted vs self-managed realities).
-
-2) A **risk register** (top 8 risks) with mitigations—not generic bullets; tie each risk to how we
-said we work.
-
-3) A **decision memo** as a project markdown file: recommendation, **three** acceptance tests we should run
-in week one on our own data, and a one-page experiment plan (datasets, queries, success metrics).
-
-4) Paths to every file you created plus a 5-line summary in your final message.
-"""
-    result = runner.run_sync(task, session_id=sid)
-    print(result.output)
-    print(
-        f"\nSession: {result.session_id}\n"
-        "To continue with the same session, use your runner’s resume flow; this script was:\n"
-        f"  {_resume}\n"
+        backend=backend,
+        checkpointer=checkpointer,
+        debug=debug,
+        include_general_purpose=False,
+        subagents=None,
     )

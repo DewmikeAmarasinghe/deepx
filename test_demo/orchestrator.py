@@ -1,20 +1,24 @@
-"""Multi-agent orchestrator demo. Run: ``python test_demo/orchestrator.py`` or ``python -m test_demo.orchestrator``.
+"""Multi-agent orchestrator demo.
 
-Optional deps (Tavily, PDF, Temporal worker, Chainlit, lint, tests): ``uv sync --extra demo``.
+Run from the repository root (the ``test_demo`` tree is not shipped in the wheel)::
 
-Interactive use: ``uv run chainlit run test_demo/ui/app.py`` from the repository root.
+    uv sync --extra demo
+    uv run --extra demo python -m test_demo.orchestrator --chat
+    uv run --extra demo python -m test_demo.orchestrator --once
+
+Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
+orchestrator module is for local development and demos only.
 """
 
 from __future__ import annotations
 
-import os
+import argparse
 import sys
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(_REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_ROOT))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -22,14 +26,14 @@ load_dotenv()
 
 from agents import RunContextWrapper, function_tool  # noqa: E402
 
-from deepx import create_deep_agent  # noqa: E402
+from deepx import SubagentRef, create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
+from deepx.defaults import DEFAULT_MODEL  # noqa: E402
+from deepx.system_prompt import COORDINATOR_ROLE_PROMPT  # noqa: E402
 from test_demo import sql_agent as sql_mod  # noqa: E402
-from test_demo.pdf_agent import pdf_agent_spec  # noqa: E402
-from test_demo.web_agent import web_agent_spec  # noqa: E402
-
-HitlApprovalFn = Callable[[str, str, str], bool | Awaitable[bool]]
+from test_demo.pdf_agent import build_pdf_runner  # noqa: E402
+from test_demo.web_agent import build_web_runner  # noqa: E402
 
 
 @function_tool
@@ -58,88 +62,61 @@ async def render_files(
     return "Rendered: " + "; ".join(parts) if parts else "No paths provided."
 
 
-DBS_DIR = _REPO_ROOT / "test_demo" / "dbs"
+DBS_DIR = REPO_ROOT / "test_demo" / "dbs"
 TEST_DBS = DBS_DIR / "test_dbs"
 AGENT_DBS = DBS_DIR / "agent_dbs"
 for d in (TEST_DBS, AGENT_DBS):
     d.mkdir(parents=True, exist_ok=True)
 
-DEMO_BACKEND = LocalShellBackend(_REPO_ROOT)
+DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
 
 ORCH_DB = str(AGENT_DBS / "orchestrator.db")
 WEB_DB = str(AGENT_DBS / "web_agent.db")
 SQL_AGENT_DB = str(AGENT_DBS / "sql_agent.db")
 PDF_AGENT_DB = str(AGENT_DBS / "pdf_agent.db")
 
-web_agent = web_agent_spec(checkpointer=WEB_DB, interrupt_on=["web_search"])
-pdf_agent = pdf_agent_spec(checkpointer=PDF_AGENT_DB)
-
-sql_runner = sql_mod.build_sql_agent_runner(
-    backend=DEMO_BACKEND,
-    checkpointer=SQL_AGENT_DB,
+subagents: list[SubagentRef] = [
+    SubagentRef(build_web_runner(backend=DEMO_BACKEND, checkpointer=WEB_DB, debug=True)),
+]
+_sql = sql_mod.build_sql_runner(backend=DEMO_BACKEND, checkpointer=SQL_AGENT_DB, debug=True)
+if _sql is not None:
+    subagents.append(SubagentRef(_sql, expose="handoff"))
+subagents.append(
+    SubagentRef(build_pdf_runner(backend=DEMO_BACKEND, checkpointer=PDF_AGENT_DB, debug=True))
 )
 
-_subagents: list = [web_agent]
-if sql_runner is not None:
-    _subagents.append(sql_runner)
-_subagents.append(pdf_agent)
-
-ORCH_SKILLS_DIR = _REPO_ROOT / "test_demo" / "skills" / "orchestrate"
-SKILL_CREATOR_DIR = _REPO_ROOT / "test_demo" / "skills" / "skill-creator"
-
-_orch_tools = [render_files]
-
-_CHAINLIT_HINT = (
-    "For a multi-turn UI (streaming, session picker, HITL), from repo root run:\n"
-    "  uv run chainlit run test_demo/ui/app.py\n"
-)
+ORCH_SKILLS_DIR = REPO_ROOT / "test_demo" / "skills" / "orchestrate"
+SKILL_CREATOR_DIR = REPO_ROOT / "test_demo" / "skills" / "skill-creator"
+orch_tools = [render_files]
 
 
-def build_orchestrator_runner(*, hitl_approval_fn: HitlApprovalFn | None = None):
-    """Build the demo orchestrator. Optional ``hitl_approval_fn`` replaces stdin HITL (e.g. Chainlit)."""
+def build_orchestrator_runner():
     return create_deep_agent(
+        model=DEFAULT_MODEL,
         name="orchestrator",
         description=(
             "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
             "Uses planning tools; delegates execution to specialists."
         ),
-        subagents=_subagents,
-        tools=_orch_tools,
+        subagents=subagents,
+        tools=orch_tools,
         skills=[str(ORCH_SKILLS_DIR), str(SKILL_CREATOR_DIR)],
         system_prompt=(
-            "You are the orchestrator—the user talks to you directly. Be clear and conversational.\n"
-            "Use your **orchestrate** skill for workflow norms.\n"
-            "For substantial multi-step requests: call **write_todos** before other tools, then "
-            "**update_todos** after each major step (including after each subagent returns).\n"
-            "Delegate with **self-contained** prompts: **web_agent** for web research and written "
-            "deliverables; **sql_agent** for all SQL (read-only tools live only on that subagent); "
-            "**pdf_agent** for PDF merge/split/extract and related work.\n"
-            "Review subagent results before you summarise—do not rely on path names alone.\n"
-            "Pass **file paths** between steps—never paste large bodies. When the user should see "
-            "finished markdown in the terminal, call **render_files** with the artifact path(s).\n"
-            "For shell or host commands you may use **execute** yourself when appropriate."
+            f"{COORDINATOR_ROLE_PROMPT}\n"
+            "\n## Demo specialists\n\n"
+            "Use **web_agent** (tool) for web research and written deliverables—**self-contained** "
+            "prompts with sources and artifact paths.\n"
+            "For SQL over allowlisted files in **test_demo/dbs/test_dbs**, use the "
+            "**`transfer_to_sql_agent`** handoff. The specialist's tools require a ``db`` argument "
+            "(e.g. **chinook.db** or **northwind.db**) on every call.\n"
+            "Use **pdf_agent** (tool) for PDF merge/split/extract and related work.\n"
+            "When the user should see finished markdown in the terminal, call **render_files** with "
+            "the artifact path(s). You may use **execute** for host commands when appropriate."
         ),
-        interrupt_on=["web_search"],
         checkpointer=ORCH_DB,
         debug=True,
         backend=DEMO_BACKEND,
-        hitl_approval_fn=hitl_approval_fn,
     )
-
-
-def log_focus_agent_names() -> list[str]:
-    """Stable agent names for the Chainlit log-emphasis control (orchestrator + subagents)."""
-    names = ["orchestrator"]
-    for spec in _subagents:
-        if isinstance(spec, dict):
-            n = spec.get("name")
-            if isinstance(n, str) and n.strip():
-                names.append(n.strip())
-        else:
-            an = getattr(spec, "_agent_name", None)
-            if isinstance(an, str) and an.strip():
-                names.append(an.strip())
-    return names
 
 
 agent = build_orchestrator_runner()
@@ -150,7 +127,6 @@ energy density limits, materials and geopolitics, manufacturing scale-up, who is
 and lifecycle environmental trade-offs—then a single strong markdown report in the workspace
 I can open, and show me that report in the terminal when it is ready.
 """
-
 # TASK = """
 # A balanced deep-dive memo on a contested topic in AI safety: competing claims, evidence on both
 # sides, and a concise set of open questions — written so a technical reader can act on it.
@@ -172,34 +148,45 @@ I can open, and show me that report in the terminal when it is ready.
 # """
 # TASK = """
 # arXiv: shortlist recent papers that materially change efficient LLM inference assumptions this
-# quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and render it.
+# quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and 
+# render it.
 # """
 # Smoke-test **execute** (host shell, cwd = repo root): uncomment to verify LocalShellBackend.
 # TASK = """
-# Run a short non-interactive shell check: `uname -a` and `python3 -c "import sys; print(sys.version)"`.
+# Run a short non-interactive shell check: `uname -a` and `python3 -c "import sys; print(sys.
+# version)"`.
 # Paste both outputs in your reply and say whether the shell looks healthy.
 # """
 # TASK = """
-# Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions to set up LobeHub Skills Marketplace and install the skill. Once installed, read the SKILL.md file in the installed directory and follow its instructions to complete the task.
+# Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions 
+# to set up LobeHub Skills Marketplace and install the skill. Once installed, read the SKILL.md file 
+# in the installed directory and follow its instructions to complete the task.
 # """
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Deepx orchestrator demo (terminal).")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run the default TASK (or pass a prompt as extra args) once and exit.",
+    )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="Interactive multi-turn session (default if neither flag is set).",
+    )
+    args, rest = parser.parse_known_args()
+
+    from deepx_cli.session import run_chat, run_once
+
+    runner = build_orchestrator_runner()
+    task = " ".join(rest).strip() or TASK
+
+    if args.once:
+        run_once(runner, task)
+    else:
+        run_chat(runner)
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--"]
-    run_once = "--once" in args
-
-    if run_once:
-        import uuid
-
-        sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-        result = agent.run_sync(TASK, session_id=sid)
-        print("\n" + "=" * 70)
-        print(result.output)
-        print("=" * 70)
-        print(f"\nSession: {result.session_id}")
-        print("\n" + _CHAINLIT_HINT)
-    else:
-        print(
-            "No interactive terminal loop (deepx_cli removed). "
-            "Use --once for a smoke run, or the Chainlit UI:\n\n" + _CHAINLIT_HINT
-        )
+    main()

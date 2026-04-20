@@ -3,18 +3,36 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from agents import RunContextWrapper, function_tool
 
 
-def create_sql_tools(sqlite_path: str, *, tool_prefix: str = "") -> list:
-    """Read-only SQL tools; optional ``tool_prefix`` disambiguates tool names (e.g. ``chinook_``)."""
+def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
+    """Read-only SQL tools. Each tool takes ``db``: a *.db* filename under ``test_dbs_dir``."""
+    root = test_dbs_dir.resolve()
     pre = f"{tool_prefix}_" if tool_prefix else ""
 
+    def _resolve_db(db: str) -> Path:
+        name = (db or "").strip()
+        if not name or ".." in name or "/" in name or "\\" in name:
+            raise ValueError(
+                "Invalid db identifier: use a plain filename (e.g. chinook.db or northwind.db)."
+            )
+        if not name.endswith(".db"):
+            name = f"{name}.db"
+        p = (root / name).resolve()
+        if p.parent != root:
+            raise ValueError("db must resolve to a file directly under the allowlisted test_dbs dir.")
+        if not p.is_file():
+            raise ValueError(f"Database not found under test_dbs: {name}")
+        return p
+
     @function_tool(name_override=f"{pre}sql_db_list_tables")
-    def sql_db_list_tables(ctx: RunContextWrapper) -> str:
-        """List all tables in the database."""
+    def sql_db_list_tables(ctx: RunContextWrapper, db: str) -> str:
+        """List all tables in the selected SQLite database (``db`` = filename under test_dbs)."""
         _ = ctx
+        sqlite_path = str(_resolve_db(db))
         with sqlite3.connect(sqlite_path) as conn:
             rows = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -22,8 +40,9 @@ def create_sql_tools(sqlite_path: str, *, tool_prefix: str = "") -> list:
         return ", ".join(r[0] for r in rows) or "No tables found."
 
     @function_tool(name_override=f"{pre}sql_db_schema")
-    def sql_db_schema(ctx: RunContextWrapper, table_names: str) -> str:
-        """CREATE TABLE plus sample rows for comma-separated table names."""
+    def sql_db_schema(ctx: RunContextWrapper, db: str, table_names: str) -> str:
+        """CREATE TABLE plus sample rows for comma-separated ``table_names`` in ``db``."""
+        sqlite_path = str(_resolve_db(db))
         names = [n.strip() for n in table_names.split(",") if n.strip()]
         parts: list[str] = []
         with sqlite3.connect(sqlite_path) as conn:
@@ -46,9 +65,10 @@ def create_sql_tools(sqlite_path: str, *, tool_prefix: str = "") -> list:
         return "\n\n".join(parts)
 
     @function_tool(name_override=f"{pre}sql_db_query")
-    def sql_db_query(ctx: RunContextWrapper, query: str) -> str:
-        """Run a read-only SELECT. No INSERT/UPDATE/DELETE/DROP. Use LIMIT if needed."""
+    def sql_db_query(ctx: RunContextWrapper, db: str, query: str) -> str:
+        """Run a read-only SELECT on ``db`` (filename under test_dbs). No writes."""
         _ = ctx
+        sqlite_path = str(_resolve_db(db))
         q = query.strip()
         upper = q.upper()
         for forbidden in (

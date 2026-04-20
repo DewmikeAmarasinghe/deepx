@@ -4,21 +4,24 @@ import asyncio
 import dataclasses
 import re
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from agents import Agent, RunContextWrapper, Runner, function_tool
+from agents import Agent, RunContextWrapper, Runner, function_tool, handoff
 from agents.agent import Agent as AgentType
 from agents.lifecycle import RunHooksBase
-from agents.result import RunResultStreaming
+from agents.result import RunResult, RunResultStreaming
+from agents.run_state import RunState
 from agents.tool import Tool
+from agents.tool_context import ToolContext
 
 from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
+from deepx.defaults import DEFAULT_MODEL
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
-from deepx.middleware.hitl import HumanInTheLoopHooks
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.sessions import create_session
@@ -27,12 +30,49 @@ from deepx.system_prompt import (
     format_skills_for_prompt,
     skills_catalog_for_host,
 )
-from deepx.tools import FILESYSTEM_TOOLS, MEMORY_TOOLS, PLANNING_TOOLS
-from deepx.tools.planning import Plan
+from deepx.tools.namespaces import BUILTIN_TOOLS
 
-SubAgentDict = dict
+if TYPE_CHECKING:
+    from agents.agent import MCPConfig
+    from agents.lifecycle import AgentHooks
+    from agents.prompts import DynamicPromptFunction, Prompt
 
-HitlApprovalFn = Callable[[str, str, str], bool | Awaitable[bool]]
+    from deepx.tools.planning import Plan
+
+
+@dataclass(frozen=True)
+class SubagentRef:
+    """Reference to another :class:`DeepAgentRunner` exposed as a tool or SDK handoff."""
+
+    runner: "DeepAgentRunner"
+    expose: Literal["tool", "handoff"] = "tool"
+    needs_approval: bool = False
+    tool_name: str | None = None
+
+
+def _normalize_subagents(
+    raw: "Sequence[SubagentRef | DeepAgentRunner] | None",
+) -> list[SubagentRef]:
+    out: list[SubagentRef] = []
+    for item in raw or []:
+        if isinstance(item, SubagentRef):
+            out.append(item)
+        elif isinstance(item, DeepAgentRunner):
+            out.append(SubagentRef(item, "tool"))
+        else:
+            raise TypeError(
+                "subagents entries must be SubagentRef or DeepAgentRunner, "
+                f"got {type(item).__name__}"
+            )
+    return out
+
+
+def _skills_prompt_for_backend(backend: BackendProtocol, skill_roots: list[str]) -> str:
+    host = resolve_host_root(backend)
+    if host is None:
+        return ""
+    meta = skills_catalog_for_host(host, skill_roots)
+    return format_skills_for_prompt(meta)
 
 
 def _collect_skill_roots(main: list[str] | None) -> list[str]:
@@ -57,252 +97,38 @@ def _collect_skill_roots(main: list[str] | None) -> list[str]:
     return out
 
 
-def _make_hitl(
-    interrupt_tools: list[str],
+def _merge_agent_options(
     *,
-    approval_fn: HitlApprovalFn | None = None,
-) -> HumanInTheLoopHooks | None:
-    if not interrupt_tools:
-        return None
-    return HumanInTheLoopHooks(list(interrupt_tools), approval_fn=approval_fn)
+    mcp_servers: list[Any] | None,
+    mcp_config: "MCPConfig | None",
+    input_guardrails: list[Any] | None,
+    output_guardrails: list[Any] | None,
+    lifecycle_hooks: "AgentHooks | None",
+    tool_use_behavior: Any | None,
+    reset_tool_choice: bool | None,
+    prompt: "Prompt | DynamicPromptFunction | None",
+) -> dict[str, Any]:
+    opts: dict[str, Any] = {}
+    if mcp_servers is not None:
+        opts["mcp_servers"] = mcp_servers
+    if mcp_config is not None:
+        opts["mcp_config"] = mcp_config
+    if input_guardrails is not None:
+        opts["input_guardrails"] = input_guardrails
+    if output_guardrails is not None:
+        opts["output_guardrails"] = output_guardrails
+    if lifecycle_hooks is not None:
+        opts["hooks"] = lifecycle_hooks
+    if tool_use_behavior is not None:
+        opts["tool_use_behavior"] = tool_use_behavior
+    if reset_tool_choice is not None:
+        opts["reset_tool_choice"] = reset_tool_choice
+    if prompt is not None:
+        opts["prompt"] = prompt
+    return opts
 
 
-def _skills_prompt_for_backend(backend: BackendProtocol, skill_roots: list[str]) -> str:
-    host = resolve_host_root(backend)
-    if host is None:
-        return ""
-    meta = skills_catalog_for_host(host, skill_roots)
-    return format_skills_for_prompt(meta)
-
-
-def create_deep_agent(
-    model: str = "gpt-5-nano",
-    tools: list | None = None,
-    *,
-    name: str = "agent",
-    description: str = "",
-    system_prompt: str = "",
-    subagents: list[dict | "DeepAgentRunner"] | None = None,
-    skills: list[str] | None = None,
-    memory: list[str] | None = None,
-    response_format: type | None = None,
-    backend: BackendProtocol | None = None,
-    checkpointer: str = ":memory:",
-    interrupt_on: list[str] | None = None,
-    debug: bool = False,
-    max_turns: int = 1000,
-    hitl_approval_fn: HitlApprovalFn | None = None,
-    middleware: Sequence[RunHooksBase[AgentContext, AgentType[AgentContext]]] = (),
-) -> "DeepAgentRunner":
-    """Build a Deepx runner (OpenAI Agents SDK) with filesystem tools and optional subagents.
-
-    ``middleware`` is a sequence of ``RunHooksBase`` instances merged **after**
-    ``FilesystemHooks`` (default stack first, then your hooks). Nested ``subagents`` dict entries may include their own
-    ``middleware`` tuple, which is appended to the parent’s sequence.
-    """
-    setup_observability()
-
-    extra_hooks = tuple(middleware)
-    checkpointer = checkpointer.strip() or ":memory:"
-    sub_specs = list(subagents or [])
-    has_gp = any(
-        (isinstance(s, dict) and s.get("name") == "general_purpose")
-        or (isinstance(s, DeepAgentRunner) and s._agent_name == "general_purpose")
-        for s in sub_specs
-    )
-    if not has_gp:
-        sub_specs.append(
-            {
-                "name": "general_purpose",
-                "description": (
-                    "General-purpose agent for isolated multi-step tasks. "
-                    "Has access to the same filesystem and planning tools as the main agent."
-                ),
-                "system_prompt": "",
-                "tools": list(tools or []),
-                "skills": [],
-            }
-        )
-
-    skill_roots = _collect_skill_roots(skills)
-    if backend is None:
-        resolved_backend = FilesystemBackend(Path.home())
-    else:
-        resolved_backend = backend
-    mem_content = _load_memory(memory, resolved_backend)
-    user_tools = list(tools or [])
-    base_tools = [*FILESYSTEM_TOOLS, *MEMORY_TOOLS, *PLANNING_TOOLS]
-    interrupt_list = list(interrupt_on or [])
-
-    subagent_tools: list[Tool] = []
-    for spec in sub_specs:
-        runner = _resolve_subagent_spec(
-            spec,
-            parent_model=model,
-            parent_backend=resolved_backend,
-            checkpointer=checkpointer,
-            debug=debug,
-            mem_content=mem_content,
-            skills_paths=list(skills or []),
-            user_tools=user_tools,
-            parent_interrupt=interrupt_list,
-            max_turns=max_turns,
-            parent_response_format=response_format,
-            hitl_approval_fn=hitl_approval_fn,
-            parent_run_middleware=extra_hooks,
-        )
-        an = runner._agent_name
-        tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", an)
-        subagent_tools.append(
-            _make_subagent_tool(
-                runner=runner,
-                tool_name=tool_name,
-                checkpointer=runner._checkpointer,
-                max_turns=max_turns,
-                backend=resolved_backend,
-                debug=debug,
-            )
-        )
-
-    _main_checkpointer = checkpointer
-
-    def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
-        return build_system_prompt(
-            ctx, agent, custom_prompt=system_prompt, checkpointer=_main_checkpointer
-        )
-
-    main_agent = Agent(
-        name=name,
-        instructions=instructions,
-        model=model,
-        tools=base_tools + user_tools + subagent_tools,
-        output_type=response_format,
-    )
-
-    return DeepAgentRunner(
-        agent=main_agent,
-        backend=resolved_backend,
-        checkpointer=checkpointer,
-        max_turns=max_turns,
-        skill_roots=skill_roots,
-        memory=mem_content,
-        debug=debug,
-        agent_name=name,
-        description=description,
-        interrupt_tools=interrupt_list,
-        hitl_approval_fn=hitl_approval_fn,
-        middleware_hooks=extra_hooks,
-    )
-
-
-def _resolve_subagent_spec(
-    spec: dict | "DeepAgentRunner",
-    *,
-    parent_model: str,
-    parent_backend: BackendProtocol,
-    checkpointer: str,
-    debug: bool,
-    mem_content: str,
-    skills_paths: list[str],
-    user_tools: list,
-    parent_interrupt: list[str],
-    max_turns: int,
-    parent_response_format: type | None,
-    hitl_approval_fn: HitlApprovalFn | None,
-    parent_run_middleware: tuple[
-        RunHooksBase[AgentContext, AgentType[AgentContext]], ...
-    ] = (),
-) -> "DeepAgentRunner":
-    if isinstance(spec, DeepAgentRunner):
-        return spec
-
-    an = spec.get("name", "")
-    merged_middleware = parent_run_middleware + tuple(
-        spec.get("middleware") or (),
-    )
-    is_gp = an == "general_purpose"
-
-    spec_skills = skills_paths if is_gp else list(spec.get("skills", []))
-    spec_user_tools = list(spec.get("tools", user_tools if is_gp else []))
-    spec_interrupt = list(
-        spec.get("interrupt_on") or (parent_interrupt if is_gp else [])
-    )
-    spec_memory_paths: list[str] | None = spec.get("memory")
-    spec_response_format = spec.get("response_format", parent_response_format)
-    spec_model = spec.get("model", parent_model)
-
-    spec_mem = (
-        _load_memory(spec_memory_paths, parent_backend)
-        if spec_memory_paths
-        else (mem_content if is_gp else "")
-    )
-
-    sub_roots = [str(Path(p).expanduser().resolve()) for p in spec_skills]
-
-    base_tools = [*FILESYSTEM_TOOLS, *MEMORY_TOOLS, *PLANNING_TOOLS]
-
-    nested_subagent_tools: list[Tool] = []
-    for nested in spec.get("subagents") or []:
-        nested_runner = _resolve_subagent_spec(
-            nested,
-            parent_model=spec_model,
-            parent_backend=parent_backend,
-            checkpointer=checkpointer,
-            debug=debug,
-            mem_content=spec_mem,
-            skills_paths=spec_skills,
-            user_tools=spec_user_tools,
-            parent_interrupt=spec_interrupt,
-            max_turns=max_turns,
-            parent_response_format=spec_response_format,
-            hitl_approval_fn=hitl_approval_fn,
-            parent_run_middleware=merged_middleware,
-        )
-        nested_tool_name = re.sub(r"[^a-zA-Z0-9_]", "_", nested_runner._agent_name)
-        nested_subagent_tools.append(
-            _make_subagent_tool(
-                runner=nested_runner,
-                tool_name=nested_tool_name,
-                checkpointer=nested_runner._checkpointer,
-                max_turns=max_turns,
-                backend=parent_backend,
-                debug=debug,
-            )
-        )
-
-    custom_prompt = spec.get("system_prompt", "")
-    _spec_checkpointer = str(spec.get("checkpointer", checkpointer))
-
-    def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
-        return build_system_prompt(
-            ctx, agent, custom_prompt=custom_prompt, checkpointer=_spec_checkpointer
-        )
-
-    agent = Agent(
-        name=an,
-        instructions=instructions,
-        model=spec_model,
-        tools=base_tools + spec_user_tools + nested_subagent_tools,
-        output_type=spec_response_format,
-    )
-
-    return DeepAgentRunner(
-        agent=agent,
-        backend=parent_backend,
-        checkpointer=_spec_checkpointer,
-        max_turns=max_turns,
-        skill_roots=sub_roots,
-        memory=spec_mem,
-        debug=debug,
-        agent_name=an,
-        description=spec.get("description", ""),
-        interrupt_tools=spec_interrupt,
-        hitl_approval_fn=hitl_approval_fn,
-        middleware_hooks=merged_middleware,
-    )
-
-
-def _make_subagent_tool(
+def _subagent_tool_from_runner(
     *,
     runner: "DeepAgentRunner",
     tool_name: str,
@@ -310,34 +136,33 @@ def _make_subagent_tool(
     max_turns: int,
     backend: BackendProtocol,
     debug: bool,
+    needs_approval: bool,
 ) -> Tool:
-    agent = runner._agent
-    memory_default = runner._memory
-    interrupt_tools = runner._interrupt_tools
+    """Expose a runner as a callable tool with per-invocation SQLite session isolation.
 
-    async def _invoke(ctx: RunContextWrapper[AgentContext], input: str) -> str:
+    ``Agent.as_tool`` does not accept a per-tool-call session factory; Deepx uses nested
+    ``Runner.run`` with ``create_session(..., tool_call_id)`` so each delegation gets its own
+    persisted nested conversation while keeping prompts/plans scoped to the subagent.
+    """
+    agent = runner._agent
+
+    async def _invoke(ctx: ToolContext, input: str) -> str:
+        ac = ctx.context
+        if not isinstance(ac, AgentContext):
+            raise TypeError("Deepx tools expect AgentContext on the run context")
         si_sub = _skills_prompt_for_backend(backend, runner._skill_roots)
-        sub_sid = f"{ctx.context.session_id}:{agent.name}:{uuid.uuid4().hex[:12]}"
+        sub_sid = f"{ac.session_id}:{agent.name}:{ctx.tool_call_id}"
         sub_ctx = AgentContext(
-            session_id=ctx.context.session_id,
-            backend=ctx.context.backend,
+            session_id=ac.session_id,
+            backend=ac.backend,
             agent_name=agent.name,
-            memory=memory_default,
+            memory=runner._memory,
             skills=si_sub,
             debug=debug,
-            hitl_tools=interrupt_tools,
             is_subagent=True,
         )
         session = create_session(sub_sid, checkpointer)
-        hitl = _make_hitl(interrupt_tools, approval_fn=runner._hitl_approval_fn)
-        wrapped = apply_tool_pipeline(
-            list(agent.tools),
-            backend,
-            agent_name=agent.name,
-            debug=debug,
-            hitl=hitl,
-        )
-        agent_wrapped = dataclasses.replace(agent, tools=wrapped)
+        agent_wrapped = runner._prepare_agent()
         result = await Runner.run(
             agent_wrapped,
             input,
@@ -353,7 +178,237 @@ def _make_subagent_tool(
         name_override=tool_name,
         description_override=runner.description,
         use_docstring_info=False,
+        needs_approval=needs_approval,
     )
+
+
+def create_deep_agent(
+    model: str = DEFAULT_MODEL,
+    tools: list | None = None,
+    *,
+    name: str = "agent",
+    description: str = "",
+    system_prompt: str = "",
+    subagents: Sequence[SubagentRef | DeepAgentRunner] | None = None,
+    skills: list[str] | None = None,
+    memory: list[str] | None = None,
+    response_format: type | None = None,
+    backend: BackendProtocol | None = None,
+    checkpointer: str = ":memory:",
+    debug: bool = False,
+    max_turns: int = 1000,
+    middleware: Sequence[RunHooksBase[AgentContext, AgentType[AgentContext]]] = (),
+    include_general_purpose: bool = True,
+    agent_kwargs: dict[str, Any] | None = None,
+    mcp_servers: list[Any] | None = None,
+    mcp_config: "MCPConfig | None" = None,
+    extra_handoffs: list[Any] | None = None,
+    input_guardrails: list[Any] | None = None,
+    output_guardrails: list[Any] | None = None,
+    lifecycle_hooks: "AgentHooks | None" = None,
+    tool_use_behavior: Any | None = None,
+    reset_tool_choice: bool | None = None,
+    prompt: "Prompt | DynamicPromptFunction | None" = None,
+) -> "DeepAgentRunner":
+    """Build a Deepx runner (OpenAI Agents SDK) with namespaced filesystem tools and subagents.
+
+    Human-in-the-loop uses the SDK (``needs_approval`` on tools, ``RunResult.interruptions``).
+    ``middleware`` is merged after ``FilesystemHooks`` and passed to ``Runner.run`` as run hooks.
+
+    ``system_prompt`` is composed dynamically via :func:`deepx.system_prompt.build_system_prompt`
+    (mapped to ``Agent.instructions``). Use ``agent_kwargs`` only for additional ``Agent``
+    constructor fields; keys in ``agent_kwargs`` override overlapping explicit parameters.
+
+    Optional ``mcp_servers``, guardrails, ``lifecycle_hooks`` (``Agent.hooks``), ``prompt``,
+    ``tool_use_behavior``, and ``reset_tool_choice`` forward into :class:`agents.Agent` when set.
+    """
+    setup_observability()
+
+    extra_hooks = tuple(middleware)
+    checkpointer = checkpointer.strip() or ":memory:"
+    sub_refs = _normalize_subagents(subagents)
+
+    if include_general_purpose and not any(
+        r.runner._agent_name == "general_purpose" for r in sub_refs
+    ):
+        sub_refs = [
+            *sub_refs,
+            SubagentRef(
+                _make_general_purpose_runner(
+                    model=model,
+                    user_tools=list(tools or []),
+                    skills=skills,
+                    memory=memory,
+                    resolved_backend=backend or FilesystemBackend(Path.home()),
+                    checkpointer=checkpointer,
+                    debug=debug,
+                    max_turns=max_turns,
+                    extra_hooks=extra_hooks,
+                    response_format=response_format,
+                    agent_kwargs=agent_kwargs,
+                ),
+                "tool",
+            ),
+        ]
+
+    skill_roots = _collect_skill_roots(skills)
+    if backend is None:
+        resolved_backend = FilesystemBackend(Path.home())
+    else:
+        resolved_backend = backend
+    mem_content = _load_memory(memory, resolved_backend)
+    user_tools = list(tools or [])
+    base_tools = list(BUILTIN_TOOLS)
+
+    subagent_tools: list[Tool] = []
+    subagent_handoffs: list[Any] = []
+    for ref in sub_refs:
+        runner = ref.runner
+        an = runner._agent_name
+        tname = ref.tool_name or re.sub(r"[^a-zA-Z0-9_]", "_", an)
+        if ref.expose == "handoff":
+            subagent_handoffs.append(
+                handoff(
+                    runner.prepared_agent(),
+                    tool_description_override=runner.description or None,
+                )
+            )
+        else:
+            subagent_tools.append(
+                _subagent_tool_from_runner(
+                    runner=runner,
+                    tool_name=tname,
+                    checkpointer=runner._checkpointer,
+                    max_turns=max_turns,
+                    backend=resolved_backend,
+                    debug=debug,
+                    needs_approval=ref.needs_approval,
+                )
+            )
+
+    _main_checkpointer = checkpointer
+    _coordination = bool(subagent_tools or subagent_handoffs)
+
+    def instructions(ctx: RunContextWrapper, agent: Agent) -> str:
+        return build_system_prompt(
+            ctx,
+            agent,
+            custom_prompt=system_prompt,
+            checkpointer=_main_checkpointer,
+            include_coordinator_role=_coordination,
+        )
+
+    _main_agent_kw = dict(agent_kwargs or ())
+    _main_agent_kw.update(
+        _merge_agent_options(
+            mcp_servers=mcp_servers,
+            mcp_config=mcp_config,
+            input_guardrails=input_guardrails,
+            output_guardrails=output_guardrails,
+            lifecycle_hooks=lifecycle_hooks,
+            tool_use_behavior=tool_use_behavior,
+            reset_tool_choice=reset_tool_choice,
+            prompt=prompt,
+        )
+    )
+    main_agent = Agent(
+        name=name,
+        instructions=instructions,
+        model=model,
+        tools=base_tools + user_tools + subagent_tools,
+        handoffs=[*subagent_handoffs, *(extra_handoffs or [])],
+        output_type=response_format,
+        **_main_agent_kw,
+    )
+
+    return DeepAgentRunner(
+        agent=main_agent,
+        backend=resolved_backend,
+        checkpointer=checkpointer,
+        max_turns=max_turns,
+        skill_roots=skill_roots,
+        memory=mem_content,
+        debug=debug,
+        agent_name=name,
+        description=description,
+        middleware_hooks=extra_hooks,
+    )
+
+
+def _make_general_purpose_runner(
+    *,
+    model: str,
+    user_tools: list,
+    skills: list[str] | None,
+    resolved_backend: BackendProtocol,
+    checkpointer: str,
+    debug: bool,
+    max_turns: int,
+    extra_hooks: tuple[RunHooksBase[AgentContext, AgentType[AgentContext]], ...],
+    response_format: type | None,
+    agent_kwargs: dict[str, Any] | None,
+) -> "DeepAgentRunner":
+    """Standalone helper agent: same tool/skill surface as the parent, no nested specialists."""
+    return create_deep_agent(
+        model=model,
+        tools=user_tools,
+        name="general_purpose",
+        description=(
+            "General-purpose agent for isolated multi-step tasks. "
+            "Has access to the same filesystem and planning tools as the main agent."
+        ),
+        system_prompt="",
+        subagents=None,
+        skills=list(skills or []),
+        memory=None,
+        response_format=response_format,
+        backend=resolved_backend,
+        checkpointer=checkpointer,
+        debug=debug,
+        max_turns=max_turns,
+        middleware=extra_hooks,
+        include_general_purpose=False,
+        agent_kwargs=agent_kwargs,
+    )
+
+
+class DeepRunBinding:
+    """Agent + session + hooks for one thread, including SDK approval resume via ``RunState``."""
+
+    def __init__(
+        self,
+        runner: DeepAgentRunner,
+        session_id: str,
+        *,
+        resume: bool,
+        hooks: RunHooksBase[AgentContext, AgentType[AgentContext]] | None = None,
+    ) -> None:
+        self._runner = runner
+        self.session_id = session_id
+        self.ctx = runner._make_ctx(session_id, resume)
+        self.session = create_session(session_id, runner._checkpointer)
+        self.agent = runner._prepare_agent()
+        self.hooks = hooks if hooks is not None else runner._make_hooks()
+
+    async def run(self, inp: str | RunState) -> RunResult:
+        return await Runner.run(
+            self.agent,
+            inp,
+            context=self.ctx,
+            session=self.session,
+            hooks=self.hooks,
+            max_turns=self._runner._max_turns,
+        )
+
+    def run_streamed(self, inp: str | RunState) -> RunResultStreaming:
+        return Runner.run_streamed(
+            self.agent,
+            inp,
+            context=self.ctx,
+            session=self.session,
+            hooks=self.hooks,
+            max_turns=self._runner._max_turns,
+        )
 
 
 class DeepAgentRunner:
@@ -368,8 +423,6 @@ class DeepAgentRunner:
         debug: bool,
         agent_name: str,
         description: str,
-        interrupt_tools: list[str],
-        hitl_approval_fn: HitlApprovalFn | None = None,
         middleware_hooks: tuple[
             RunHooksBase[AgentContext, AgentType[AgentContext]], ...
         ] = (),
@@ -383,13 +436,20 @@ class DeepAgentRunner:
         self._debug = debug
         self._agent_name = agent_name
         self.description = description
-        self._interrupt_tools = interrupt_tools
-        self._hitl_approval_fn = hitl_approval_fn
         self._middleware_hooks = middleware_hooks
 
     @property
     def backend(self) -> BackendProtocol:
         return self._backend
+
+    def bind(
+        self,
+        session_id: str,
+        *,
+        resume: bool = False,
+        hooks: RunHooksBase[AgentContext, AgentType[AgentContext]] | None = None,
+    ) -> DeepRunBinding:
+        return DeepRunBinding(self, session_id, resume=resume, hooks=hooks)
 
     def _make_ctx(self, session_id: str, resume: bool) -> AgentContext:
         si = _skills_prompt_for_backend(self._backend, self._skill_roots)
@@ -400,7 +460,6 @@ class DeepAgentRunner:
             memory=self._memory,
             skills=si,
             debug=self._debug,
-            hitl_tools=self._interrupt_tools,
             resume=resume,
         )
 
@@ -411,15 +470,17 @@ class DeepAgentRunner:
         return compose_run_hooks(fs, *self._middleware_hooks)
 
     def _prepare_agent(self) -> Agent:
-        hitl = _make_hitl(self._interrupt_tools, approval_fn=self._hitl_approval_fn)
         wrapped = apply_tool_pipeline(
             list(self._agent.tools),
             self._backend,
             agent_name=self._agent.name,
             debug=self._debug,
-            hitl=hitl,
         )
         return dataclasses.replace(self._agent, tools=wrapped)
+
+    def prepared_agent(self) -> Agent:
+        """Return this runner's agent with filesystem middleware applied (for SDK ``handoff``)."""
+        return self._prepare_agent()
 
     async def run(
         self,
@@ -430,19 +491,14 @@ class DeepAgentRunner:
         hooks: RunHooksBase[AgentContext, AgentType[AgentContext]] | None = None,
     ) -> "DeepRunResult":
         sid = session_id or uuid.uuid4().hex
-        ctx = self._make_ctx(sid, resume)
-        session = create_session(sid, self._checkpointer)
-        agent = self._prepare_agent()
-        run_hooks = hooks if hooks is not None else self._make_hooks()
-        result = await Runner.run(
-            agent,
-            task,
-            context=ctx,
-            session=session,
-            hooks=run_hooks,
-            max_turns=self._max_turns,
+        b = self.bind(sid, resume=resume, hooks=hooks)
+        result = await b.run(task)
+        return DeepRunResult(
+            output=result.final_output,
+            session_id=sid,
+            plan=b.ctx.plan,
+            run_result=result,
         )
-        return DeepRunResult(output=result.final_output, session_id=sid, plan=ctx.plan)
 
     def run_sync(
         self,
@@ -467,57 +523,29 @@ class DeepAgentRunner:
         *,
         session_id: str | None = None,
         resume: bool = False,
-        stream_sink: Callable[[Any], Awaitable[None]] | None = None,
     ):
-        """Yield SDK stream events, then a final dict row ``kind="done"`` for final output."""
+        """Yield SDK stream events, then ``{"kind": "done", ...}``."""
         sid = session_id or uuid.uuid4().hex
-        ctx = self._make_ctx(sid, resume)
-        session = create_session(sid, self._checkpointer)
-        agent = self._prepare_agent()
-        stream: RunResultStreaming = Runner.run_streamed(
-            agent,
-            task,
-            context=ctx,
-            session=session,
-            hooks=self._make_hooks(),
-            max_turns=self._max_turns,
-        )
+        b = self.bind(sid, resume=resume)
+        stream = b.run_streamed(task)
         async for event in stream.stream_events():
-            if stream_sink is not None:
-                await stream_sink(event)
             yield event
         yield {"kind": "done", "output_preview": str(stream.final_output)}
 
-    async def run_with_stream_sink(
-        self,
-        task: str,
-        *,
-        session_id: str | None = None,
-        resume: bool = False,
-        stream_sink: Callable[[Any], Awaitable[None]],
-    ) -> DeepRunResult:
-        sid = session_id or uuid.uuid4().hex
-        ctx = self._make_ctx(sid, resume)
-        session = create_session(sid, self._checkpointer)
-        agent = self._prepare_agent()
-        stream: RunResultStreaming = Runner.run_streamed(
-            agent,
-            task,
-            context=ctx,
-            session=session,
-            hooks=self._make_hooks(),
-            max_turns=self._max_turns,
-        )
-        async for event in stream.stream_events():
-            await stream_sink(event)
-        return DeepRunResult(output=stream.final_output, session_id=sid, plan=ctx.plan)
-
 
 class DeepRunResult:
-    def __init__(self, output: Any, session_id: str, plan: Plan) -> None:
+    def __init__(
+        self,
+        output: Any,
+        session_id: str,
+        plan: "Plan",
+        *,
+        run_result: RunResult | None = None,
+    ) -> None:
         self.output = output
         self.session_id = session_id
         self.plan = plan
+        self.run_result = run_result
 
     def __repr__(self) -> str:
         return (
@@ -539,3 +567,12 @@ def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
 
 
 DeepAgent = create_deep_agent
+
+__all__ = [
+    "DeepAgent",
+    "DeepAgentRunner",
+    "DeepRunBinding",
+    "DeepRunResult",
+    "SubagentRef",
+    "create_deep_agent",
+]

@@ -18,7 +18,6 @@ class AgentContext:
     memory: str = ""
     skills: str = ""
     debug: bool = False
-    hitl_tools: list[str] = field(default_factory=list)
     resume: bool = False
     is_subagent: bool = False
 

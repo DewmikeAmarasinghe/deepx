@@ -22,7 +22,6 @@ from deepx.backends.filesystem import (
 )
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
-from deepx.middleware.hitl import HumanInTheLoopHooks, wrap_tools_for_hitl
 from deepx.middleware.logs import run_log_load_plan, wrap_tools_for_logging
 from deepx.tools.planning import Plan
 
@@ -110,13 +109,10 @@ def apply_tool_pipeline(
     *,
     agent_name: str,
     debug: bool,
-    hitl: HumanInTheLoopHooks | None = None,
 ) -> list[Tool]:
     wrapped = wrap_tools_for_large_tool_results(tools, backend)
     if debug:
         wrapped = wrap_tools_for_logging(wrapped, backend, agent_name)
-    if hitl is not None:
-        wrapped = wrap_tools_for_hitl(wrapped, hitl)
     return wrapped
 
 

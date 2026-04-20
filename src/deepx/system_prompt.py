@@ -3,17 +3,76 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 import yaml
 from agents import Agent, RunContextWrapper
 
 from deepx.backends.filesystem import resolve_data_root, resolve_host_root
 from deepx.context import AgentContext
+from deepx.tools.planning import WRITE_TODOS_SYSTEM_APPENDIX
 
 # ---------------------------------------------------------------------------
 # Prompt constants
 # ---------------------------------------------------------------------------
+
+COORDINATOR_ROLE_PROMPT = """\
+You coordinate specialists. Your consumer may be another agent or system—not always an end user—so
+prioritize **actionable** outcomes: clear summaries, explicit file paths, and decisions that unblock
+downstream work.
+
+Use **tools** for callable delegation and **handoffs** when the SDK exposes `transfer_to_*`.
+Prefer one strong delegation per specialty with **self-contained** briefs; pass **file paths**
+between steps instead of pasting large bodies.
+
+For substantial multi-step requests, call **write_todos** with a full task list, then replace the
+list with **write_todos** again as steps complete. Review specialist outputs before you summarise.
+"""
+
+ORCHESTRATOR_ROLE_PROMPT = COORDINATOR_ROLE_PROMPT
+
+FILESYSTEM_PROMPT = """\
+## Filesystem and shell
+
+### Paths (file tools)
+
+Paths start with **`/`** and are **under the project root** (`root_dir`): `/README.md` →
+`<root_dir>/README.md`, `/test_demo/foo.py` → `<root_dir>/test_demo/foo.py`. You cannot read or
+write the runtime `.deepx` tree via file tools; use **`save_memory`** for durable facts.
+
+Project root for this run: `{host_root}`.
+
+### Tool groups (namespaces)
+
+- **Filesystem & host:** `ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`, `execute`
+- **Planning:** `write_todos`
+- **Memory:** `save_memory`
+
+### `execute`
+
+Prefer file tools for project files. Commands use a
+**timeout** (capped); unsupported backends return a clear error instead of running a shell.
+
+### File tools
+
+`ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob` — paginate large reads, read before
+edit, literal substring `grep`. **`grep`** supports `output_mode` (`content`, `count`,
+`files_with_matches`). **`glob`** is time-bounded. **`read_file`** truncates extremely long
+lines in the numbered view.
+
+### Deliverables (project tree)
+
+Put user-facing artifacts under **`/_outputs/`** (for example `/_outputs/report.md`). Keep the
+tree tidy: remove scratch files when done.
+
+### Large tool results
+
+When a tool return exceeds the context budget, the framework **writes the full text** under
+**`/_outputs/large_tool_results/<readable_name>.txt`** and replaces the tool message with
+instructions plus a **head/tail preview**. Use **`read_file(path, offset=0, limit=100)`** (and
+paginate) to pull the saved content back into context — never paste the entire file into chat.
+"""
+
 
 BASE_AGENT_PROMPT = """\
 You are a Deep Agent, an AI assistant that helps users accomplish tasks using tools.
@@ -71,14 +130,27 @@ orchestrator reads your output programmatically.
 stubs). Remove drafts and scratch files when the task is done; keep only final outputs the user or the orchestrator
 needs.
 
-**Planning:** you have the same `write_todos`, `update_todos`, and `think_tool` as the main agent.
+**Planning:** you have the same `write_todos` tool as the main agent.
 For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
-on relevant skills), then `update_todos` after each major step. Skipping todos on multi-step work
-is a mistake.\
+on relevant skills), then call `write_todos` again with an updated full list after each major step.
+Skipping todos on multi-step work is a mistake.\
 """
 
-PLANNING_PROMPT = """\
+HYBRID_PLANNER_EXECUTOR_PROMPT = """\
+## Planner–executor loop
+
+Use a tight **ReAct** rhythm: short reasoning when it helps, then tools, then update your view of the
+world. For work that spans multiple tool batches, keep **`write_todos`** as the canonical plan:
+create it early, then **replace the entire list** after each major milestone so the plan always
+matches reality. Never issue parallel `write_todos` calls in the same turn.
+"""
+
+PLANNING_PROMPT = f"""\
 ---
+
+{WRITE_TODOS_SYSTEM_APPENDIX}
+
+{HYBRID_PLANNER_EXECUTOR_PROMPT}
 
 ## Step 1 — Capability Assessment (before writing any plan)
 
@@ -86,7 +158,7 @@ PLANNING_PROMPT = """\
    autonomous agents that can handle complex, multi-step tasks. Understand what each specialises in before planning.
 2. **Evaluate your skills.** If any skill matches the task, call `read_file` on its path now —
    before writing a single todo. The skill may define quality standards that change your approach.
-3. **Design a strategy-driven plan.** Write todos that leverage your real capabilities:
+3. **Design a strategy-driven plan.** Use `write_todos` with items that leverage your real capabilities:
 
    Bad — many small calls to the same subagent that could do the work in one go:
    ```
@@ -103,15 +175,14 @@ PLANNING_PROMPT = """\
    [4] Return the final result inline to the user (or paths to artifacts for the orchestrator)
    ```
 
-## Step 2 — Execution Loop (MUST repeat for every step)
+## Step 2 — Execution Loop (repeat for every step)
 
 ```
 EXECUTE         → perform the step (tool or subagent delegation)
 THEN:
-  expected result  → update_todos: mark step completed, next in_progress
-  plan structure change → write_todos (full replace) or simple update_todos patches for todo status updates or todo title updates after selecting a todo by its id
-  blocked          → update_todos: describe blocker; keep current in_progress
-  confused / surprised / have_been_runing_autonomously_for_a_long_time → think_tool, then update_todos or write_todos or continue
+  progress        → write_todos again with the full list (mark completed / in_progress / add items)
+  blocked         → write_todos: add or adjust items; keep honest in_progress state
+  confused        → reason briefly in your assistant message, then write_todos if the list should change
 ```
 
 ## Step 3 — Delegation to subagents
@@ -126,61 +197,14 @@ THEN:
   into the next prompt. Subagents share the same project tree.
 - Parallelise subagent calls only when there is **zero data dependency** between them.
 
-## Rules for `write_todos` and `update_todos`
+## Human approvals (host)
 
-- `write_todos`: full replace; pass every step in order; never omit entries you want to keep.
-- `update_todos`: patch by numeric id (`"1"`, `"2"`, …).
-- Never call `write_todos` in parallel with other planning tools.\
+Some tools may **pause the run** until a human approves or rejects the tool call in the host
+(terminal/UI). If a call is rejected, revise your plan with `write_todos` and try a different approach.
 
-
-## Step 4 - Cleanup
+## Step 4 — Cleanup
 
 - Delete intermediate scratch files when the job is finished; leave final deliverables only.
-"""
-
-
-def _build_filesystem_prompt(
-    session_id: str,
-    *,
-    host_root: str | None,
-    data_root: str | None,
-) -> str:
-    _ = session_id, data_root
-    hr = host_root or "the configured project root"
-    return f"""\
-## Filesystem and shell
-
-### Paths (file tools)
-
-Paths start with **`/`** and are **under the project root** (`root_dir`): `/README.md` →
-`<root_dir>/README.md`, `/test_demo/foo.py` → `<root_dir>/test_demo/foo.py`. You cannot read or
-write the runtime `.deepx` tree via file tools; use **`save_memory`** for durable facts.
-
-Project root for this run: `{hr}`.
-
-### `execute`
-
-Prefer file tools for project files. Commands use a
-**timeout** (capped); unsupported backends return a clear error instead of running a shell.
-
-### File tools
-
-`ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob` — paginate large reads, read before
-edit, literal substring `grep`. **`grep`** supports `output_mode` (`content`, `count`,
-`files_with_matches`). **`glob`** is time-bounded. **`read_file`** truncates extremely long
-lines in the numbered view.
-
-### Deliverables (project tree)
-
-Put user-facing artifacts under **`/_outputs/`** (for example `/_outputs/report.md`). Keep the
-tree tidy: remove scratch files when done.
-
-### Large tool results
-
-When a tool return exceeds the context budget, the framework **writes the full text** under
-**`/_outputs/large_tool_results/<readable_name>.txt`** and replaces the tool message with
-instructions plus a **head/tail preview**. Use **`read_file(path, offset=0, limit=100)`** (and
-paginate) to pull the saved content back into context — never paste the entire file into chat.
 """
 
 
@@ -214,16 +238,6 @@ you need it; do not assume those files are loaded into context automatically.
 {skills_list}\
 """
 
-HITL_PROMPT = """\
-The following tools require human approval in this session: {tools}
-
-**Approval is enforced at the code level — do not ask the user whether you may use these tools.**
-Simply call the tool when your plan requires it. The system handles the approval prompt automatically.
-
-If a tool returns a message starting with `[Human-in-the-loop]` saying approval was **declined**:
-the tool did NOT run. Call `think_tool` if needed, then `update_todos` or `write_todos`, and proceed differently.\
-"""
-
 _SEP = "\n\n" + "=" * 80 + "\n\n"
 
 
@@ -232,13 +246,13 @@ _SEP = "\n\n" + "=" * 80 + "\n\n"
 # ---------------------------------------------------------------------------
 
 
-class SkillMetadata(TypedDict, total=False):
+class SkillMetadata(TypedDict):
     name: str
     description: str
     path: str
-    license: str | None
-    compatibility: str | None
-    allowed_tools: list[str]
+    license: NotRequired[str | None]
+    compatibility: NotRequired[str | None]
+    allowed_tools: NotRequired[list[str]]
 
 
 def _skill_md_in_dir(d: Path) -> Path | None:
@@ -311,7 +325,6 @@ def skills_catalog_for_host(
         text = smd.read_text(encoding="utf-8", errors="replace")
         meta = _parse_skill_frontmatter(text, agent_path)
         if meta and meta.get("name") and meta.get("description"):
-            meta = {**meta, "path": agent_path}
             by_name.setdefault(str(meta["name"]), meta)
     return list(by_name.values())
 
@@ -392,11 +405,16 @@ def build_system_prompt(
     agent: Agent,
     custom_prompt: str = "",
     checkpointer: str = ":memory:",
+    *,
+    include_coordinator_role: bool = False,
 ) -> str:
     sections: list[str] = []
 
     if custom_prompt:
         sections.append(_section("ROLE", custom_prompt))
+
+    if include_coordinator_role:
+        sections.append(_section("COORDINATION", COORDINATOR_ROLE_PROMPT))
 
     sections.append(_section("CORE BEHAVIOR", BASE_AGENT_PROMPT))
 
@@ -428,28 +446,13 @@ def build_system_prompt(
             _section("MEMORY", MEMORY_PROMPT.format(agent_memory=ctx.context.memory))
         )
 
-    sections.append(
-        _section(
-            "FILESYSTEM",
-            _build_filesystem_prompt(
-                ctx.context.session_id,
-                host_root=str(host_p) if host_p else None,
-                data_root=str(data_p) if data_p else None,
-            ),
-        )
-    )
-
-    if ctx.context.hitl_tools:
-        sections.append(
-            _section(
-                "HUMAN-IN-THE-LOOP",
-                HITL_PROMPT.format(tools=", ".join(ctx.context.hitl_tools)),
-            )
-        )
+    hr = str(host_p) if host_p is not None else "the configured project root"
+    _ = data_p, checkpointer
+    sections.append(_section("FILESYSTEM", FILESYSTEM_PROMPT.format(host_root=hr)))
 
     if ctx.context.plan.todos:
         lines = [
-            f"[{t.id}] ({t.status.value}) {t.title}" for t in ctx.context.plan.todos
+            f"[{t.id}] ({t.status.value}) {t.content}" for t in ctx.context.plan.todos
         ]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 
