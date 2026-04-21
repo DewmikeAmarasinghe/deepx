@@ -40,7 +40,7 @@ from deepx.system_prompt import (
 from deepx.tools import BUILTIN_TOOLS
 
 # Model id for agents 
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = "gpt-5-nano"
 
 if TYPE_CHECKING:
     from agents.agent import MCPConfig

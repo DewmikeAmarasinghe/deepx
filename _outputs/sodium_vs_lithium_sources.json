@@ -1,0 +1,58 @@
+[
+  {
+    "title": "Prospective life cycle assessment of sodium-ion batteries made from abundant elements",
+    "authors": ["Sanna Wickerts", "Rickard Arvidsson", "Anders Nordelöf", "Magdalena Svanström", "Patrik Johansson"],
+    "date": "2024",
+    "url": "https://research.chalmers.se/publication/538534/file/538534_Fulltext.pdf",
+    "source_type": "journal"
+  },
+  {
+    "title": "Sodium-ion batteries: A technology brief",
+    "authors": ["International Renewable Energy Agency (IRENA)"],
+    "date": "2025",
+    "url": "https://www.irena.org/-/media/Files/IRENA/Agency/Publication/2025/Nov/IRENA_TEC_Sodium-ion_batteries_2025.pdf",
+    "source_type": "report"
+  },
+  {
+    "title": "Naxtra Battery Breakthrough & Dual-Power Architecture: CATL Pioneers the Multi-Power Era",
+    "authors": ["Contemporary Amperex Technology Co., Limited (CATL)"],
+    "date": "2025-04-21",
+    "url": "https://www.catl.com/en/news/6401.html",
+    "source_type": "company_release"
+  },
+  {
+    "title": "Hard carbon for sodium-ion batteries: progress, strategies and future perspective",
+    "authors": ["Chun Wu", "Yunrui Yang", "Yinghao Zhang", "Hui Xu", "Xiangxi He", "Xingqiao Wu", "Shulei Chou"],
+    "date": "2024-03-20",
+    "url": "https://pubs.rsc.org/en/content/articlehtml/2024/sc/d4sc00734d",
+    "source_type": "journal"
+  },
+  {
+    "title": "Massive 20 GWh sodium-ion battery manufacturing plant announced in China",
+    "authors": ["pv magazine"],
+    "date": "2025-11-24",
+    "url": "https://www.pv-magazine.com/2025/11/24/massive-20-gwh-sodium-ion-battery-manufacturing-plant-announced-in-china/",
+    "source_type": "news"
+  },
+  {
+    "title": "Sodium-Ion Battery Development (DOE project presentation)",
+    "authors": ["Fred Omenya / Sandia National Laboratories"],
+    "date": "2024-08-06",
+    "url": "https://www.sandia.gov/app/uploads/sites/82/2024/08/PR2024_602_Omenya_Fred_Sodium-Batteries-1.pdf",
+    "source_type": "presentation"
+  },
+  {
+    "title": "Trends in electric vehicle batteries – Global EV Outlook 2024",
+    "authors": ["International Energy Agency (IEA)"],
+    "date": "2024",
+    "url": "https://www.iea.org/reports/global-ev-outlook-2024/trends-in-electric-vehicle-batteries",
+    "source_type": "report"
+  },
+  {
+    "title": "Comparative life cycle assessment of sodium-ion and lithium iron phosphate batteries in the context of carbon neutrality",
+    "authors": ["Guo et al."],
+    "date": "2023",
+    "url": "https://ui.adsabs.harvard.edu/abs/2023JEnSt..7208589G/abstract",
+    "source_type": "journal"
+  }
+]
