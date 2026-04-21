@@ -9,40 +9,47 @@ from agents import RunContextWrapper, function_tool
 
 
 def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
-    """Read-only SQL tools. Each tool takes ``db``: a *.db* filename under ``test_dbs_dir``."""
+    """Read-only SQL tools.
+
+    ``db_name`` is a ``*.db`` filename under the single allowlisted ``test_dbs_dir``.
+    Typical flow: ``db_list_tables`` → ``db_schema`` for relevant tables → ``db_query`` with JOINs
+    built from schema keys (avoid guessing column names).
+    """
     root = test_dbs_dir.resolve()
     pre = f"{tool_prefix}_" if tool_prefix else ""
 
-    def _resolve_db(db: str) -> Path:
-        name = (db or "").strip()
+    def _resolve_db(db_name: str) -> Path:
+        name = (db_name or "").strip()
         if not name or ".." in name or "/" in name or "\\" in name:
             raise ValueError(
-                "Invalid db identifier: use a plain filename (e.g. chinook.db or northwind.db)."
+                "Invalid db_name: use a plain filename (e.g. chinook.db or northwind.db)."
             )
         if not name.endswith(".db"):
             name = f"{name}.db"
         p = (root / name).resolve()
         if p.parent != root:
-            raise ValueError("db must resolve to a file directly under the allowlisted test_dbs dir.")
+            raise ValueError(
+                "db_name must resolve to a file directly under the allowlisted test_dbs dir."
+            )
         if not p.is_file():
             raise ValueError(f"Database not found under test_dbs: {name}")
         return p
 
-    @function_tool(name_override=f"{pre}sql_db_list_tables")
-    def sql_db_list_tables(ctx: RunContextWrapper, db: str) -> str:
-        """List all tables in the selected SQLite database (``db`` = filename under test_dbs)."""
+    @function_tool(name_override=f"{pre}db_list_tables")
+    def db_list_tables(ctx: RunContextWrapper, db_name: str) -> str:
+        """List all tables in the SQLite file ``db_name`` (filename under ``test_dbs``)."""
         _ = ctx
-        sqlite_path = str(_resolve_db(db))
+        sqlite_path = str(_resolve_db(db_name))
         with sqlite3.connect(sqlite_path) as conn:
             rows = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
             ).fetchall()
         return ", ".join(r[0] for r in rows) or "No tables found."
 
-    @function_tool(name_override=f"{pre}sql_db_schema")
-    def sql_db_schema(ctx: RunContextWrapper, db: str, table_names: str) -> str:
-        """CREATE TABLE plus sample rows for comma-separated ``table_names`` in ``db``."""
-        sqlite_path = str(_resolve_db(db))
+    @function_tool(name_override=f"{pre}db_schema")
+    def db_schema(ctx: RunContextWrapper, db_name: str, table_names: str) -> str:
+        """Show CREATE TABLE and sample rows for comma-separated ``table_names`` in ``db_name``."""
+        sqlite_path = str(_resolve_db(db_name))
         names = [n.strip() for n in table_names.split(",") if n.strip()]
         parts: list[str] = []
         with sqlite3.connect(sqlite_path) as conn:
@@ -64,11 +71,11 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
                 parts.append(f"-- {name}\n{schema}\n\n-- Sample rows:\n{sample}")
         return "\n\n".join(parts)
 
-    @function_tool(name_override=f"{pre}sql_db_query")
-    def sql_db_query(ctx: RunContextWrapper, db: str, query: str) -> str:
-        """Run a read-only SELECT on ``db`` (filename under test_dbs). No writes."""
+    @function_tool(name_override=f"{pre}db_query")
+    def db_query(ctx: RunContextWrapper, db_name: str, query: str) -> str:
+        """Run a read-only SELECT on ``db_name`` (filename under ``test_dbs``). No writes."""
         _ = ctx
-        sqlite_path = str(_resolve_db(db))
+        sqlite_path = str(_resolve_db(db_name))
         q = query.strip()
         upper = q.upper()
         for forbidden in (
@@ -93,4 +100,4 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
             lines.append(" | ".join(str(row[k]) for k in keys))
         return "\n".join(lines)
 
-    return [sql_db_list_tables, sql_db_schema, sql_db_query]
+    return [db_list_tables, db_schema, db_query]

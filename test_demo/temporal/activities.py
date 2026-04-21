@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from rich.console import Console
 from temporalio import activity
+
+from deepx_cli.chat_stream import run_binding_until_settled
 
 
 @dataclass
@@ -24,10 +27,9 @@ class RunOrchestratorActivityInput:
 async def run_orchestrator_activity(inp: RunOrchestratorActivityInput) -> str:
     from test_demo import orchestrator as orch
 
-    runner = orch.build_orchestrator_runner()
-    result = await runner.run(
-        inp.prompt,
-        session_id=inp.session_id,
-        resume=inp.resume,
+    runner = orch.orchestrator_runner
+    binding = runner.bind(inp.session_id, resume=inp.resume)
+    result = await run_binding_until_settled(
+        binding, inp.prompt, console=Console(highlight=False)
     )
-    return str(result.output)
+    return str(result.final_output)

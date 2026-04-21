@@ -16,11 +16,7 @@ def use_temporal() -> bool:
 
     ``USE_TEMPORAL``.
     """
-    raw = (
-        (os.environ.get("USE_TEMPORAL") or os.environ.get("DEEPX_USE_TEMPORAL") or "")
-        .strip()
-        .lower()
-    )
+    raw = (os.environ.get("USE_TEMPORAL") or "").strip().lower()
     return raw in ("1", "true", "yes", "on")
 
 
@@ -40,9 +36,8 @@ async def _chat_loop_async(
     ut = use_temporal()
     if ut:
         console.print(
-            "[dim]USE_TEMPORAL: runs go through Temporal (no token streaming from the CLI). "
-            "Interactive tool approval is not available in this mode—avoid tools that set "
-            "needs_approval, or run without USE_TEMPORAL.[/dim]\n"
+            "[dim]USE_TEMPORAL: worker runs the agent (no token streaming in this CLI). "
+            "Tool approvals use the same prompts when the worker process has interactive stdin.[/dim]\n"
         )
 
     try:

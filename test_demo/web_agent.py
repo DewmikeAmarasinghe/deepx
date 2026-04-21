@@ -17,8 +17,7 @@ import httpx  # noqa: E402
 from agents import RunContextWrapper, function_tool  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 
-from deepx.backends.protocol import BackendProtocol  # noqa: E402
-from deepx.defaults import DEFAULT_MODEL  # noqa: E402
+from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.factory import create_deep_agent  # noqa: E402
 
 load_dotenv()
@@ -27,6 +26,11 @@ TAVILY_KEY = os.environ.get("TAVILY_API_KEY", "")
 DEMO_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _REPO_ROOT
 SKILLS_DIR = DEMO_DIR / "skills"
+
+_DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
+_AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
+_AGENT_DBS.mkdir(parents=True, exist_ok=True)
+_WEB_DB = str(_AGENT_DBS / "web_agent.db")
 
 
 def _strip_images(obj: Any) -> Any:
@@ -172,43 +176,34 @@ async def web_map(
 
 WEB_TOOLS = [web_search, web_extract, web_map]
 
-
-def build_web_runner(
-    *,
-    backend: BackendProtocol,
-    checkpointer: str,
-    debug: bool = False,
-):
-    """Web research specialist as a :class:`deepx.factory.DeepAgentRunner`."""
-    return create_deep_agent(
-        model=DEFAULT_MODEL,
-        name="web_agent",
-        description=(
-            "Web research specialist: Tavily search/extract/map; saves structured notes and can "
-            "author final markdown reports under the project tree. Returns artifact paths."
-        ),
-        tools=WEB_TOOLS,
-        skills=[
-            str(SKILLS_DIR / "deep-research"),
-            str(SKILLS_DIR / "arxiv-search"),
-        ],
-        system_prompt=(
-            "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
-            "For any multi-step brief, call **`write_todos` first** after skimming the relevant "
-            "**deep-research** / **arxiv-search** skill files (`read_file` on the paths listed in "
-            "your prompt), then call **`write_todos` again** with an updated full list after each major step.\n"
-            "Persist research in a small number of well-named files (one topical area per file when "
-            "possible). Use clear headings, inline citations, and a Sources section on written "
-            "deliverables.\n"
-            "When the brief includes a **written deliverable**, produce the full final markdown "
-            "yourself with `write_file`—executive summary, findings, and sources—so the parent agent "
-            "does not need a separate writer.\n"
-            "Return every artifact path you created plus a tight summary. Do not dump large raw "
-            "JSON into chat; keep bulky tool output in files and point to them briefly."
-        ),
-        backend=backend,
-        checkpointer=checkpointer,
-        debug=debug,
-        include_general_purpose=False,
-        subagents=None,
-    )
+web_agent_runner = create_deep_agent(
+    name="web_agent",
+    description=(
+        "Web research specialist: Tavily search/extract/map; saves structured notes and can "
+        "author final markdown reports under the project tree. Returns artifact paths."
+    ),
+    tools=WEB_TOOLS,
+    skills=[
+        str(SKILLS_DIR / "deep-research"),
+        str(SKILLS_DIR / "arxiv-search"),
+    ],
+    system_prompt=(
+        "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
+        "For any multi-step brief, call **`write_todos` first** after skimming the relevant "
+        "**deep-research** / **arxiv-search** skill files (`read_file` on the paths listed in "
+        "your prompt), then call **`write_todos` again** with an updated full list after each major step.\n"
+        "Persist research in a small number of well-named files (one topical area per file when "
+        "possible). Use clear headings, inline citations, and a Sources section on written "
+        "deliverables.\n"
+        "When the brief includes a **written deliverable**, produce the full final markdown "
+        "yourself with `write_file`—executive summary, findings, and sources—so the parent agent "
+        "does not need a separate writer.\n"
+        "Return every artifact path you created plus a tight summary. Do not dump large raw "
+        "JSON into chat; keep bulky tool output in files and point to them briefly."
+    ),
+    backend=_DEMO_BACKEND,
+    checkpointer=_WEB_DB,
+    debug=True,
+    include_general_purpose=False,
+    subagents=None,
+)

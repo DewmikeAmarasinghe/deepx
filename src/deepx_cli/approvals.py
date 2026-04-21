@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from agents.items import ToolApprovalItem
+from agents.run_context import RunContextWrapper
 from rich.console import Console
 
 
@@ -13,9 +14,9 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
     raw = getattr(item, "raw_item", None)
     args_preview = ""
     if raw is not None:
-        args_preview = str(getattr(raw, "arguments", "") or getattr(raw, "args", "") or "")[
-            :800
-        ]
+        args_preview = str(
+            getattr(raw, "arguments", "") or getattr(raw, "args", "") or ""
+        )[:800]
     console.print()
     console.print(
         f"[yellow]Tool approval[/yellow]  agent=[bold]{agent_name}[/bold]  "
@@ -23,7 +24,9 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
     )
     if args_preview:
         console.print(f"[dim]{args_preview}[/dim]")
-    console.print("  [1] Reject   [2] Allow once   [3] Allow for rest of this run")
+    console.print("  [1] Reject")
+    console.print("  [2] Allow once (this call only)")
+    console.print("  [3] Allow for the rest of this run")
     while True:
         choice = input("Choice [1-3]: ").strip().lower()
         if choice in ("1", "r", "reject", "n", "no"):
@@ -38,7 +41,17 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
 def apply_choices_to_state(
     state: Any, interruptions: list[ToolApprovalItem], console: Console
 ) -> None:
+    ctx = getattr(state, "_context", None)
     for item in list(interruptions):
+        if ctx is not None:
+            call_id = RunContextWrapper._resolve_call_id(item) or ""
+            pre = ctx.get_approval_status(
+                item.tool_name or "",
+                call_id,
+                existing_pending=item,
+            )
+            if pre is True:
+                continue
         choice = approval_choice(console, item)
         if choice == "reject":
             state.reject(item)

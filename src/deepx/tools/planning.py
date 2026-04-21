@@ -153,21 +153,38 @@ Remember: If you only need to make a few tool calls to complete a task, and it i
 **Parallel calls:** Never call `write_todos` multiple times in parallel in the same model turn.
 """
 
+THINK_TOOL_DESCRIPTION = """\
+Use this tool to reason explicitly before a large plan change, after a surprising tool result, or
+when you are uncertain which branch to take next.
 
-WRITE_TODOS_SYSTEM_APPENDIX = """## `write_todos`
+**What to put in `reflection` (short, structured):**
+- What you observed and whether it matched expectations
+- New constraints or blockers
+- Whether the current todo list should change
+- The next concrete action (not a full rehash of the whole run)
 
-You have access to the `write_todos` tool to help you manage and plan complex objectives.
-Use this tool for complex objectives to ensure that you are tracking each necessary step and giving the user visibility into your progress.
-This tool is very helpful for planning complex objectives, and for breaking down these larger complex objectives into smaller steps.
-
-It is critical that you mark todos as completed as soon as you are done with a step. Do not batch up multiple steps before marking them as completed.
-For simple objectives that only require a few steps, it is better to just complete the objective directly and NOT use this tool.
-Writing todos takes time and tokens, use it when it is helpful for managing complex many-step problems! But not for simple few-step requests.
-
-## Important To-Do List Usage Notes to Remember
-- The `write_todos` tool should never be called multiple times in parallel.
-- Don't be afraid to revise the To-Do list as you go. New information may reveal new tasks that need to be done, or old tasks that are irrelevant.
+Afterwards, if the plan should change, call `write_todos` with a **full replace** of the list. \
+This tool is optional; do not call it on every step.\
 """
+
+
+@function_tool(description_override=THINK_TOOL_DESCRIPTION)
+def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
+    """Structured reflection; prefer updating `write_todos` when the plan must change."""
+    todos = [
+        {"id": t.id, "content": t.content, "status": t.status.value}
+        for t in ctx.context.plan.todos
+    ]
+    plan_block = (
+        json.dumps(todos, indent=2)
+        if todos
+        else "(no plan yet — write_todos has not been called)"
+    )
+    return (
+        f"Current plan:\n{plan_block}\n\n"
+        "If the plan needs updating, call write_todos with the full list. "
+        f"Reflection:\n{reflection}\n"
+    )
 
 
 @function_tool(description_override=WRITE_TODOS_TOOL_DESCRIPTION)
@@ -216,6 +233,8 @@ def _safe_status(value: str) -> TodoStatus:
 
 def _persist_plan(ctx: RunContextWrapper[AgentContext]) -> None:
     ctx.context.plan.agent_name = ctx.context.agent_name or ctx.context.plan.agent_name
+    if not ctx.context.debug:
+        return
     run_log_save_plan(
         ctx.context.backend,
         ctx.context.session_id,

@@ -231,7 +231,7 @@ class FilesystemBackend(BackendProtocol):
         if not base_phys.exists():
             return GrepResult(error=f"Error: path '{base_agent}' not found.")
         candidates: list[Path] = []
-        _gflags = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
+        _gflags = wcglob.EXTGLOB | wcglob.GLOBSTAR | wcglob.DOTGLOB
         if base_phys.is_file():
             candidates = [base_phys]
         else:

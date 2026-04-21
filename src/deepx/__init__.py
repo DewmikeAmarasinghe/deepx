@@ -2,8 +2,8 @@ from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.local_shell import LocalShellBackend
 from deepx.backends.memory import InMemoryBackend
 from deepx.backends.protocol import BackendProtocol
-from deepx.defaults import DEFAULT_MODEL
 from deepx.factory import (
+    DEFAULT_MODEL,
     DeepAgent,
     DeepAgentRunner,
     DeepRunBinding,

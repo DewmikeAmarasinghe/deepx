@@ -10,26 +10,10 @@ from agents import Agent, RunContextWrapper
 
 from deepx.backends.filesystem import resolve_data_root, resolve_host_root
 from deepx.context import AgentContext
-from deepx.tools.planning import WRITE_TODOS_SYSTEM_APPENDIX
 
 # ---------------------------------------------------------------------------
 # Prompt constants
 # ---------------------------------------------------------------------------
-
-COORDINATOR_ROLE_PROMPT = """\
-You coordinate specialists. Your consumer may be another agent or system—not always an end user—so
-prioritize **actionable** outcomes: clear summaries, explicit file paths, and decisions that unblock
-downstream work.
-
-Use **tools** for callable delegation and **handoffs** when the SDK exposes `transfer_to_*`.
-Prefer one strong delegation per specialty with **self-contained** briefs; pass **file paths**
-between steps instead of pasting large bodies.
-
-For substantial multi-step requests, call **write_todos** with a full task list, then replace the
-list with **write_todos** again as steps complete. Review specialist outputs before you summarise.
-"""
-
-ORCHESTRATOR_ROLE_PROMPT = COORDINATOR_ROLE_PROMPT
 
 FILESYSTEM_PROMPT = """\
 ## Filesystem and shell
@@ -42,10 +26,10 @@ write the runtime `.deepx` tree via file tools; use **`save_memory`** for durabl
 
 Project root for this run: `{host_root}`.
 
-### Tool groups (namespaces)
+### Built-in tool groups
 
 - **Filesystem & host:** `ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`, `execute`
-- **Planning:** `write_todos`
+- **Planning:** `write_todos`, `think_tool`
 - **Memory:** `save_memory`
 
 ### `execute`
@@ -130,27 +114,24 @@ orchestrator reads your output programmatically.
 stubs). Remove drafts and scratch files when the task is done; keep only final outputs the user or the orchestrator
 needs.
 
-**Planning:** you have the same `write_todos` tool as the main agent.
+**Planning:** you have the same `write_todos` and `think_tool` as the main agent.
 For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
 on relevant skills), then call `write_todos` again with an updated full list after each major step.
 Skipping todos on multi-step work is a mistake.\
 """
 
-HYBRID_PLANNER_EXECUTOR_PROMPT = """\
-## Planner–executor loop
+WRITE_TODOS_PLANNING_NOTES = """\
+### `write_todos` (canonical plan)
 
-Use a tight **ReAct** rhythm: short reasoning when it helps, then tools, then update your view of the
-world. For work that spans multiple tool batches, keep **`write_todos`** as the canonical plan:
-create it early, then **replace the entire list** after each major milestone so the plan always
-matches reality. Never issue parallel `write_todos` calls in the same turn.
+- Each call **replaces the entire todo list**; include every item you want to keep.
+- Never issue **parallel** `write_todos` calls in the same model turn.
+- Skip for trivial one-off tasks; use for multi-step work where a visible plan helps.
 """
 
 PLANNING_PROMPT = f"""\
 ---
 
-{WRITE_TODOS_SYSTEM_APPENDIX}
-
-{HYBRID_PLANNER_EXECUTOR_PROMPT}
+{WRITE_TODOS_PLANNING_NOTES}
 
 ## Step 1 — Capability Assessment (before writing any plan)
 
@@ -405,16 +386,11 @@ def build_system_prompt(
     agent: Agent,
     custom_prompt: str = "",
     checkpointer: str = ":memory:",
-    *,
-    include_coordinator_role: bool = False,
 ) -> str:
     sections: list[str] = []
 
     if custom_prompt:
         sections.append(_section("ROLE", custom_prompt))
-
-    if include_coordinator_role:
-        sections.append(_section("COORDINATION", COORDINATOR_ROLE_PROMPT))
 
     sections.append(_section("CORE BEHAVIOR", BASE_AGENT_PROMPT))
 

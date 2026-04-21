@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import wcmatch.glob as wcglob
 from wcmatch import fnmatch as wc_fnmatch
 
 from deepx.backends.filesystem import OUTPUTS_LARGE_TOOL_RESULTS_PREFIX
@@ -30,7 +31,7 @@ def _rel(file_path: str) -> str:
 def _glob_match(rel: str, pattern: str) -> bool:
     if pattern in ("**/*", "**", "*"):
         return True
-    flags = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
+    flags = wcglob.EXTGLOB | wcglob.GLOBSTAR | wcglob.DOTGLOB
     base = rel.split("/")[-1]
     return wc_fnmatch.fnmatch(rel, pattern, flags=flags) or wc_fnmatch.fnmatch(
         base, pattern, flags=flags
@@ -104,7 +105,7 @@ class InMemoryBackend(BackendProtocol):
         base = _norm_agent_path(path or "/")
         rel = base.lstrip("/")
         matches: list[GrepMatch] = []
-        _fg = wc_fnmatch.EXTGLOB | wc_fnmatch.GLOBSTAR | wc_fnmatch.DOTGLOB
+        _fg = wcglob.EXTGLOB | wcglob.GLOBSTAR | wcglob.DOTGLOB
 
         for (sid, r), content in self._files.items():
             if sid != session_id:

@@ -8,6 +8,8 @@ Run from the repository root (the ``test_demo`` tree is not shipped in the wheel
 
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
 orchestrator module is for local development and demos only.
+
+Temporal (optional): see ``test_demo/README.md``.
 """
 
 from __future__ import annotations
@@ -29,11 +31,11 @@ from agents import RunContextWrapper, function_tool  # noqa: E402
 from deepx import SubagentRef, create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
-from deepx.defaults import DEFAULT_MODEL  # noqa: E402
-from deepx.system_prompt import COORDINATOR_ROLE_PROMPT  # noqa: E402
-from test_demo import sql_agent as sql_mod  # noqa: E402
-from test_demo.pdf_agent import build_pdf_runner  # noqa: E402
-from test_demo.web_agent import build_web_runner  # noqa: E402
+
+from test_demo import hf_agent as hf_mod  # noqa: E402
+from test_demo.pdf_agent import pdf_agent_runner  # noqa: E402
+from test_demo.sql_agent import sql_agent_runner  # noqa: E402
+from test_demo.web_agent import web_agent_runner  # noqa: E402
 
 
 @function_tool
@@ -71,55 +73,53 @@ for d in (TEST_DBS, AGENT_DBS):
 DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
 
 ORCH_DB = str(AGENT_DBS / "orchestrator.db")
-WEB_DB = str(AGENT_DBS / "web_agent.db")
-SQL_AGENT_DB = str(AGENT_DBS / "sql_agent.db")
-PDF_AGENT_DB = str(AGENT_DBS / "pdf_agent.db")
-
-subagents: list[SubagentRef] = [
-    SubagentRef(build_web_runner(backend=DEMO_BACKEND, checkpointer=WEB_DB, debug=True)),
-]
-_sql = sql_mod.build_sql_runner(backend=DEMO_BACKEND, checkpointer=SQL_AGENT_DB, debug=True)
-if _sql is not None:
-    subagents.append(SubagentRef(_sql, expose="handoff"))
-subagents.append(
-    SubagentRef(build_pdf_runner(backend=DEMO_BACKEND, checkpointer=PDF_AGENT_DB, debug=True))
-)
 
 ORCH_SKILLS_DIR = REPO_ROOT / "test_demo" / "skills" / "orchestrate"
-SKILL_CREATOR_DIR = REPO_ROOT / "test_demo" / "skills" / "skill-creator"
 orch_tools = [render_files]
 
+DEMO_ORCHESTRATOR_SYS = """\
+## Which specialist for what
 
-def build_orchestrator_runner():
-    return create_deep_agent(
-        model=DEFAULT_MODEL,
-        name="orchestrator",
-        description=(
-            "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
-            "Uses planning tools; delegates execution to specialists."
+| Goal | Use |
+|------|-----|
+| Live web research, citations, long-form markdown reports from the open web | **Call the `web_agent` tool** with one self-contained brief (objective, scope, deliverable paths). |
+| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **Use the `transfer_to_sql_agent` handoff** (not the web tool). Every SQL tool call needs **`db_name`** (e.g. `chinook.db`, `northwind.db`). |
+| PDF merge/split/extract, forms, pdf skill workflows | **Call the `pdf_agent` tool** with a self-contained brief. |
+| Search Hugging Face Hub / docs via MCP (only if this run includes `hf_agent`) | **Call the `hf_agent` tool**; keep answers short and write long dumps under `/_outputs/`. |
+| Show the user finished markdown in the terminal | **Call `render_files`** with absolute-style paths under the project (e.g. `/_outputs/report.md`). |
+| Host shell when file tools are not enough | **`execute`** (bounded; same backend as the orchestrator). |
+
+**Delegation:** one strong call per specialist when possible; pass **file paths** between steps, not huge pasted bodies. If a specialist returns large content, have it save under `/_outputs/` and refer to paths only.
+"""
+
+
+orchestrator_runner = create_deep_agent(
+    name="orchestrator",
+    description=(
+        "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
+        "Uses planning tools; delegates execution to specialists."
+    ),
+    subagents=[
+        SubagentRef(web_agent_runner),
+        *(
+            [SubagentRef(sql_agent_runner, expose="handoff")]
+            if sql_agent_runner is not None
+            else []
         ),
-        subagents=subagents,
-        tools=orch_tools,
-        skills=[str(ORCH_SKILLS_DIR), str(SKILL_CREATOR_DIR)],
-        system_prompt=(
-            f"{COORDINATOR_ROLE_PROMPT}\n"
-            "\n## Demo specialists\n\n"
-            "Use **web_agent** (tool) for web research and written deliverables—**self-contained** "
-            "prompts with sources and artifact paths.\n"
-            "For SQL over allowlisted files in **test_demo/dbs/test_dbs**, use the "
-            "**`transfer_to_sql_agent`** handoff. The specialist's tools require a ``db`` argument "
-            "(e.g. **chinook.db** or **northwind.db**) on every call.\n"
-            "Use **pdf_agent** (tool) for PDF merge/split/extract and related work.\n"
-            "When the user should see finished markdown in the terminal, call **render_files** with "
-            "the artifact path(s). You may use **execute** for host commands when appropriate."
+        SubagentRef(pdf_agent_runner),
+        *(
+            [SubagentRef(hf_mod.hf_agent_runner)]
+            if hf_mod.hf_agent_runner is not None
+            else []
         ),
-        checkpointer=ORCH_DB,
-        debug=True,
-        backend=DEMO_BACKEND,
-    )
-
-
-agent = build_orchestrator_runner()
+    ],
+    tools=orch_tools,
+    skills=[str(ORCH_SKILLS_DIR)],
+    system_prompt=DEMO_ORCHESTRATOR_SYS,
+    checkpointer=ORCH_DB,
+    debug=True,
+    backend=DEMO_BACKEND,
+)
 
 TASK = """
 I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
@@ -127,6 +127,11 @@ energy density limits, materials and geopolitics, manufacturing scale-up, who is
 and lifecycle environmental trade-offs—then a single strong markdown report in the workspace
 I can open, and show me that report in the terminal when it is ready.
 """
+# TASK = """
+# Search Hugging Face Hub via MCP (hf_agent): shortlist three recent diffusion-model papers with
+# links and one-line relevance; save a workspace digest path and summarise trade-offs for practitioners.
+# Requires HF_TOKEN and Node/npx for the MCP server.
+# """
 # TASK = """
 # A balanced deep-dive memo on a contested topic in AI safety: competing claims, evidence on both
 # sides, and a concise set of open questions — written so a technical reader can act on it.
@@ -148,7 +153,7 @@ I can open, and show me that report in the terminal when it is ready.
 # """
 # TASK = """
 # arXiv: shortlist recent papers that materially change efficient LLM inference assumptions this
-# quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and 
+# quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and
 # render it.
 # """
 # Smoke-test **execute** (host shell, cwd = repo root): uncomment to verify LocalShellBackend.
@@ -158,10 +163,11 @@ I can open, and show me that report in the terminal when it is ready.
 # Paste both outputs in your reply and say whether the shell looks healthy.
 # """
 # TASK = """
-# Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions 
-# to set up LobeHub Skills Marketplace and install the skill. Once installed, read the SKILL.md file 
+# Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions
+# to set up LobeHub Skills Marketplace and install the skill. Once installed, read the SKILL.md file
 # in the installed directory and follow its instructions to complete the task.
 # """
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deepx orchestrator demo (terminal).")
@@ -179,13 +185,12 @@ def main() -> None:
 
     from deepx_cli.session import run_chat, run_once
 
-    runner = build_orchestrator_runner()
     task = " ".join(rest).strip() or TASK
 
     if args.once:
-        run_once(runner, task)
+        run_once(orchestrator_runner, task)
     else:
-        run_chat(runner)
+        run_chat(orchestrator_runner)
 
 
 if __name__ == "__main__":

@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from agents.result import RunResultStreaming
+from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
 from rich.console import Console
 
 from deepx.factory import DeepRunBinding
-
 from deepx_cli.approvals import apply_choices_to_state
 
 
@@ -25,8 +24,28 @@ async def drain_stream(stream: RunResultStreaming, console: Console) -> None:
                 continue
         if event.type == "run_item_stream_event":
             name = getattr(event.item, "type", None) or ""
-            if name in ("tool_call_item", "tool_call_output_item", "message_output_item"):
+            if name in (
+                "tool_call_item",
+                "tool_call_output_item",
+                "message_output_item",
+            ):
                 console.print(f"[dim]· {name}[/dim]")
+
+
+async def run_binding_until_settled(
+    binding: DeepRunBinding,
+    inp: str | RunState[Any, Any],
+    *,
+    console: Console,
+) -> RunResult:
+    """Run to completion, prompting for SDK tool approvals on the outer :class:`RunResult`."""
+    result = await binding.run(inp)
+    while result.interruptions:
+        console.print()
+        state = result.to_state()
+        apply_choices_to_state(state, list(result.interruptions), console)
+        result = await binding.run(state)
+    return result
 
 
 async def run_stream_until_settled(
@@ -37,10 +56,14 @@ async def run_stream_until_settled(
     while stream.interruptions:
         console.print()
         state = stream.to_state()
-        apply_choices_to_state(state, stream.interruptions, console)
+        apply_choices_to_state(state, list(stream.interruptions), console)
         stream = binding.run_streamed(state)
         await drain_stream(stream, console)
     return stream
 
 
-__all__ = ["drain_stream", "run_stream_until_settled"]
+__all__ = [
+    "drain_stream",
+    "run_binding_until_settled",
+    "run_stream_until_settled",
+]
