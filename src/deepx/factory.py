@@ -14,10 +14,19 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from agents import Agent, RunContextWrapper, Runner, function_tool, handoff
+from agents._tool_identity import get_function_tool_approval_keys
 from agents.agent import Agent as AgentType
+from agents.agent_tool_state import (
+    consume_agent_tool_run_result,
+    get_agent_tool_state_scope,
+    peek_agent_tool_run_result,
+    record_agent_tool_run_result,
+    set_agent_tool_state_scope,
+)
+from agents.items import ToolApprovalItem
 from agents.lifecycle import RunHooksBase
 from agents.model_settings import ModelSettings
 from agents.result import RunResult, RunResultStreaming
@@ -39,8 +48,7 @@ from deepx.system_prompt import (
 )
 from deepx.tools import BUILTIN_TOOLS
 
-# Model id for agents
-DEFAULT_MODEL = "gpt-5-nano"
+DEFAULT_MODEL = "gpt-5-mini"
 
 if TYPE_CHECKING:
     from agents.agent import MCPConfig
@@ -48,6 +56,32 @@ if TYPE_CHECKING:
     from agents.prompts import DynamicPromptFunction, Prompt
 
     from deepx.tools.planning import Plan
+
+
+def _format_subagent_output(run_result: RunResult | RunResultStreaming) -> str:
+    """Match ``Agent.as_tool`` output extraction for nested runs."""
+    if run_result.final_output is not None and (
+        not isinstance(run_result.final_output, str) or run_result.final_output != ""
+    ):
+        return str(run_result.final_output)
+
+    from agents.items import ItemHelpers, MessageOutputItem, ToolCallOutputItem
+
+    for item in reversed(run_result.new_items):
+        if isinstance(item, MessageOutputItem):
+            text_output = ItemHelpers.text_message_output(item)
+            if text_output:
+                return text_output
+
+        if (
+            isinstance(item, ToolCallOutputItem)
+            and isinstance(item.output, str)
+            and item.output
+        ):
+            return item.output
+
+    out = run_result.final_output
+    return "" if out is None else str(out)
 
 
 # ---------------------------------------------------------------------------
@@ -153,12 +187,13 @@ def _subagent_tool_from_runner(
     max_turns: int,
     backend: BackendProtocol,
     needs_approval: bool,
+    temporal_workflow: bool,
 ) -> Tool:
-    """Expose a subagent as a tool: nested ``Runner.run`` with its own SQLite session per call.
+    """Expose a subagent as a tool: nested ``Runner.run`` with SDK-aligned agent-tool HITL.
 
-    Nested ``needs_approval`` tools surface as interruptions on the parent run. Each delegation
-    uses ``create_session(f\"{parent_id}:{agent}:{tool_call_id}\", checkpointer)`` so specialists
-    keep separate session DBs when ``checkpointer`` is a file path.
+    Nested ``needs_approval`` tools surface on the parent run via
+    ``record_agent_tool_run_result`` / ``peek_agent_tool_run_result``. Each delegation uses its own
+    session (SQLite path or async list when ``temporal_workflow``).
     """
     agent = runner._agent
 
@@ -178,26 +213,192 @@ def _subagent_tool_from_runner(
             resume=False,
             is_subagent=True,
         )
-        session = create_session(sub_sid, checkpointer)
+        session = create_session(
+            sub_sid, checkpointer, temporal_workflow=temporal_workflow
+        )
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
-        result = await Runner.run(
-            agent_wrapped,
-            input,
-            context=sub_ctx,
-            session=session,
-            hooks=hooks,
-            max_turns=max_turns,
-        )
-        return str(result.final_output)
+        tool_state_scope_id = get_agent_tool_state_scope(ctx)
 
-    return function_tool(
+        nested_context = ToolContext(
+            context=sub_ctx,
+            usage=ctx.usage,
+            tool_name=ctx.tool_name,
+            tool_call_id=ctx.tool_call_id,
+            tool_arguments=ctx.tool_arguments,
+            tool_call=ctx.tool_call,
+            tool_namespace=ctx.tool_namespace,
+            agent=runner._agent,
+            run_config=ctx.run_config,
+            turn_input=list(ctx.turn_input),
+            _approvals=dict(ctx._approvals),
+        )
+        set_agent_tool_state_scope(nested_context, tool_state_scope_id)
+
+        def _nested_approvals_status(
+            interruptions: list[ToolApprovalItem],
+        ) -> Literal["approved", "pending", "rejected"]:
+            has_pending = False
+            has_decision = False
+            for interruption in interruptions:
+                call_id = interruption.call_id
+                if not call_id:
+                    has_pending = True
+                    continue
+                tool_namespace = RunContextWrapper._resolve_tool_namespace(interruption)
+                status = ctx.get_approval_status(
+                    interruption.tool_name or "",
+                    call_id,
+                    tool_namespace=tool_namespace,
+                    existing_pending=interruption,
+                )
+                if status is False:
+                    return "rejected"
+                if status is True:
+                    has_decision = True
+                if status is None:
+                    has_pending = True
+            if has_decision:
+                return "approved"
+            if has_pending:
+                return "pending"
+            return "approved"
+
+        def _apply_nested_approvals(
+            nested_run_ctx: RunContextWrapper[Any],
+            parent_context: RunContextWrapper[Any],
+            interruptions: list[ToolApprovalItem],
+        ) -> None:
+            def _find_mirrored_approval_record(
+                interruption: ToolApprovalItem,
+                *,
+                approved: bool,
+            ) -> Any | None:
+                candidate_keys = list(
+                    RunContextWrapper._resolve_approval_keys(interruption)
+                )
+                for candidate_key in get_function_tool_approval_keys(
+                    tool_name=RunContextWrapper._resolve_tool_name(interruption),
+                    tool_namespace=RunContextWrapper._resolve_tool_namespace(
+                        interruption
+                    ),
+                    tool_lookup_key=RunContextWrapper._resolve_tool_lookup_key(
+                        interruption
+                    ),
+                    include_legacy_deferred_key=True,
+                ):
+                    if candidate_key not in candidate_keys:
+                        candidate_keys.append(candidate_key)
+                fallback: Any | None = None
+                for candidate_key in candidate_keys:
+                    candidate = parent_context._approvals.get(candidate_key)
+                    if candidate is None:
+                        continue
+                    if approved and candidate.approved is True:
+                        return candidate
+                    if not approved and candidate.rejected is True:
+                        return candidate
+                    if fallback is None:
+                        fallback = candidate
+                return fallback
+
+            for interruption in interruptions:
+                call_id = interruption.call_id
+                if not call_id:
+                    continue
+                tool_name_i = RunContextWrapper._resolve_tool_name(interruption)
+                tool_namespace = RunContextWrapper._resolve_tool_namespace(interruption)
+                approval_key = RunContextWrapper._resolve_approval_key(interruption)
+                status = parent_context.get_approval_status(
+                    tool_name_i,
+                    call_id,
+                    tool_namespace=tool_namespace,
+                    existing_pending=interruption,
+                )
+                if status is None:
+                    continue
+                approval_record = parent_context._approvals.get(approval_key)
+                if approval_record is None:
+                    approval_record = _find_mirrored_approval_record(
+                        interruption,
+                        approved=status,
+                    )
+                if status is True:
+                    always_approve = bool(
+                        approval_record and approval_record.approved is True
+                    )
+                    nested_run_ctx.approve_tool(
+                        interruption,
+                        always_approve=always_approve,
+                    )
+                else:
+                    always_reject = bool(
+                        approval_record and approval_record.rejected is True
+                    )
+                    nested_run_ctx.reject_tool(
+                        interruption,
+                        always_reject=always_reject,
+                    )
+
+        run_result: RunResult | RunResultStreaming | None = None
+        resume_state: RunState | None = None
+        should_record_run_result = True
+
+        if ctx.tool_call is not None:
+            pending_run_result = peek_agent_tool_run_result(
+                ctx.tool_call,
+                scope_id=tool_state_scope_id,
+            )
+            if pending_run_result and getattr(
+                pending_run_result, "interruptions", None
+            ):
+                status = _nested_approvals_status(pending_run_result.interruptions)
+                if status == "pending":
+                    run_result = pending_run_result
+                    should_record_run_result = False
+                elif status in ("approved", "rejected"):
+                    resume_state = pending_run_result.to_state()
+                    if resume_state._context is not None:
+                        _apply_nested_approvals(
+                            resume_state._context,
+                            ctx,
+                            pending_run_result.interruptions,
+                        )
+                    consume_agent_tool_run_result(
+                        ctx.tool_call,
+                        scope_id=tool_state_scope_id,
+                    )
+
+        if run_result is None:
+            run_result = await Runner.run(
+                agent_wrapped,
+                resume_state if resume_state is not None else input,
+                context=None if resume_state is not None else cast(Any, nested_context),
+                session=session,
+                hooks=hooks,
+                max_turns=max_turns,
+            )
+
+        interruptions = getattr(run_result, "interruptions", None)
+        if ctx.tool_call is not None and interruptions and should_record_run_result:
+            record_agent_tool_run_result(
+                ctx.tool_call,
+                run_result,
+                scope_id=tool_state_scope_id,
+            )
+
+        return _format_subagent_output(run_result)
+
+    tool = function_tool(
         _invoke,
         name_override=tool_name,
         description_override=runner.description or "",
         use_docstring_info=False,
         needs_approval=needs_approval,
     )
+    setattr(tool, "_is_agent_tool", True)
+    setattr(tool, "_agent_instance", runner._agent)
+    return tool
 
 
 def create_deep_agent(
@@ -226,6 +427,7 @@ def create_deep_agent(
     tool_use_behavior: Any | None = None,
     reset_tool_choice: bool | None = None,
     prompt: "Prompt | DynamicPromptFunction | None" = None,
+    temporal_workflow: bool = False,
 ) -> "DeepAgentRunner":
     """Build a :class:`DeepAgentRunner`: one OpenAI Agents ``Agent`` plus Deepx filesystem, skills, and sessions.
 
@@ -304,6 +506,7 @@ def create_deep_agent(
                     max_turns=max_turns,
                     extra_run_hooks=extra_run_hooks,
                     response_format=response_format,
+                    temporal_workflow=temporal_workflow,
                 ),
                 "tool",
             ),
@@ -337,6 +540,7 @@ def create_deep_agent(
                     max_turns=max_turns,
                     backend=resolved_backend,
                     needs_approval=ref.needs_approval,
+                    temporal_workflow=temporal_workflow,
                 )
             )
 
@@ -382,6 +586,7 @@ def create_deep_agent(
         agent_name=name,
         description=description,
         middleware_hooks=extra_run_hooks,
+        temporal_workflow=temporal_workflow,
     )
 
 
@@ -397,6 +602,7 @@ def _make_general_purpose_runner(
     max_turns: int,
     extra_run_hooks: tuple[RunHooksBase[AgentContext, AgentType[AgentContext]], ...],
     response_format: type | None,
+    temporal_workflow: bool,
 ) -> "DeepAgentRunner":
     """Same tools/skills/memory file paths as parent; does not inherit MCP or extra handoffs."""
     return create_deep_agent(
@@ -418,6 +624,7 @@ def _make_general_purpose_runner(
         max_turns=max_turns,
         run_hooks=extra_run_hooks,
         include_general_purpose=False,
+        temporal_workflow=temporal_workflow,
     )
 
 
@@ -435,7 +642,11 @@ class DeepRunBinding:
         self._runner = runner
         self.session_id = session_id
         self.ctx = runner._make_ctx(session_id, resume)
-        self.session = create_session(session_id, runner._checkpointer)
+        self.session = create_session(
+            session_id,
+            runner._checkpointer,
+            temporal_workflow=runner._temporal_workflow,
+        )
         self.agent = runner._prepare_agent()
         self.hooks = hooks if hooks is not None else runner._make_hooks()
 
@@ -486,6 +697,7 @@ class DeepAgentRunner:
         middleware_hooks: tuple[
             RunHooksBase[AgentContext, AgentType[AgentContext]], ...
         ] = (),
+        temporal_workflow: bool = False,
     ) -> None:
         self._agent = agent
         self._backend = backend
@@ -497,6 +709,7 @@ class DeepAgentRunner:
         self._agent_name = agent_name
         self.description = description
         self._middleware_hooks = middleware_hooks
+        self._temporal_workflow = temporal_workflow
 
     @property
     def backend(self) -> BackendProtocol:

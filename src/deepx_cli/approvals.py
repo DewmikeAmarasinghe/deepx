@@ -11,6 +11,7 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
     ag = getattr(item, "agent", None)
     agent_name = getattr(ag, "name", None) if ag is not None else None
     agent_name = agent_name or "agent"
+    tool_name = item.tool_name or "tool"
     raw = getattr(item, "raw_item", None)
     args_preview = ""
     if raw is not None:
@@ -19,8 +20,7 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
         )
     console.print()
     console.print(
-        f"[yellow]Tool approval[/yellow]  agent=[bold]{agent_name}[/bold]  "
-        f"tool=[bold]{item.tool_name}[/bold]"
+        f"[yellow]{agent_name}:[/yellow] approve tool [bold]{tool_name}[/bold]"
     )
     if args_preview:
         console.print(f"[dim]{args_preview}[/dim]")

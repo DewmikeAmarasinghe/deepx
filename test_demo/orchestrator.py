@@ -32,26 +32,25 @@ from deepx import DeepAgentRunner, SubagentRef, create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
 from test_demo import hf_agent as hf_mod  # noqa: E402
-from test_demo.pdf_agent import pdf_agent_runner  # noqa: E402
-from test_demo.sql_agent import sql_agent_runner  # noqa: E402
-from test_demo.web_agent import web_agent_runner  # noqa: E402
+from test_demo.pdf_agent import build_pdf_agent_runner  # noqa: E402
+from test_demo.sql_agent import build_sql_agent_runner  # noqa: E402
+from test_demo.web_agent import build_web_agent_runner  # noqa: E402
+
 
 
 @function_tool
 async def render_files(
     ctx: RunContextWrapper[AgentContext],
     paths: list[str],
-    max_lines_per_file: int = 400,
 ) -> str:
     """Render multiple text or markdown files from the project tree to the host terminal."""
     sid = ctx.context.session_id
-    lim = max(1, min(max_lines_per_file, 5000))
     parts: list[str] = []
     for path in paths:
         p = (path or "").strip()
         if not p:
             continue
-        rr = ctx.context.backend.read(sid, p, 0, lim)
+        rr = ctx.context.backend.read(sid, p)
         bar = "=" * 72
         if rr.error:
             print(f"\n{bar}\n{p}\n{rr.error}\n{bar}\n", flush=True)
@@ -92,7 +91,11 @@ DEMO_ORCHESTRATOR_SYS = """\
 """
 
 
-def _build_orchestrator(*, checkpointer: str) -> DeepAgentRunner:
+def _build_orchestrator(
+    *, checkpointer: str, temporal_workflow: bool = False
+) -> DeepAgentRunner:
+    sql_r = build_sql_agent_runner(temporal_workflow=temporal_workflow)
+    hf_r = hf_mod.build_hf_agent_runner(temporal_workflow=temporal_workflow)
     return create_deep_agent(
         name="orchestrator",
         description=(
@@ -100,18 +103,16 @@ def _build_orchestrator(*, checkpointer: str) -> DeepAgentRunner:
             "Uses planning tools; delegates execution to specialists."
         ),
         subagents=[
-            SubagentRef(web_agent_runner),
+            SubagentRef(
+                build_web_agent_runner(temporal_workflow=temporal_workflow),
+            ),
             *(
-                [SubagentRef(sql_agent_runner, expose="handoff")]
-                if sql_agent_runner is not None
+                [SubagentRef(sql_r, expose="handoff")]
+                if sql_r is not None
                 else []
             ),
-            SubagentRef(pdf_agent_runner),
-            *(
-                [SubagentRef(hf_mod.hf_agent_runner)]
-                if hf_mod.hf_agent_runner is not None
-                else []
-            ),
+            SubagentRef(build_pdf_agent_runner(temporal_workflow=temporal_workflow)),
+            *([SubagentRef(hf_r)] if hf_r is not None else []),
         ],
         tools=orch_tools,
         skills=[str(ORCH_SKILLS_DIR)],
@@ -119,13 +120,15 @@ def _build_orchestrator(*, checkpointer: str) -> DeepAgentRunner:
         checkpointer=checkpointer,
         debug=True,
         backend=DEMO_BACKEND,
+        temporal_workflow=temporal_workflow,
     )
 
 
-orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB)
-# Temporal workflow sandbox: file-backed SQLite session uses asyncio.to_thread, which the
-# durable workflow loop does not support; use in-memory session for workflow-hosted runs only.
-orchestrator_runner_workflow = _build_orchestrator(checkpointer=":memory:")
+orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB, temporal_workflow=False)
+orchestrator_runner_workflow = _build_orchestrator(
+    checkpointer=ORCH_DB,
+    temporal_workflow=True,
+)
 
 TASK = """
 I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
@@ -188,7 +191,7 @@ def main() -> None:
     )
     args, rest = parser.parse_known_args()
 
-    from test_demo.cli_tool_echo import run_chat, run_once
+    from deepx_cli.session import run_chat, run_once
 
     task = " ".join(rest).strip() or TASK
 

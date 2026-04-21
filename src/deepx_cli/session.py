@@ -90,7 +90,9 @@ async def _chat_loop_async(
                 console.print()
             else:
                 binding = runner.bind(sid, resume=(turn > 0))
-                stream = await run_stream_until_settled(binding, user_input, console)
+                stream = await run_stream_until_settled(
+                    binding, user_input, console, stream_text=True
+                )
                 try:
                     active = stream.last_agent.name
                 except Exception:
@@ -141,7 +143,9 @@ def run_once(
             title = _panel_title(runner._agent_name)
         else:
             binding = runner.bind(sid, resume=False)
-            stream = await run_stream_until_settled(binding, task, console)
+            stream = await run_stream_until_settled(
+                binding, task, console, stream_text=True
+            )
             body = str(stream.final_output)
             try:
                 title = _panel_title(stream.last_agent.name)

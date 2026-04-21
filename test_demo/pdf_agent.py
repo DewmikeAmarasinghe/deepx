@@ -25,26 +25,32 @@ _AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
 _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _PDF_DB = str(_AGENT_DBS / "pdf_agent.db")
 
-pdf_agent_runner = create_deep_agent(
-    name="pdf_agent",
-    description=(
-        "PDF and form workflows: reading, merging, splitting, extracting tables/text, fillable "
-        "forms; may use `execute` for bundled scripts when appropriate."
-    ),
-    tools=[],
-    skills=[str(PDF_SKILLS_DIR)],
-    system_prompt=(
-        "You specialise in PDF tasks. For multi-step work, call **`write_todos` first** (after "
-        "`read_file` on **pdf** / **forms** skill entry paths), then **`write_todos`** again with "
-        "an updated full list as you go.\n"
-        "Follow the skill workflows; use `execute` for repo scripts when the environment has the "
-        "needed Python packages. Write outputs under sensible project paths and return paths.\n"
-        "**OCR / scanned PDFs:** if the user needs OCR, say clearly that **Tesseract** (or similar) "
-        "must be installed on the host system—pip packages alone are not enough."
-    ),
-    backend=_DEMO_BACKEND,
-    checkpointer=_PDF_DB,
-    debug=True,
-    include_general_purpose=False,
-    subagents=None,
-)
+
+def build_pdf_agent_runner(*, temporal_workflow: bool = False):
+    return create_deep_agent(
+        name="pdf_agent",
+        description=(
+            "PDF and form workflows: reading, merging, splitting, extracting tables/text, fillable "
+            "forms; may use `execute` for bundled scripts when appropriate."
+        ),
+        tools=[],
+        skills=[str(PDF_SKILLS_DIR)],
+        system_prompt=(
+            "You specialise in PDF tasks. For multi-step work, call **`write_todos` first** (after "
+            "`read_file` on **pdf** / **forms** skill entry paths), then **`write_todos`** again with "
+            "an updated full list as you go.\n"
+            "Follow the skill workflows; use `execute` for repo scripts when the environment has the "
+            "needed Python packages. Write outputs under sensible project paths and return paths.\n"
+            "**OCR / scanned PDFs:** if the user needs OCR, say clearly that **Tesseract** (or similar) "
+            "must be installed on the host system—pip packages alone are not enough."
+        ),
+        backend=_DEMO_BACKEND,
+        checkpointer=_PDF_DB,
+        debug=True,
+        include_general_purpose=False,
+        subagents=None,
+        temporal_workflow=temporal_workflow,
+    )
+
+
+pdf_agent_runner = build_pdf_agent_runner()

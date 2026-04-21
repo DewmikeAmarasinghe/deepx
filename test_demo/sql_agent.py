@@ -77,8 +77,10 @@ available_db_names = (
     else ""
 )
 
-sql_agent_runner = (
-    create_deep_agent(
+def build_sql_agent_runner(*, temporal_workflow: bool = False):
+    if not sql_tools:
+        return None
+    return create_deep_agent(
         name="sql_agent",
         description=(
             "Specialist for read-only SQLite on bundled demo databases. "
@@ -104,7 +106,8 @@ sql_agent_runner = (
         debug=True,
         include_general_purpose=False,
         subagents=None,
+        temporal_workflow=temporal_workflow,
     )
-    if sql_tools
-    else None
-)
+
+
+sql_agent_runner = build_sql_agent_runner()

@@ -30,9 +30,9 @@ _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _HF_DB = str(_AGENT_DBS / "hf_agent.db")
 
 
-def _build_hf_runner() -> DeepAgentRunner | None:
+def build_hf_agent_runner(*, temporal_workflow: bool = False) -> DeepAgentRunner | None:
     token = (
-        os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN") or ""
+        os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
     ).strip()
     if not token:
         return None
@@ -59,7 +59,8 @@ def _build_hf_runner() -> DeepAgentRunner | None:
         include_general_purpose=False,
         subagents=None,
         mcp_servers=[MCPServerStdio(params, name="huggingface")],
+        temporal_workflow=temporal_workflow,
     )
 
 
-hf_agent_runner = _build_hf_runner()
+hf_agent_runner = build_hf_agent_runner()
