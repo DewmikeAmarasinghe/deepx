@@ -9,6 +9,7 @@ from typing import Any
 
 from dotenv import load_dotenv
 from temporalio.client import Client, WorkflowHandle
+from temporalio.common import RetryPolicy
 from temporalio.contrib.openai_agents import ModelActivityParameters, OpenAIAgentsPlugin
 
 from test_demo.temporal.workflows import (
@@ -31,7 +32,14 @@ def openai_agents_plugin() -> OpenAIAgentsPlugin:
     return OpenAIAgentsPlugin(
         model_params=ModelActivityParameters(
             start_to_close_timeout=timedelta(minutes=30),
+            retry_policy=RetryPolicy(
+                initial_interval=timedelta(seconds=1),
+                maximum_interval=timedelta(seconds=30),
+                backoff_coefficient=2.0,
+                maximum_attempts=5,
+            ),
         ),
+        add_temporal_spans=True,
     )
 
 

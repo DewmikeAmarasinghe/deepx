@@ -1,8 +1,8 @@
 """Deepx agent factory: builds :class:`DeepAgentRunner` on top of the OpenAI Agents SDK.
 
-Layout: constants → :class:`SubagentRef` / helpers → subagent :meth:`agents.Agent.as_tool` wrapper
-→ :func:`create_deep_agent` → general-purpose runner → :class:`DeepRunBinding` /
-:class:`DeepAgentRunner` → memory loader → exports.
+Layout: constants → :class:`SubagentRef` / helpers → subagent ``function_tool`` (nested
+``Runner.run`` + per-call session) → :func:`create_deep_agent` → general-purpose runner →
+:class:`DeepRunBinding` / :class:`DeepAgentRunner` → memory loader → exports.
 """
 
 from __future__ import annotations
@@ -16,13 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from agents import Agent, RunContextWrapper, Runner, handoff
+from agents import Agent, RunContextWrapper, Runner, function_tool, handoff
 from agents.agent import Agent as AgentType
 from agents.lifecycle import RunHooksBase
 from agents.model_settings import ModelSettings
 from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
 from agents.tool import Tool
+from agents.tool_context import ToolContext
 
 from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
@@ -30,7 +31,6 @@ from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
-from deepx.middleware.subagent_context import SubagentContextIsolationHook
 from deepx.sessions import create_session
 from deepx.system_prompt import (
     build_system_prompt,
@@ -39,7 +39,7 @@ from deepx.system_prompt import (
 )
 from deepx.tools import BUILTIN_TOOLS
 
-# Model id for agents 
+# Model id for agents
 DEFAULT_MODEL = "gpt-5-nano"
 
 if TYPE_CHECKING:
@@ -149,25 +149,54 @@ def _subagent_tool_from_runner(
     *,
     runner: "DeepAgentRunner",
     tool_name: str,
+    checkpointer: str,
     max_turns: int,
     backend: BackendProtocol,
     needs_approval: bool,
 ) -> Tool:
-    """Expose a subagent via :meth:`agents.Agent.as_tool` so nested ``needs_approval`` surfaces on the parent run."""
-    skills_sub = _skills_prompt_for_backend(backend, runner._skill_roots)
-    isolation = SubagentContextIsolationHook(runner._agent_name, skills_sub)
-    nested_hooks = compose_run_hooks(
-        isolation,
-        FilesystemHooks(backend),
-        *runner._middleware_hooks,
-    )
-    return runner.prepared_agent().as_tool(
-        tool_name=tool_name,
-        tool_description=runner.description or "",
-        max_turns=max_turns,
-        hooks=nested_hooks,
+    """Expose a subagent as a tool: nested ``Runner.run`` with its own SQLite session per call.
+
+    Nested ``needs_approval`` tools surface as interruptions on the parent run. Each delegation
+    uses ``create_session(f\"{parent_id}:{agent}:{tool_call_id}\", checkpointer)`` so specialists
+    keep separate session DBs when ``checkpointer`` is a file path.
+    """
+    agent = runner._agent
+
+    async def _invoke(ctx: ToolContext, input: str) -> str:
+        ac = ctx.context
+        if not isinstance(ac, AgentContext):
+            raise TypeError("Deepx tools expect AgentContext on the run context")
+        skills_sub = _skills_prompt_for_backend(backend, runner._skill_roots)
+        sub_sid = f"{ac.session_id}:{agent.name}:{ctx.tool_call_id}"
+        sub_ctx = AgentContext(
+            session_id=ac.session_id,
+            backend=ac.backend,
+            agent_name=agent.name,
+            memory=runner._memory,
+            skills=skills_sub,
+            debug=runner._debug,
+            resume=False,
+            is_subagent=True,
+        )
+        session = create_session(sub_sid, checkpointer)
+        agent_wrapped = runner._prepare_agent()
+        hooks = runner._make_hooks()
+        result = await Runner.run(
+            agent_wrapped,
+            input,
+            context=sub_ctx,
+            session=session,
+            hooks=hooks,
+            max_turns=max_turns,
+        )
+        return str(result.final_output)
+
+    return function_tool(
+        _invoke,
+        name_override=tool_name,
+        description_override=runner.description or "",
+        use_docstring_info=False,
         needs_approval=needs_approval,
-        session=None,
     )
 
 
@@ -198,38 +227,59 @@ def create_deep_agent(
     reset_tool_choice: bool | None = None,
     prompt: "Prompt | DynamicPromptFunction | None" = None,
 ) -> "DeepAgentRunner":
-    """Build a Deepx :class:`DeepAgentRunner` around the OpenAI Agents SDK.
+    """Build a :class:`DeepAgentRunner`: one OpenAI Agents ``Agent`` plus Deepx filesystem, skills, and sessions.
 
-    **What Deepx adds**
+    **Built-ins**
 
-    - **Built-in tools** (flat list; see :mod:`deepx.tools`): planning (``write_todos``,
-      ``think_tool``), filesystem tools (``ls``, ``read_file``, ``write_file``, ``edit_file``,
-      ``grep``, ``glob``), optional ``execute`` when the backend supports it, and ``save_memory``.
-    - **Dynamic system prompt** via :func:`deepx.system_prompt.build_system_prompt` (skills, memory,
-      plan snapshot, filesystem rules). The ``system_prompt=`` argument is the ROLE section only.
-    - **Optional SQLite-backed** conversation sessions (``checkpointer`` path or ``:memory:``).
-    - **Subagents** as SDK-native tools: each :class:`SubagentRef` with ``expose=\"tool\"`` uses
-      :meth:`agents.Agent.as_tool`, so tools inside the specialist that set ``needs_approval`` pause
-      the **parent** run and appear in ``RunResult.interruptions`` / streaming interruptions—resolve
-      with ``RunState.approve`` / ``reject`` like any other HITL tool. A :class:`SubagentRef` with
-      ``expose=\"handoff\"`` registers an SDK ``handoff()`` target; there is no separate
-      ``handoffs=`` parameter on this factory.
-    - **Run hooks** (``run_hooks``) compose **after** :class:`deepx.middleware.filesystem.FilesystemHooks`
-      for every ``Runner.run`` / ``Runner.run_streamed``. **Agent hooks** (``agent_hooks``) map to
-      ``Agent.hooks`` and are separate from run hooks.
+    Flat tool list from :mod:`deepx.tools`: ``write_todos``, ``think_tool``, ``ls``, ``read_file``,
+    ``write_file``, ``edit_file``, ``grep``, ``glob``, optional ``execute`` (if the backend
+    supports shell), and ``save_memory``. Planning and filesystem behavior are also reflected in
+    the dynamic system prompt.
+
+    **Prompting**
+
+    ``system_prompt`` is only the **role / task** section. The rest (skills index, memory, plan
+    snapshot, sandbox rules) comes from :func:`deepx.system_prompt.build_system_prompt`.
+
+    **Sessions**
+
+    ``checkpointer`` is the SQLite path (or ``:memory:``) passed to :func:`deepx.sessions.create_session`
+    when you :meth:`~DeepAgentRunner.bind`. One bound conversation uses **one** session database;
+    a specialist reached via **handoff** shares that same run and session—its own ``checkpointer``
+    on the runner is relevant when that specialist is **bound and run alone**, not for in-run
+    handoff history.
+
+    **Subagents (:class:`SubagentRef`)**
+
+    - ``expose=\"tool\"`` (default): specialist exposed with a ``function_tool`` that runs a nested
+      ``Runner.run`` and a **per-call** session derived from the parent ``session_id``, subagent
+      name, and ``tool_call_id``. Nested tools with ``needs_approval`` surface as interruptions on
+      the **parent** run; use ``RunState.approve`` / ``reject``.
+    - ``expose=\"handoff\"``: specialist registered with the SDK ``handoff()`` helper on the main
+      ``Agent`` (there is no separate ``handoffs=`` argument on this factory). Use for long-lived
+      context switches (e.g. SQL specialist) where the model should **transfer** control rather than
+      return through a tool result.
+
+    **Hooks**
+
+    ``run_hooks`` are composed **after** :class:`deepx.middleware.filesystem.FilesystemHooks`.
+    ``agent_hooks`` map to ``Agent.hooks`` (per-turn agent callbacks), not run-level hooks.
+
+    **Temporal (demo)**
+
+    For fine-grained Temporal history (plugin-managed activities per model/tool step), await
+    ``Runner.run`` / ``run_binding_until_settled`` from **workflow** code with
+    ``OpenAIAgentsPlugin`` and ``UnsandboxedWorkflowRunner``—see ``test_demo/temporal/``.
 
     **Defaults**
 
-    - ``model`` defaults to :data:`DEFAULT_MODEL` (also used for session compaction in
-      :func:`deepx.sessions.create_session`).
-    - ``debug=True`` enables tool I/O logging under ``.deepx/sessions/.../logs`` when the backend
-      exposes a data root; ``debug=False`` skips those writes.
+    ``model`` is :data:`DEFAULT_MODEL`. ``debug=True`` writes tool JSON logs under
+    ``.deepx/sessions/<id>/logs`` when the backend exposes a workspace root.
 
     **Returns**
 
-    A :class:`DeepAgentRunner` — use :meth:`~DeepAgentRunner.bind` for a :class:`DeepRunBinding`,
-    then ``Runner.run`` / ``Runner.run_streamed``. For human-in-the-loop in a host app, drain
-    interruptions on the **outer** run and resume with the same agent and session (see SDK HITL docs).
+    :class:`DeepAgentRunner`: call :meth:`~DeepAgentRunner.bind` then ``Runner.run`` or
+    ``Runner.run_streamed`` on the :class:`DeepRunBinding`.
     """
     setup_observability()
 
@@ -283,6 +333,7 @@ def create_deep_agent(
                 _subagent_tool_from_runner(
                     runner=runner,
                     tool_name=tname,
+                    checkpointer=runner._checkpointer,
                     max_turns=max_turns,
                     backend=resolved_backend,
                     needs_approval=ref.needs_approval,
@@ -577,7 +628,6 @@ def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
 DeepAgent = create_deep_agent
 
 __all__ = [
-    "DEFAULT_MODEL",
     "DeepAgent",
     "DeepAgentRunner",
     "DeepRunBinding",

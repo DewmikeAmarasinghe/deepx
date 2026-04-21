@@ -23,10 +23,10 @@ REPO_ROOT = _REPO_ROOT
 TEST_DBS = DEMO_DIR / "dbs" / "test_dbs"
 SQL_SKILLS_DIR = DEMO_DIR / "skills" / "sql"
 
-_DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
-_AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
-_AGENT_DBS.mkdir(parents=True, exist_ok=True)
-_SQL_DB = str(_AGENT_DBS / "sql_agent.db")
+demo_backend = LocalShellBackend(REPO_ROOT)
+agent_dbs_dir = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
+agent_dbs_dir.mkdir(parents=True, exist_ok=True)
+sql_session_db = str(agent_dbs_dir / "sql_agent.db")
 
 
 TASK_BY_STEM: dict[str, str] = {
@@ -65,12 +65,13 @@ def default_task_for_stem(stem: str) -> str:
     return TASK_BY_STEM.get(stem, DEFAULT_TASK)
 
 
-_sql_tools = (
+has_demo_dbs = TEST_DBS.is_dir() and any(TEST_DBS.glob("*.db"))
+sql_tools = (
     create_sql_tools(TEST_DBS, tool_prefix="sql")
-    if TEST_DBS.is_dir() and any(TEST_DBS.glob("*.db"))
+    if has_demo_dbs
     else []
 )
-_available = (
+available_db_names = (
     ", ".join(sorted(p.name for p in TEST_DBS.glob("*.db")))
     if TEST_DBS.is_dir()
     else ""
@@ -80,30 +81,30 @@ sql_agent_runner = (
     create_deep_agent(
         name="sql_agent",
         description=(
-            "Read-only SQL over allowlisted SQLite files in test_dbs "
-            "(sql_db_list_tables, sql_db_schema, sql_db_query). "
-            "Pass ``db_name`` (e.g. chinook.db or northwind.db) on every tool call. "
-            "Use handoff for long exploratory sessions."
+            "Specialist for read-only SQLite on bundled demo databases. "
+            "Tools: sql_db_list_tables (discover tables), sql_db_schema (DDL + tiny row samples; "
+            "BLOB columns summarized), sql_db_query (SELECT only). "
+            "Every call must include db_name (e.g. chinook.db, northwind.db). "
+            "Prefer orchestrator handoff for long multi-step SQL sessions."
         ),
-        tools=_sql_tools,
+        tools=sql_tools,
         skills=[str(SQL_SKILLS_DIR)],
         system_prompt=(
-            "You answer questions using the **sql_*** tools only against databases under "
-            "**test_demo/dbs/test_dbs**. Each tool requires a **`db_name`** argument: a filename "
-            f"present there (available now: {_available or '(none)'}).\n"
-            "Use **chinook.db** for music retail demos and **northwind.db** for classic retail "
-            "scenarios unless the user specifies otherwise.\n"
-            "Read schema-exploration and query-writing skills when the task is non-trivial. "
-            "For multi-part asks, call write_todos first, then call write_todos again with an updated "
-            "full list as you finish each part. "
-            "Return clear tables and explicit SQL."
+            "You answer using **sql_*** tools only against files under **test_demo/dbs/test_dbs**. "
+            "Each tool requires **`db_name`**: a filename present there "
+            f"(now: {available_db_names or '(none)'}).\n"
+            "Default demos: **chinook.db** (music retail), **northwind.db** (classic retail) unless "
+            "the user picks another listed file.\n"
+            "For non-trivial tasks, follow skills under the sql skill folder. "
+            "For multi-part work, use write_todos and refresh the list as steps complete. "
+            "Return explicit SQL and readable tables."
         ),
-        backend=_DEMO_BACKEND,
-        checkpointer=_SQL_DB,
+        backend=demo_backend,
+        checkpointer=sql_session_db,
         debug=True,
         include_general_purpose=False,
         subagents=None,
     )
-    if _sql_tools
+    if sql_tools
     else None
 )

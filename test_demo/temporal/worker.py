@@ -11,10 +11,11 @@ Terminal A::
 Set ``USE_TEMPORAL=true`` when using ``python -m test_demo.orchestrator`` so the CLI starts
 workflows instead of calling ``Runner`` locally.
 
-Prereqs: ``OPENAI_API_KEY`` for the worker process. ``OpenAIAgentsPlugin`` (on ``Client.connect``)
-auto-registers **model** activities for LLM calls. **Application** activities—such as
-``run_orchestrator_activity``, which hosts SQLite and blocking agent work—must still be registered
-explicitly on the worker.
+The agent loop runs **inside the workflow** (see ``workflows.py``), so ``OpenAIAgentsPlugin`` can
+record model/tool work as Temporal activities. Load the same ``.env`` as the CLI (``OPENAI_API_KEY``,
+``LANGSMITH_*``) if you want tracing in the worker process.
+
+See ``test_demo/temporal/README.md`` for architecture notes.
 """
 
 from __future__ import annotations
@@ -24,7 +25,6 @@ import asyncio
 from dotenv import load_dotenv
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
-from test_demo.temporal.activities import run_orchestrator_activity
 from test_demo.temporal.client import connect_temporal_client
 from test_demo.temporal.workflows import TASK_QUEUE, DeepxOrchestratorWorkflow
 
@@ -37,7 +37,6 @@ async def _run_worker() -> None:
         client,
         task_queue=TASK_QUEUE,
         workflows=[DeepxOrchestratorWorkflow],
-        activities=[run_orchestrator_activity],
         workflow_runner=UnsandboxedWorkflowRunner(),
     )
     await worker.run()

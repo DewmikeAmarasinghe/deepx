@@ -3,7 +3,6 @@ from deepx.backends.local_shell import LocalShellBackend
 from deepx.backends.memory import InMemoryBackend
 from deepx.backends.protocol import BackendProtocol
 from deepx.factory import (
-    DEFAULT_MODEL,
     DeepAgent,
     DeepAgentRunner,
     DeepRunBinding,
@@ -13,7 +12,6 @@ from deepx.factory import (
 )
 
 __all__ = [
-    "DEFAULT_MODEL",
     "SubagentRef",
     "create_deep_agent",
     "DeepAgent",

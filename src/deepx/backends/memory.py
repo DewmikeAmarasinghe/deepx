@@ -87,12 +87,15 @@ class InMemoryBackend(BackendProtocol):
             return ReadResult(error=f"Error: '{file_path}' not found.")
         lines = raw.splitlines()
         total = len(lines)
-        selected = lines[offset : offset + limit]
-        if not selected and lines:
+        if total > 0 and offset >= total:
             return ReadResult(
-                error=f"Error: offset {offset} exceeds file length ({total} lines).",
+                content=(
+                    f"No lines to read at offset {offset}: file has {total} line(s) "
+                    f"(valid offsets are 0–{total - 1})."
+                ),
                 total_lines=total,
             )
+        selected = lines[offset : offset + limit]
         return ReadResult(content="\n".join(selected), total_lines=total)
 
     def grep(

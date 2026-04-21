@@ -5,6 +5,7 @@ import os
 import uuid
 
 from rich.console import Console
+from rich.panel import Panel
 
 from deepx.factory import DeepAgentRunner
 from deepx_cli.chat_stream import run_stream_until_settled
@@ -12,7 +13,7 @@ from deepx_cli.temporal_run import run_via_temporal
 
 
 def use_temporal() -> bool:
-    """True when runs should go through Temporal (demo workflow + activity).
+    """True when runs execute via Temporal workflow (``DeepxOrchestratorWorkflow``).
 
     ``USE_TEMPORAL``.
     """
@@ -20,12 +21,16 @@ def use_temporal() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def _panel_title(agent_name: str) -> str:
+    return agent_name.replace("_", " ").title()
+
+
 async def _chat_loop_async(
     runner: DeepAgentRunner, *, user_name: str, resume_hint: str | None
 ) -> None:
     console = Console(highlight=False)
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-    agent_label = runner._agent_name.replace("_", " ").title()
+    default_label = _panel_title(runner._agent_name)
 
     if resume_hint:
         console.print(f"\n[dim]Session:[/dim] {sid}  — resume: `{resume_hint} {sid}`\n")
@@ -36,10 +41,11 @@ async def _chat_loop_async(
     ut = use_temporal()
     if ut:
         console.print(
-            "[dim]USE_TEMPORAL: worker runs the agent (no token streaming in this CLI). "
-            "Tool approvals use the same prompts when the worker process has interactive stdin.[/dim]\n"
+            "[dim]USE_TEMPORAL: worker runs the workflow (no token streaming in this CLI). "
+            "Tool approvals use the worker stdin when interactive.[/dim]\n"
         )
 
+    w = console.size.width or 120
     try:
         while True:
             try:
@@ -54,19 +60,52 @@ async def _chat_loop_async(
                 console.print("Goodbye.")
                 break
 
+            console.print()
+            console.print(
+                Panel(
+                    user_input,
+                    title=user_name,
+                    border_style="blue",
+                    expand=True,
+                    width=w,
+                )
+            )
+            console.print()
+
             if ut:
                 out = await run_via_temporal(
                     prompt=user_input,
                     session_id=sid,
                     resume=(turn > 0),
                 )
+                console.print(
+                    Panel(
+                        out,
+                        title=default_label,
+                        border_style="green",
+                        expand=True,
+                        width=w,
+                    )
+                )
                 console.print()
-                console.print(f"[bold]{agent_label}:[/bold] {out}\n")
             else:
                 binding = runner.bind(sid, resume=(turn > 0))
                 stream = await run_stream_until_settled(binding, user_input, console)
+                try:
+                    active = stream.last_agent.name
+                except Exception:
+                    active = runner._agent_name
+                title = _panel_title(active)
+                console.print(
+                    Panel(
+                        str(stream.final_output),
+                        title=title,
+                        border_style="green",
+                        expand=True,
+                        width=w,
+                    )
+                )
                 console.print()
-                console.print(f"[bold]{agent_label}:[/bold] {stream.final_output}\n")
             turn += 1
     finally:
         pass
@@ -93,16 +132,24 @@ def run_once(
     sid = session_id or os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
     ut = use_temporal()
 
+    w = console.size.width or 120
+
     async def _once() -> None:
         if ut:
             out = await run_via_temporal(prompt=task, session_id=sid, resume=False)
+            body = out
+            title = _panel_title(runner._agent_name)
         else:
             binding = runner.bind(sid, resume=False)
             stream = await run_stream_until_settled(binding, task, console)
-            out = stream.final_output
-        console.print("\n" + "=" * 70)
-        console.print(out)
-        console.print("=" * 70)
+            body = str(stream.final_output)
+            try:
+                title = _panel_title(stream.last_agent.name)
+            except Exception:
+                title = _panel_title(runner._agent_name)
+        console.print(
+            Panel(body, title=title, border_style="green", expand=True, width=w)
+        )
         console.print(f"\n[dim]Session:[/dim] {sid}\n")
 
     asyncio.run(_once())

@@ -16,7 +16,7 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
     if raw is not None:
         args_preview = str(
             getattr(raw, "arguments", "") or getattr(raw, "args", "") or ""
-        )[:800]
+        )
     console.print()
     console.print(
         f"[yellow]Tool approval[/yellow]  agent=[bold]{agent_name}[/bold]  "

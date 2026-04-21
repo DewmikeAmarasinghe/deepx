@@ -1,9 +1,12 @@
-"""Temporal workflow: durable orchestrator run via OpenAI Agents SDK + Temporal plugin.
+"""Temporal workflow: durable orchestrator via OpenAI Agents SDK + Temporal plugin.
 
-Model calls execute as Temporal activities (``OpenAIAgentsPlugin``). The full agent run—including
-SQLite-backed sessions and local backends—runs in a **normal activity** (see
-``test_demo.temporal.activities``), not in workflow code, to avoid sandbox and asyncio executor
-limitations.
+``Runner.run`` is awaited **from workflow code** (with ``unsafe.imports_passed_through``), matching
+the Temporal + Agents integration pattern: model and tool steps are scheduled as plugin-managed
+activities and show up in Temporal history—not hidden inside a single custom activity.
+
+Uses ``UnsandboxedWorkflowRunner`` on the worker (see ``worker.py``) so workflow code can import
+application modules. Human-in-the-loop (stdin approvals) still runs in the worker process hosting
+the workflow task; for production, prefer signals/updates instead of blocking ``input()``.
 
 See https://docs.temporal.io/ai-cookbook/openai-agents-sdk-python
 """
@@ -11,7 +14,6 @@ See https://docs.temporal.io/ai-cookbook/openai-agents-sdk-python
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
 
 from temporalio import workflow
 
@@ -30,18 +32,16 @@ class DeepxOrchestratorWorkflow:
     @workflow.run
     async def run(self, inp: DeepxOrchestratorInput) -> str:
         with workflow.unsafe.imports_passed_through():
-            from test_demo.temporal.activities import (
-                RunOrchestratorActivityInput,
-                run_orchestrator_activity,
-            )
+            from rich.console import Console
 
-        act_inp = RunOrchestratorActivityInput(
-            prompt=inp.prompt,
-            session_id=inp.session_id,
-            resume=inp.resume,
+            from deepx_cli.chat_stream import run_binding_until_settled
+            from test_demo import orchestrator as orch
+
+        runner = orch.orchestrator_runner_workflow
+        binding = runner.bind(inp.session_id, resume=inp.resume)
+        result = await run_binding_until_settled(
+            binding,
+            inp.prompt,
+            console=Console(highlight=False),
         )
-        return await workflow.execute_activity(
-            run_orchestrator_activity,
-            act_inp,
-            start_to_close_timeout=timedelta(hours=2),
-        )
+        return str(result.final_output)

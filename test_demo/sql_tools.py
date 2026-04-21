@@ -8,12 +8,40 @@ from pathlib import Path
 from agents import RunContextWrapper, function_tool
 
 
-def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
-    """Read-only SQL tools.
+def _format_sql_value(val: object) -> str:
+    """Avoid dumping binary BLOBs into model context (e.g. Northwind Picture/Photo columns)."""
+    if isinstance(val, memoryview):
+        val = val.tobytes()
+    if isinstance(val, (bytes, bytearray)):
+        return f"<BLOB {len(val)} bytes>"
+    return str(val)
 
-    ``db_name`` is a ``*.db`` filename under the single allowlisted ``test_dbs_dir``.
-    Typical flow: ``db_list_tables`` → ``db_schema`` for relevant tables → ``db_query`` with JOINs
-    built from schema keys (avoid guessing column names).
+
+def _canonical_table_name(conn: sqlite3.Connection, raw: str) -> str | None:
+    """Resolve user-supplied table name to a real sqlite_master name (exact or case-insensitive)."""
+    key = raw.strip().strip('"').strip("`").strip()
+    if not key:
+        return None
+    rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+    names = [r[0] for r in rows]
+    if key in names:
+        return key
+    lower_map = {n.lower(): n for n in names}
+    return lower_map.get(key.lower())
+
+
+def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
+    """Build read-only SQLite tools for a single allowlisted directory.
+
+    Tools:
+
+    - **list_tables** — table names in ``db_name``.
+    - **schema** — ``CREATE TABLE`` plus up to three sample rows per table (BLOBs summarized, not hex-dumped).
+    - **query** — ``SELECT`` only; non-SELECT keywords rejected.
+
+    Args:
+        test_dbs_dir: Directory containing only ``*.db`` files agents may open.
+        tool_prefix: Prepended to tool names (e.g. ``\"sql\"`` → ``sql_db_query``).
     """
     root = test_dbs_dir.resolve()
     pre = f"{tool_prefix}_" if tool_prefix else ""
@@ -37,7 +65,7 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
 
     @function_tool(name_override=f"{pre}db_list_tables")
     def db_list_tables(ctx: RunContextWrapper, db_name: str) -> str:
-        """List all tables in the SQLite file ``db_name`` (filename under ``test_dbs``)."""
+        """List table names in ``db_name`` (must be a ``*.db`` file under the demo ``test_dbs`` folder)."""
         _ = ctx
         sqlite_path = str(_resolve_db(db_name))
         with sqlite3.connect(sqlite_path) as conn:
@@ -48,32 +76,46 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
 
     @function_tool(name_override=f"{pre}db_schema")
     def db_schema(ctx: RunContextWrapper, db_name: str, table_names: str) -> str:
-        """Show CREATE TABLE and sample rows for comma-separated ``table_names`` in ``db_name``."""
+        """Return ``CREATE TABLE`` and a few sample rows for each comma-separated table in ``table_names``.
+
+        Binary columns appear as ``<BLOB n bytes>`` so large embedded images do not flood the context.
+        """
+        _ = ctx
         sqlite_path = str(_resolve_db(db_name))
-        names = [n.strip() for n in table_names.split(",") if n.strip()]
+        raw_names = [n.strip() for n in table_names.split(",") if n.strip()]
         parts: list[str] = []
         with sqlite3.connect(sqlite_path) as conn:
-            for name in names:
+            for fragment in raw_names:
+                canonical = _canonical_table_name(conn, fragment)
+                if not canonical:
+                    parts.append(f"Table '{fragment}' not found.")
+                    continue
                 row = conn.execute(
                     "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
-                    (name,),
+                    (canonical,),
                 ).fetchone()
                 if not row:
-                    parts.append(f"Table '{name}' not found.")
+                    parts.append(f"Table '{fragment}' not found.")
                     continue
                 schema = row[0]
-                sample_rows = conn.execute(f"SELECT * FROM {name} LIMIT 3").fetchall()
+                qident = canonical.replace('"', '""')
+                sample_rows = conn.execute(f'SELECT * FROM "{qident}" LIMIT 3').fetchall()
                 cols = [
                     d[0]
-                    for d in conn.execute(f"SELECT * FROM {name} LIMIT 0").description
+                    for d in conn.execute(
+                        f'SELECT * FROM "{qident}" LIMIT 0'
+                    ).description
                 ]
-                sample = "\n".join(str(dict(zip(cols, r))) for r in sample_rows)
-                parts.append(f"-- {name}\n{schema}\n\n-- Sample rows:\n{sample}")
+                sample = "\n".join(
+                    ", ".join(f"{c}={_format_sql_value(v)}" for c, v in zip(cols, r))
+                    for r in sample_rows
+                )
+                parts.append(f"-- {canonical}\n{schema}\n\n-- Sample rows:\n{sample}")
         return "\n\n".join(parts)
 
     @function_tool(name_override=f"{pre}db_query")
     def db_query(ctx: RunContextWrapper, db_name: str, query: str) -> str:
-        """Run a read-only SELECT on ``db_name`` (filename under ``test_dbs``). No writes."""
+        """Run a single read-only ``SELECT`` on ``db_name``. Writes and DDL keywords are rejected."""
         _ = ctx
         sqlite_path = str(_resolve_db(db_name))
         q = query.strip()
@@ -97,7 +139,7 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
         keys = list(rows[0].keys())
         lines = [" | ".join(keys), "-" * max(20, len(" | ".join(keys)))]
         for row in rows:
-            lines.append(" | ".join(str(row[k]) for k in keys))
+            lines.append(" | ".join(_format_sql_value(row[k]) for k in keys))
         return "\n".join(lines)
 
     return [db_list_tables, db_schema, db_query]

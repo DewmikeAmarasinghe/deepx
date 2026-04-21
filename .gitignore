@@ -60,3 +60,4 @@ keys/
 deepagents/
 deepagents_cli/
 .cursor/
+_outputs/

@@ -9,7 +9,7 @@ Run from the repository root (the ``test_demo`` tree is not shipped in the wheel
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
 orchestrator module is for local development and demos only.
 
-Temporal (optional): see ``test_demo/README.md``.
+Temporal (optional): see ``test_demo/temporal/README.md``.
 """
 
 from __future__ import annotations
@@ -28,10 +28,9 @@ load_dotenv()
 
 from agents import RunContextWrapper, function_tool  # noqa: E402
 
-from deepx import SubagentRef, create_deep_agent  # noqa: E402
+from deepx import DeepAgentRunner, SubagentRef, create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
-
 from test_demo import hf_agent as hf_mod  # noqa: E402
 from test_demo.pdf_agent import pdf_agent_runner  # noqa: E402
 from test_demo.sql_agent import sql_agent_runner  # noqa: E402
@@ -93,38 +92,44 @@ DEMO_ORCHESTRATOR_SYS = """\
 """
 
 
-orchestrator_runner = create_deep_agent(
-    name="orchestrator",
-    description=(
-        "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
-        "Uses planning tools; delegates execution to specialists."
-    ),
-    subagents=[
-        SubagentRef(web_agent_runner),
-        *(
-            [SubagentRef(sql_agent_runner, expose="handoff")]
-            if sql_agent_runner is not None
-            else []
+def _build_orchestrator(*, checkpointer: str) -> DeepAgentRunner:
+    return create_deep_agent(
+        name="orchestrator",
+        description=(
+            "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
+            "Uses planning tools; delegates execution to specialists."
         ),
-        SubagentRef(pdf_agent_runner),
-        *(
-            [SubagentRef(hf_mod.hf_agent_runner)]
-            if hf_mod.hf_agent_runner is not None
-            else []
-        ),
-    ],
-    tools=orch_tools,
-    skills=[str(ORCH_SKILLS_DIR)],
-    system_prompt=DEMO_ORCHESTRATOR_SYS,
-    checkpointer=ORCH_DB,
-    debug=True,
-    backend=DEMO_BACKEND,
-)
+        subagents=[
+            SubagentRef(web_agent_runner),
+            *(
+                [SubagentRef(sql_agent_runner, expose="handoff")]
+                if sql_agent_runner is not None
+                else []
+            ),
+            SubagentRef(pdf_agent_runner),
+            *(
+                [SubagentRef(hf_mod.hf_agent_runner)]
+                if hf_mod.hf_agent_runner is not None
+                else []
+            ),
+        ],
+        tools=orch_tools,
+        skills=[str(ORCH_SKILLS_DIR)],
+        system_prompt=DEMO_ORCHESTRATOR_SYS,
+        checkpointer=checkpointer,
+        debug=True,
+        backend=DEMO_BACKEND,
+    )
+
+
+orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB)
+# Temporal workflow sandbox: file-backed SQLite session uses asyncio.to_thread, which the
+# durable workflow loop does not support; use in-memory session for workflow-hosted runs only.
+orchestrator_runner_workflow = _build_orchestrator(checkpointer=":memory:")
 
 TASK = """
 I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
-energy density limits, materials and geopolitics, manufacturing scale-up, who is leading,
-and lifecycle environmental trade-offs—then a single strong markdown report in the workspace
+energy density limits, materials and geopolitics, manufacturing scale-up, then write a single strong markdown report in the workspace
 I can open, and show me that report in the terminal when it is ready.
 """
 # TASK = """
@@ -183,7 +188,7 @@ def main() -> None:
     )
     args, rest = parser.parse_known_args()
 
-    from deepx_cli.session import run_chat, run_once
+    from test_demo.cli_tool_echo import run_chat, run_once
 
     task = " ".join(rest).strip() or TASK
 
