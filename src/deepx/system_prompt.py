@@ -385,7 +385,7 @@ def build_system_prompt(
     ctx: RunContextWrapper[AgentContext],
     agent: Agent,
     custom_prompt: str = "",
-    checkpointer: str = "memory",
+    checkpointer: str = ":memory:",
 ) -> str:
     sections: list[str] = []
 

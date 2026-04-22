@@ -26,8 +26,7 @@ _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _PDF_DB = str(_AGENT_DBS / "pdf_agent.db")
 
 
-def build_pdf_agent_runner(*, checkpointer: str | None = None):
-    cp = _PDF_DB if checkpointer is None else checkpointer
+def build_pdf_agent_runner():
     return create_deep_agent(
         name="pdf_agent",
         description=(
@@ -46,7 +45,7 @@ def build_pdf_agent_runner(*, checkpointer: str | None = None):
             "must be installed on the host system—pip packages alone are not enough."
         ),
         backend=_DEMO_BACKEND,
-        checkpointer=cp,
+        checkpointer=_PDF_DB,
         debug=True,
         include_general_purpose=False,
         subagents=None,

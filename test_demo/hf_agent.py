@@ -30,13 +30,12 @@ _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _HF_DB = str(_AGENT_DBS / "hf_agent.db")
 
 
-def build_hf_agent_runner(*, checkpointer: str | None = None) -> DeepAgentRunner | None:
+def build_hf_agent_runner() -> DeepAgentRunner | None:
     token = (
         os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
     ).strip()
     if not token:
         return None
-    cp = _HF_DB if checkpointer is None else checkpointer
     env = os.environ.copy()
     env["HF_TOKEN"] = token
     params: MCPServerStdioParams = {
@@ -55,7 +54,7 @@ def build_hf_agent_runner(*, checkpointer: str | None = None) -> DeepAgentRunner
             "write long tool dumps under **/_outputs/** and return paths."
         ),
         backend=_DEMO_BACKEND,
-        checkpointer=cp,
+        checkpointer=_HF_DB,
         debug=True,
         include_general_purpose=False,
         subagents=None,

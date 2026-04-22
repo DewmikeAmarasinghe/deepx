@@ -67,23 +67,31 @@ async def web_search(ctx: RunContextWrapper, queries: list[str]) -> str:
     async with httpx.AsyncClient() as client:
 
         async def one(q: str) -> dict:
-            r = await client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": TAVILY_KEY,
+            try:
+                r = await client.post(
+                    "https://api.tavily.com/search",
+                    json={
+                        "api_key": TAVILY_KEY,
+                        "query": q,
+                        "max_results": 5,
+                    },
+                    timeout=25,
+                )
+                r.raise_for_status()
+                data = r.json()
+                row = {
                     "query": q,
-                    "max_results": 5,
-                },
-                timeout=25,
-            )
-            r.raise_for_status()
-            data = r.json()
-            row = {
-                "query": q,
-                "answer": data.get("answer"),
-                "results": data.get("results", []),
-            }
-            return _strip_images(row)
+                    "answer": data.get("answer"),
+                    "results": data.get("results", []),
+                }
+                return _strip_images(row)
+            except Exception as e:
+                return {
+                    "query": q,
+                    "error": str(e),
+                    "answer": None,
+                    "results": [],
+                }
 
         rows = await asyncio.gather(*[one(q) for q in qs])
     return json.dumps(rows, indent=2)
@@ -177,8 +185,7 @@ async def web_map(
 WEB_TOOLS = [web_search, web_extract, web_map]
 
 
-def build_web_agent_runner(*, checkpointer: str | None = None):
-    cp = _WEB_DB if checkpointer is None else checkpointer
+def build_web_agent_runner():
     return create_deep_agent(
         name="web_agent",
         description=(
@@ -205,7 +212,7 @@ def build_web_agent_runner(*, checkpointer: str | None = None):
             "JSON into chat; keep bulky tool output in files and point to them briefly."
         ),
         backend=_DEMO_BACKEND,
-        checkpointer=cp,
+        checkpointer=_WEB_DB,
         debug=True,
         include_general_purpose=False,
         subagents=None,

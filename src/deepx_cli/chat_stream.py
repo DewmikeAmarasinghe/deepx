@@ -5,14 +5,14 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from agents.items import ToolApprovalItem
-from agents.result import RunResult, RunResultStreaming
+from agents.result import RunResultStreaming
 from agents.run_state import RunState
 from rich.console import Console
 
 from deepx.factory import DeepRunBinding
 from deepx_cli.approvals import apply_choices_to_state
 
-ApprovalResolver = Callable[
+_ResolveApprovals = Callable[
     [Any, list[ToolApprovalItem], Console],
     Awaitable[None],
 ]
@@ -70,24 +70,6 @@ async def drain_stream(
             console.print(f"[dim]· tool_output[/dim] {text}")
 
 
-async def run_binding_until_settled(
-    binding: DeepRunBinding,
-    inp: str | RunState[Any, Any],
-    *,
-    console: Console,
-    resolve_approvals: ApprovalResolver | None = None,
-) -> RunResult:
-    """Run to completion, prompting for SDK tool approvals on the outer :class:`RunResult`."""
-    resolver = resolve_approvals or _default_resolve_approvals
-    result = await binding.run(inp)
-    while result.interruptions:
-        console.print()
-        state = result.to_state()
-        await resolver(state, list(result.interruptions), console)
-        result = await binding.run(state)
-    return result
-
-
 async def run_stream_until_settled(
     binding: DeepRunBinding,
     inp: str | RunState[Any, Any],
@@ -95,7 +77,7 @@ async def run_stream_until_settled(
     *,
     stream_text: bool = False,
     verbose_tools: bool = False,
-    resolve_approvals: ApprovalResolver | None = None,
+    resolve_approvals: _ResolveApprovals | None = None,
 ) -> RunResultStreaming:
     resolver = resolve_approvals or _default_resolve_approvals
     stream = binding.run_streamed(inp)
@@ -114,8 +96,6 @@ async def run_stream_until_settled(
 
 
 __all__ = [
-    "ApprovalResolver",
     "drain_stream",
-    "run_binding_until_settled",
     "run_stream_until_settled",
 ]

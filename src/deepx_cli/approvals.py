@@ -1,11 +1,55 @@
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from collections.abc import Callable, Iterable
+from typing import Any, Literal, TypeAlias, TypedDict
 
 from agents.items import ToolApprovalItem
+from agents.run_context import RunContextWrapper
 from rich.console import Console
 
-from deepx.hitl import ApprovalChoice, apply_approval_handler
+ApprovalChoice: TypeAlias = Literal["reject", "once", "always"]
+ApprovalHandler: TypeAlias = Callable[[ToolApprovalItem], ApprovalChoice]
+
+
+def iter_pending_tool_approvals(
+    state: Any,
+    interruptions: Iterable[ToolApprovalItem],
+) -> list[ToolApprovalItem]:
+    """Return interruption items that still need an explicit human decision."""
+    ctx = getattr(state, "_context", None)
+    out: list[ToolApprovalItem] = []
+    for item in list(interruptions):
+        if ctx is not None:
+            call_id = RunContextWrapper._resolve_call_id(item) or ""
+            pre = ctx.get_approval_status(
+                item.tool_name or "",
+                call_id,
+                existing_pending=item,
+            )
+            if pre is True:
+                continue
+        out.append(item)
+    return out
+
+
+def apply_approval_choice(
+    state: Any, item: ToolApprovalItem, choice: ApprovalChoice
+) -> None:
+    if choice == "reject":
+        state.reject(item)
+    elif choice == "once":
+        state.approve(item, always_approve=False)
+    else:
+        state.approve(item, always_approve=True)
+
+
+def apply_approval_handler(
+    state: Any,
+    interruptions: list[ToolApprovalItem],
+    handler: ApprovalHandler,
+) -> None:
+    for item in iter_pending_tool_approvals(state, interruptions):
+        apply_approval_choice(state, item, handler(item))
 
 
 class HitlPendingMeta(TypedDict, total=False):
@@ -38,7 +82,7 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> ApprovalChoice:
 def approval_choice_from_meta(
     console: Console, meta: HitlPendingMeta
 ) -> ApprovalChoice:
-    """Terminal prompt from workflow query payload (Temporal HITL pump)."""
+    """Terminal prompt from workflow query payload (or local CLI)."""
     agent_name = meta.get("agent_name") or "agent"
     tool_name = meta.get("tool_name") or "tool"
     args_preview = meta.get("args_preview") or ""
@@ -72,8 +116,13 @@ def apply_choices_to_state(
 
 
 __all__ = [
+    "ApprovalChoice",
+    "ApprovalHandler",
     "HitlPendingMeta",
+    "apply_approval_choice",
+    "apply_approval_handler",
+    "apply_choices_to_state",
     "approval_choice",
     "approval_choice_from_meta",
-    "apply_choices_to_state",
+    "iter_pending_tool_approvals",
 ]

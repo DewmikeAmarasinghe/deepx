@@ -10,7 +10,6 @@ from deepx.factory import (
     SubagentRef,
     create_deep_agent,
 )
-from deepx.sessions import is_memory_checkpointer
 
 __all__ = [
     "SubagentRef",
@@ -19,7 +18,6 @@ __all__ = [
     "DeepAgentRunner",
     "DeepRunBinding",
     "DeepRunResult",
-    "is_memory_checkpointer",
     "BackendProtocol",
     "FilesystemBackend",
     "LocalShellBackend",

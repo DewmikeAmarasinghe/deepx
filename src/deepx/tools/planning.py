@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import re
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -15,20 +15,12 @@ from deepx.middleware.logs import (
 )
 
 
-def _slug_id(title: str, *, used: set[str]) -> str:
-    s = (title or "").strip().lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
-    if not s:
-        s = "task"
-    base = s[:48]
-    cand = base
-    n = 2
-    while cand in used:
-        suf = f"-{n}"
-        cand = base[: max(1, 48 - len(suf))] + suf
-        n += 1
-    used.add(cand)
-    return cand
+def _alloc_todo_id(used: set[str]) -> str:
+    while True:
+        c = uuid.uuid4().hex[:12]
+        if c not in used:
+            used.add(c)
+            return c
 
 
 class TodoStatus(str, Enum):
@@ -60,12 +52,13 @@ class Plan(BaseModel):
         new: list[Todo] = []
         for t in self.todos:
             nid = (t.id or "").strip()
-            if not nid:
-                nid = _slug_id(t.content, used=used)
-            elif nid in used:
-                nid = _slug_id(t.content, used=used)
-            else:
-                used.add(nid)
+            if not nid or nid in used:
+                while True:
+                    cand = uuid.uuid4().hex[:12]
+                    if cand not in used:
+                        nid = cand
+                        break
+            used.add(nid)
             new.append(t.model_copy(update={"id": nid}))
         self.todos = new
         return self
@@ -196,7 +189,7 @@ async def write_todos(
     used: set[str] = set()
     ctx.context.plan.todos = [
         Todo(
-            id=_slug_id(t.content, used=used),
+            id=_alloc_todo_id(used),
             content=t.content,
             status=_safe_status(t.status),
         )

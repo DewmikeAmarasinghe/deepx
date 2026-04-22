@@ -74,10 +74,9 @@ available_db_names = (
 )
 
 
-def build_sql_agent_runner(*, checkpointer: str | None = None):
+def build_sql_agent_runner():
     if not sql_tools:
         return None
-    cp = sql_session_db if checkpointer is None else checkpointer
     return create_deep_agent(
         name="sql_agent",
         description=(
@@ -100,7 +99,7 @@ def build_sql_agent_runner(*, checkpointer: str | None = None):
             "Return explicit SQL and readable tables."
         ),
         backend=demo_backend,
-        checkpointer=cp,
+        checkpointer=sql_session_db,
         debug=True,
         include_general_purpose=False,
         subagents=None,

@@ -8,8 +8,6 @@ Run from the repository root (the ``test_demo`` tree is not shipped in the wheel
 
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
 orchestrator module is for local development and demos only.
-
-Temporal (optional): see ``test_demo/temporal/README.md``.
 """
 
 from __future__ import annotations
@@ -111,14 +109,9 @@ DEMO_ORCHESTRATOR_SYS = """\
 """
 
 
-def _build_orchestrator(
-    *,
-    checkpointer: str,
-    specialist_checkpointer: str | None = None,
-) -> DeepAgentRunner:
-    sc = specialist_checkpointer
-    sql_r = build_sql_agent_runner(checkpointer=sc)
-    hf_r = hf_mod.build_hf_agent_runner(checkpointer=sc)
+def _build_orchestrator(*, checkpointer: str) -> DeepAgentRunner:
+    sql_r = build_sql_agent_runner()
+    hf_r = hf_mod.build_hf_agent_runner()
     return create_deep_agent(
         name="orchestrator",
         description=(
@@ -127,10 +120,10 @@ def _build_orchestrator(
         ),
         subagents=[
             SubagentRef(
-                build_web_agent_runner(checkpointer=sc),
+                build_web_agent_runner(),
             ),
             *([SubagentRef(sql_r, expose="handoff")] if sql_r is not None else []),
-            SubagentRef(build_pdf_agent_runner(checkpointer=sc)),
+            SubagentRef(build_pdf_agent_runner()),
             *([SubagentRef(hf_r)] if hf_r is not None else []),
         ],
         tools=orch_tools,
@@ -143,10 +136,6 @@ def _build_orchestrator(
 
 
 orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB)
-orchestrator_runner_workflow = _build_orchestrator(
-    checkpointer="memory",
-    specialist_checkpointer="memory",
-)
 
 TASK = """
 I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
