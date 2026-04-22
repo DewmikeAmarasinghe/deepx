@@ -4,6 +4,7 @@ Run from the repository root (the ``test_demo`` tree is not shipped in the wheel
 
     uv sync --extra demo
     uv run --extra demo python -m test_demo.orchestrator --chat
+    uv run --extra demo python -m test_demo.orchestrator --chat_sync
     uv run --extra demo python -m test_demo.orchestrator --once
 
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
@@ -28,13 +29,13 @@ from agents import RunContextWrapper, function_tool  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.panel import Panel  # noqa: E402
 
-from deepx import DeepAgentRunner, SubagentRef, create_deep_agent  # noqa: E402
+from deepx import SubagentRef, create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
-from test_demo import hf_agent as hf_mod  # noqa: E402
-from test_demo.pdf_agent import build_pdf_agent_runner  # noqa: E402
-from test_demo.sql_agent import build_sql_agent_runner  # noqa: E402
-from test_demo.web_agent import build_web_agent_runner  # noqa: E402
+from test_demo.hf_agent import hf_agent_runner  # noqa: E402
+from test_demo.pdf_agent import pdf_agent_runner  # noqa: E402
+from test_demo.sql_agent import sql_agent_runner  # noqa: E402
+from test_demo.web_agent import web_agent_runner  # noqa: E402
 
 _RENDER_FILES_LINE_LIMIT = 10_000_000
 _render_console = Console(highlight=False)
@@ -109,33 +110,29 @@ DEMO_ORCHESTRATOR_SYS = """\
 """
 
 
-def _build_orchestrator(*, checkpointer: str) -> DeepAgentRunner:
-    sql_r = build_sql_agent_runner()
-    hf_r = hf_mod.build_hf_agent_runner()
-    return create_deep_agent(
-        name="orchestrator",
-        description=(
-            "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
-            "Uses planning tools; delegates execution to specialists."
+orchestrator_runner = create_deep_agent(
+    name="orchestrator",
+    description=(
+        "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
+        "Uses planning tools; delegates execution to specialists."
+    ),
+    subagents=[
+        SubagentRef(web_agent_runner),
+        *(
+            [SubagentRef(sql_agent_runner, expose="handoff")]
+            if sql_agent_runner is not None
+            else []
         ),
-        subagents=[
-            SubagentRef(
-                build_web_agent_runner(),
-            ),
-            *([SubagentRef(sql_r, expose="handoff")] if sql_r is not None else []),
-            SubagentRef(build_pdf_agent_runner()),
-            *([SubagentRef(hf_r)] if hf_r is not None else []),
-        ],
-        tools=orch_tools,
-        skills=[str(ORCH_SKILLS_DIR)],
-        system_prompt=DEMO_ORCHESTRATOR_SYS,
-        checkpointer=checkpointer,
-        debug=True,
-        backend=DEMO_BACKEND,
-    )
-
-
-orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB)
+        SubagentRef(pdf_agent_runner),
+        *([SubagentRef(hf_agent_runner)] if hf_agent_runner is not None else []),
+    ],
+    tools=orch_tools,
+    skills=[str(ORCH_SKILLS_DIR)],
+    system_prompt=DEMO_ORCHESTRATOR_SYS,
+    checkpointer=ORCH_DB,
+    debug=True,
+    backend=DEMO_BACKEND,
+)
 
 TASK = """
 I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
@@ -194,18 +191,25 @@ def main() -> None:
     parser.add_argument(
         "--chat",
         action="store_true",
-        help="Interactive multi-turn session (default if neither flag is set).",
+        help="Interactive multi-turn session with streaming (default if neither mode flag is set).",
+    )
+    parser.add_argument(
+        "--chat_sync",
+        action="store_true",
+        help="Interactive multi-turn session without token streaming.",
     )
     args, rest = parser.parse_known_args()
 
-    from deepx_cli.session import run_chat, run_once
+    from deepx_cli.session import run_chat_stream, run_chat_sync, run_once
 
     task = " ".join(rest).strip() or TASK
 
     if args.once:
         run_once(orchestrator_runner, task)
+    elif args.chat_sync:
+        run_chat_sync(orchestrator_runner)
     else:
-        run_chat(orchestrator_runner)
+        run_chat_stream(orchestrator_runner)
 
 
 if __name__ == "__main__":

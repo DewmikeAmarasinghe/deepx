@@ -15,7 +15,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
-from deepx.factory import create_deep_agent  # noqa: E402
+from deepx.factory import DeepAgentRunner, create_deep_agent  # noqa: E402
 from test_demo.sql_tools import create_sql_tools  # noqa: E402
 
 DEMO_DIR = _DEMO_DIR
@@ -74,10 +74,11 @@ available_db_names = (
 )
 
 
-def build_sql_agent_runner():
-    if not sql_tools:
-        return None
-    return create_deep_agent(
+sql_agent_runner: DeepAgentRunner | None
+if not sql_tools:
+    sql_agent_runner = None
+else:
+    sql_agent_runner = create_deep_agent(
         name="sql_agent",
         description=(
             "Specialist for read-only SQLite on bundled demo databases. "
@@ -101,9 +102,5 @@ def build_sql_agent_runner():
         backend=demo_backend,
         checkpointer=sql_session_db,
         debug=True,
-        include_general_purpose=False,
         subagents=None,
     )
-
-
-sql_agent_runner = build_sql_agent_runner()

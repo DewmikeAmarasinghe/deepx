@@ -1,29 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Awaitable, Callable
 from typing import Any
 
-from agents.items import ToolApprovalItem
 from agents.result import RunResultStreaming
 from agents.run_state import RunState
 from rich.console import Console
 
 from deepx.factory import DeepRunBinding
-from deepx_cli.approvals import apply_choices_to_state
-
-_ResolveApprovals = Callable[
-    [Any, list[ToolApprovalItem], Console],
-    Awaitable[None],
-]
-
-
-async def _default_resolve_approvals(
-    state: Any,
-    interruptions: list[ToolApprovalItem],
-    console: Console,
-) -> None:
-    await asyncio.to_thread(apply_choices_to_state, state, interruptions, console)
 
 
 async def drain_stream(
@@ -33,6 +16,15 @@ async def drain_stream(
     stream_text: bool = False,
     verbose_tools: bool = False,
 ) -> None:
+    """Consume ``stream.stream_events()`` from the OpenAI Agents SDK.
+
+    **Default** (``stream_text=True``, ``verbose_tools=False``): prints only assistant **text
+    deltas** from ``raw_response_event`` payloads (e.g. ``ResponseTextDeltaEvent``). Tool calls
+    and tool outputs are **not** shown.
+
+    **With** ``verbose_tools=True``: also prints a dim line per ``run_item_stream_event`` for
+    ``tool_call_item`` (name + arguments preview) and ``tool_call_output_item`` (truncated output).
+    """
     try:
         from openai.types.responses import ResponseTextDeltaEvent
     except ImportError:
@@ -77,21 +69,12 @@ async def run_stream_until_settled(
     *,
     stream_text: bool = False,
     verbose_tools: bool = False,
-    resolve_approvals: _ResolveApprovals | None = None,
 ) -> RunResultStreaming:
-    resolver = resolve_approvals or _default_resolve_approvals
+    """Run one streamed turn. Gated tools pause inside tool invoke (Deepx HITL), not SDK interruptions."""
     stream = binding.run_streamed(inp)
     await drain_stream(
         stream, console, stream_text=stream_text, verbose_tools=verbose_tools
     )
-    while stream.interruptions:
-        console.print()
-        state = stream.to_state()
-        await resolver(state, list(stream.interruptions), console)
-        stream = binding.run_streamed(state)
-        await drain_stream(
-            stream, console, stream_text=stream_text, verbose_tools=verbose_tools
-        )
     return stream
 
 

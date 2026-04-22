@@ -29,6 +29,7 @@ from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
+from deepx.middleware.hitl import Hitl
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.sessions import create_session
@@ -39,7 +40,7 @@ from deepx.system_prompt import (
 )
 from deepx.tools import BUILTIN_TOOLS
 
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = "gpt-5-nano"
 
 if TYPE_CHECKING:
     from agents.agent import MCPConfig
@@ -86,7 +87,6 @@ class SubagentRef:
 
     runner: "DeepAgentRunner"
     expose: Literal["tool", "handoff"] = "tool"
-    needs_approval: bool = False
     tool_name: str | None = None
 
 
@@ -177,7 +177,6 @@ def _subagent_tool_from_runner(
     checkpointer: str,
     max_turns: int,
     backend: BackendProtocol,
-    needs_approval: bool,
 ) -> Tool:
     """Expose a subagent as a tool: nested ``Runner.run`` with a per-call session."""
     agent = runner._agent
@@ -197,6 +196,7 @@ def _subagent_tool_from_runner(
             debug=runner._debug,
             resume=False,
             is_subagent=True,
+            hitl=ac.hitl,
         )
         session = create_session(sub_sid, checkpointer)
         agent_wrapped = runner._prepare_agent()
@@ -216,7 +216,6 @@ def _subagent_tool_from_runner(
         name_override=tool_name,
         description_override=runner.description or "",
         use_docstring_info=False,
-        needs_approval=needs_approval,
     )
     setattr(tool, "_is_agent_tool", True)
     setattr(tool, "_agent_instance", runner._agent)
@@ -249,6 +248,7 @@ def create_deep_agent(
     tool_use_behavior: Any | None = None,
     reset_tool_choice: bool | None = None,
     prompt: "Prompt | DynamicPromptFunction | None" = None,
+    interrupt_on: list[str] | None = None,
 ) -> "DeepAgentRunner":
     """Build a :class:`DeepAgentRunner`: one OpenAI Agents ``Agent`` plus Deepx filesystem, skills, and sessions.
 
@@ -277,8 +277,9 @@ def create_deep_agent(
 
     - ``expose=\"tool\"`` (default): specialist exposed with a ``function_tool`` that runs a nested
       ``Runner.run`` and a **per-call** session derived from the parent ``session_id``, subagent
-      name, and ``tool_call_id``. Tools with ``needs_approval=True`` follow the SDK human-in-the-loop
-      patterns for nested runs (see OpenAI Agents docs).
+      name, and ``tool_call_id``. Sensitive tools use :data:`interrupt_on` and
+      :class:`deepx.middleware.hitl.Hitl` at :meth:`~DeepAgentRunner.bind` time (not SDK
+      ``needs_approval``).
     - ``expose=\"handoff\"``: specialist registered with the SDK ``handoff()`` helper on the main
       ``Agent`` (there is no separate ``handoffs=`` argument on this factory). Use for long-lived
       context switches (e.g. SQL specialist) where the model should **transfer** control rather than
@@ -288,6 +289,12 @@ def create_deep_agent(
 
     ``run_hooks`` are composed **after** :class:`deepx.middleware.filesystem.FilesystemHooks`.
     ``agent_hooks`` map to ``Agent.hooks`` (per-turn agent callbacks), not run-level hooks.
+
+    **Human-in-the-loop**
+
+    ``interrupt_on`` lists tool names that require host approval before execution. Pass a
+    :class:`~deepx.middleware.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
+    nested specialist runs inherit the same coordinator from the parent context.
 
     **Defaults**
 
@@ -303,6 +310,11 @@ def create_deep_agent(
 
     extra_run_hooks = tuple(run_hooks)
     checkpointer = checkpointer.strip() or ":memory:"
+    gated = frozenset(
+        name.strip()
+        for name in (interrupt_on or [])
+        if isinstance(name, str) and name.strip()
+    )
     sub_refs = _normalize_subagents(subagents)
 
     if include_general_purpose and not any(
@@ -354,7 +366,6 @@ def create_deep_agent(
                     checkpointer=runner._checkpointer,
                     max_turns=max_turns,
                     backend=resolved_backend,
-                    needs_approval=ref.needs_approval,
                 )
             )
 
@@ -400,6 +411,7 @@ def create_deep_agent(
         agent_name=name,
         description=description,
         middleware_hooks=extra_run_hooks,
+        interrupt_on=gated,
     )
 
 
@@ -449,10 +461,12 @@ class DeepRunBinding:
         *,
         resume: bool,
         hooks: RunHooksBase[AgentContext, AgentType[AgentContext]] | None = None,
+        hitl: Hitl | None = None,
     ) -> None:
         self._runner = runner
         self.session_id = session_id
         self.ctx = runner._make_ctx(session_id, resume)
+        self.ctx.hitl = hitl
         self.session = create_session(session_id, runner._checkpointer)
         self.agent = runner._prepare_agent()
         self.hooks = hooks if hooks is not None else runner._make_hooks()
@@ -460,7 +474,7 @@ class DeepRunBinding:
     async def run(self, inp: str | RunState) -> RunResult:
         # Fresh runs wrap ``AgentContext`` in a new :class:`RunContextWrapper` inside the SDK.
         # Resuming from :class:`RunState` must keep ``run_state._context`` (same wrapper as
-        # ``result.to_state()``) so tool approval decisions in ``_approvals`` are not dropped.
+        # ``result.to_state()``).
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
             None if isinstance(inp, RunState) else self.ctx
         )
@@ -504,6 +518,7 @@ class DeepAgentRunner:
         middleware_hooks: tuple[
             RunHooksBase[AgentContext, AgentType[AgentContext]], ...
         ] = (),
+        interrupt_on: frozenset[str] | None = None,
     ) -> None:
         self._agent = agent
         self._backend = backend
@@ -515,6 +530,7 @@ class DeepAgentRunner:
         self._agent_name = agent_name
         self.description = description
         self._middleware_hooks = middleware_hooks
+        self._interrupt_on = interrupt_on or frozenset()
 
     @property
     def backend(self) -> BackendProtocol:
@@ -526,8 +542,15 @@ class DeepAgentRunner:
         *,
         resume: bool = False,
         hooks: RunHooksBase[AgentContext, AgentType[AgentContext]] | None = None,
+        hitl: Hitl | None = None,
     ) -> DeepRunBinding:
-        return DeepRunBinding(self, session_id, resume=resume, hooks=hooks)
+        return DeepRunBinding(
+            self,
+            session_id,
+            resume=resume,
+            hooks=hooks,
+            hitl=hitl,
+        )
 
     def _make_ctx(self, session_id: str, resume: bool) -> AgentContext:
         si = _skills_prompt_for_backend(self._backend, self._skill_roots)
@@ -553,6 +576,7 @@ class DeepAgentRunner:
             self._backend,
             agent_name=self._agent.name,
             debug=self._debug,
+            interrupt_on=self._interrupt_on,
         )
         return dataclasses.replace(self._agent, tools=wrapped)
 
@@ -650,6 +674,7 @@ __all__ = [
     "DeepAgentRunner",
     "DeepRunBinding",
     "DeepRunResult",
+    "Hitl",
     "SubagentRef",
     "create_deep_agent",
 ]

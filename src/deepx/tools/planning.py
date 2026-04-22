@@ -1,26 +1,17 @@
 from __future__ import annotations
 
 import json
-import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
 from agents import RunContextWrapper, function_tool
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from deepx.context import AgentContext
 from deepx.middleware.logs import (
     run_log_append_plan_event,
     run_log_save_plan,
 )
-
-
-def _alloc_todo_id(used: set[str]) -> str:
-    while True:
-        c = uuid.uuid4().hex[:12]
-        if c not in used:
-            used.add(c)
-            return c
 
 
 class TodoStatus(str, Enum):
@@ -32,7 +23,6 @@ class TodoStatus(str, Enum):
 class Todo(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    id: str = ""
     content: str = Field(default="", description="Todo description.")
     status: TodoStatus = TodoStatus.pending
 
@@ -45,23 +35,6 @@ class Plan(BaseModel):
     updated_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-
-    @model_validator(mode="after")
-    def ensure_todo_ids(self) -> Plan:
-        used: set[str] = set()
-        new: list[Todo] = []
-        for t in self.todos:
-            nid = (t.id or "").strip()
-            if not nid or nid in used:
-                while True:
-                    cand = uuid.uuid4().hex[:12]
-                    if cand not in used:
-                        nid = cand
-                        break
-            used.add(nid)
-            new.append(t.model_copy(update={"id": nid}))
-        self.todos = new
-        return self
 
     def pending(self) -> list[Todo]:
         return [t for t in self.todos if t.status == TodoStatus.pending]
@@ -165,7 +138,7 @@ This tool is optional; do not call it on every step.\
 async def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
     """Structured reflection; prefer updating `write_todos` when the plan must change."""
     todos = [
-        {"id": t.id, "content": t.content, "status": t.status.value}
+        {"content": t.content, "status": t.status.value}
         for t in ctx.context.plan.todos
     ]
     plan_block = (
@@ -186,10 +159,8 @@ async def write_todos(
     todos: list[TodoInput],
 ) -> str:
     """Create and manage a structured task list for your current work session (full replace)."""
-    used: set[str] = set()
     ctx.context.plan.todos = [
         Todo(
-            id=_alloc_todo_id(used),
             content=t.content,
             status=_safe_status(t.status),
         )
@@ -202,7 +173,7 @@ async def write_todos(
             "timestamp": ctx.context.plan.updated_at,
             "agent": ctx.context.agent_name,
             "todos": [
-                {"id": t.id, "content": t.content, "status": t.status.value}
+                {"content": t.content, "status": t.status.value}
                 for t in ctx.context.plan.todos
             ],
         }
@@ -213,7 +184,7 @@ async def write_todos(
 
 
 def _format_plan(ctx: RunContextWrapper[AgentContext]) -> str:
-    lines = [f"[{t.id}] ({t.status.value}) {t.content}" for t in ctx.context.plan.todos]
+    lines = [f"({t.status.value}) {t.content}" for t in ctx.context.plan.todos]
     return "Plan saved:\n" + "\n".join(lines)
 
 

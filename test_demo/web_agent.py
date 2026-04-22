@@ -45,7 +45,7 @@ def _strip_images(obj: Any) -> Any:
     return obj
 
 
-@function_tool(needs_approval=True)
+@function_tool
 async def web_search(ctx: RunContextWrapper, queries: list[str]) -> str:
     """
     Search the public web using the **Tavily** API (hosted index).
@@ -184,39 +184,34 @@ async def web_map(
 
 WEB_TOOLS = [web_search, web_extract, web_map]
 
-
-def build_web_agent_runner():
-    return create_deep_agent(
-        name="web_agent",
-        description=(
-            "Web research specialist: Tavily search/extract/map; saves structured notes and can "
-            "author final markdown reports under the project tree. Returns artifact paths."
-        ),
-        tools=WEB_TOOLS,
-        skills=[
-            str(SKILLS_DIR / "deep-research"),
-            str(SKILLS_DIR / "arxiv-search"),
-        ],
-        system_prompt=(
-            "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
-            "For any multi-step brief, call **`write_todos` first** after skimming the relevant "
-            "**deep-research** / **arxiv-search** skill files (`read_file` on the paths listed in "
-            "your prompt), then call **`write_todos` again** with an updated full list after each major step.\n"
-            "Persist research in a small number of well-named files (one topical area per file when "
-            "possible). Use clear headings, inline citations, and a Sources section on written "
-            "deliverables.\n"
-            "When the brief includes a **written deliverable**, produce the full final markdown "
-            "yourself with `write_file`—executive summary, findings, and sources—so the parent agent "
-            "does not need a separate writer.\n"
-            "Return every artifact path you created plus a tight summary. Do not dump large raw "
-            "JSON into chat; keep bulky tool output in files and point to them briefly."
-        ),
-        backend=_DEMO_BACKEND,
-        checkpointer=_WEB_DB,
-        debug=True,
-        include_general_purpose=False,
-        subagents=None,
-    )
-
-
-web_agent_runner = build_web_agent_runner()
+web_agent_runner = create_deep_agent(
+    name="web_agent",
+    description=(
+        "Web research specialist: Tavily search/extract/map; saves structured notes and can "
+        "author final markdown reports under the project tree. Returns artifact paths."
+    ),
+    tools=WEB_TOOLS,
+    skills=[
+        str(SKILLS_DIR / "deep-research"),
+        str(SKILLS_DIR / "arxiv-search"),
+    ],
+    system_prompt=(
+        "You are the **web_agent** internal service. Tools: `web_search`, `web_extract`, `web_map`.\n"
+        "For any multi-step brief, call **`write_todos` first** after skimming the relevant "
+        "**deep-research** / **arxiv-search** skill files (`read_file` on the paths listed in "
+        "your prompt), then call **`write_todos` again** with an updated full list after each major step.\n"
+        "Persist research in a small number of well-named files (one topical area per file when "
+        "possible). Use clear headings, inline citations, and a Sources section on written "
+        "deliverables.\n"
+        "When the brief includes a **written deliverable**, produce the full final markdown "
+        "yourself with `write_file`—executive summary, findings, and sources—so the parent agent "
+        "does not need a separate writer.\n"
+        "Return every artifact path you created plus a tight summary. Do not dump large raw "
+        "JSON into chat; keep bulky tool output in files and point to them briefly."
+    ),
+    backend=_DEMO_BACKEND,
+    checkpointer=_WEB_DB,
+    debug=True,
+    subagents=None,
+    interrupt_on=["web_search"],
+)

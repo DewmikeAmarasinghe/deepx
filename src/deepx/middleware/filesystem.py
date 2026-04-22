@@ -22,6 +22,7 @@ from deepx.backends.filesystem import (
 )
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
+from deepx.middleware.hitl import wrap_tools_for_hitl
 from deepx.middleware.logs import run_log_load_plan, wrap_tools_for_logging
 from deepx.tools.planning import Plan
 
@@ -109,10 +110,12 @@ def apply_tool_pipeline(
     *,
     agent_name: str,
     debug: bool,
+    interrupt_on: frozenset[str] | None = None,
 ) -> list[Tool]:
     wrapped = wrap_tools_for_large_tool_results(tools, backend)
     if debug:
         wrapped = wrap_tools_for_logging(wrapped, backend, agent_name)
+    wrapped = wrap_tools_for_hitl(wrapped, interrupt_on or frozenset())
     return wrapped
 
 

@@ -29,21 +29,22 @@ _AGENT_DBS = _REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
 _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _HF_DB = str(_AGENT_DBS / "hf_agent.db")
 
+_hf_token = (
+    os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
+).strip()
 
-def build_hf_agent_runner() -> DeepAgentRunner | None:
-    token = (
-        os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
-    ).strip()
-    if not token:
-        return None
-    env = os.environ.copy()
-    env["HF_TOKEN"] = token
-    params: MCPServerStdioParams = {
+hf_agent_runner: DeepAgentRunner | None
+if not _hf_token:
+    hf_agent_runner = None
+else:
+    _hf_env = os.environ.copy()
+    _hf_env["HF_TOKEN"] = _hf_token
+    _hf_params: MCPServerStdioParams = {
         "command": "npx",
         "args": ["-y", "@llmindset/hf-mcp-server"],
-        "env": env,
+        "env": _hf_env,
     }
-    return create_deep_agent(
+    hf_agent_runner = create_deep_agent(
         name="hf_agent",
         description=(
             "Hugging Face Hub via MCP: search models, datasets, spaces, and documentation."
@@ -56,10 +57,6 @@ def build_hf_agent_runner() -> DeepAgentRunner | None:
         backend=_DEMO_BACKEND,
         checkpointer=_HF_DB,
         debug=True,
-        include_general_purpose=False,
         subagents=None,
-        mcp_servers=[MCPServerStdio(params, name="huggingface")],
+        mcp_servers=[MCPServerStdio(_hf_params, name="huggingface")],
     )
-
-
-hf_agent_runner = build_hf_agent_runner()

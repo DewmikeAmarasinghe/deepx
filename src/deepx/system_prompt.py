@@ -178,10 +178,11 @@ THEN:
   into the next prompt. Subagents share the same project tree.
 - Parallelise subagent calls only when there is **zero data dependency** between them.
 
-## Human approvals (host)
+## Human-in-the-loop (host)
 
-Some tools may **pause the run** until a human approves or rejects the tool call in the host
-(terminal/UI). If a call is rejected, revise your plan with `write_todos` and try a different approach.
+Some tools are configured with ``interrupt_on``: the host may **pause before the tool runs** until a
+human approves or rejects. If a call is rejected, revise your plan with `write_todos` and try a
+different approach.
 
 ## Step 4 — Cleanup
 
@@ -428,7 +429,7 @@ def build_system_prompt(
 
     if ctx.context.plan.todos:
         lines = [
-            f"[{t.id}] ({t.status.value}) {t.content}" for t in ctx.context.plan.todos
+            f"({t.status.value}) {t.content}" for t in ctx.context.plan.todos
         ]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 
