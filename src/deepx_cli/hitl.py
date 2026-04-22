@@ -1,4 +1,4 @@
-"""Terminal policy for :class:`deepx.middleware.hitl.Hitl` (Rich + blocking input)."""
+"""Terminal policy for :class:`deepx.hitl.Hitl` (Rich + blocking input)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import json
 
 from rich.console import Console
 
-from deepx.middleware.hitl import Hitl, HitlDecision, HitlRequest
+from deepx.hitl import Hitl, HitlDecision, HitlRequest
 
 
 def create_terminal_hitl(console: Console) -> Hitl:
@@ -15,7 +15,7 @@ def create_terminal_hitl(console: Console) -> Hitl:
 
     async def policy(req: HitlRequest) -> HitlDecision:
         def sync_prompt() -> HitlDecision:
-            console.print()
+            console.print("\n")
             console.print(
                 f"[bold]{req.agent_name}:[/bold] "
                 f"[yellow]approval required[/yellow] · tool [cyan]{req.tool_name}[/cyan]"

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from deepx.backends.protocol import BackendProtocol
+from deepx.hitl import Hitl
 
 if TYPE_CHECKING:
     from deepx.tools.planning import Plan
@@ -20,7 +21,7 @@ class AgentContext:
     debug: bool = False
     resume: bool = False
     is_subagent: bool = False
-    hitl: Any = None
+    hitl: Hitl | None = None
 
     def __post_init__(self) -> None:
         from deepx.tools.planning import Plan as PlanModel

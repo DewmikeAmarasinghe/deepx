@@ -28,8 +28,8 @@ from agents.tool_context import ToolContext
 from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
+from deepx.hitl import Hitl
 from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
-from deepx.middleware.hitl import Hitl
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.sessions import create_session
@@ -278,11 +278,11 @@ def create_deep_agent(
     - ``expose=\"tool\"`` (default): specialist exposed with a ``function_tool`` that runs a nested
       ``Runner.run`` and a **per-call** session derived from the parent ``session_id``, subagent
       name, and ``tool_call_id``. Sensitive tools use :data:`interrupt_on` and
-      :class:`deepx.middleware.hitl.Hitl` at :meth:`~DeepAgentRunner.bind` time (not SDK
+      :class:`deepx.hitl.Hitl` at :meth:`~DeepAgentRunner.bind` time (not SDK
       ``needs_approval``).
     - ``expose=\"handoff\"``: specialist registered with the SDK ``handoff()`` helper on the main
       ``Agent`` (there is no separate ``handoffs=`` argument on this factory). Use for long-lived
-      context switches (e.g. SQL specialist) where the model should **transfer** control rather than
+      context switches (e.g. web research) where the model should **transfer** control rather than
       return through a tool result.
 
     **Hooks**
@@ -293,7 +293,7 @@ def create_deep_agent(
     **Human-in-the-loop**
 
     ``interrupt_on`` lists tool names that require host approval before execution. Pass a
-    :class:`~deepx.middleware.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
+    :class:`~deepx.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
     nested specialist runs inherit the same coordinator from the parent context.
 
     **Defaults**

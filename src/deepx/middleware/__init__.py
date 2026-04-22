@@ -4,13 +4,8 @@ from deepx.middleware.filesystem import (
     wrap_tools_for_large_tool_results,
     wrap_tools_for_logging,
 )
-from deepx.middleware.hitl import (
-    Hitl,
-    HitlCallback,
-    HitlDecision,
-    HitlRequest,
-    wrap_tools_for_hitl,
-)
+from deepx.hitl import Hitl, HitlCallback, HitlDecision, HitlRequest
+from deepx.middleware.hitl import wrap_tools_for_hitl
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import ChainedRunHooks, compose_run_hooks
 

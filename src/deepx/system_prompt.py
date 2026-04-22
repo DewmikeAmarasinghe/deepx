@@ -46,14 +46,14 @@ lines in the numbered view.
 
 ### Deliverables (project tree)
 
-Put user-facing artifacts under **`/_outputs/`** (for example `/_outputs/report.md`). Keep the
-tree tidy: remove scratch files when done.
+Create/Put artifacts under **`/_outputs/`** (for example `/_outputs/report.md`). 
+Keep the tree tidy: remove scratch files when done.
 
 ### Large tool results
 
 When a tool return exceeds the context budget, the framework **writes the full text** under
 **`/_outputs/large_tool_results/<readable_name>.txt`** and replaces the tool message with
-instructions plus a **head/tail preview**. Use **`read_file(path, offset=0, limit=100)`** (and
+instructions plus a **head/tail preview**. Use **`read_file(path, offset=0, limit=)`** (and
 paginate) to pull the saved content back into context — never paste the entire file into chat.
 """
 
@@ -117,7 +117,11 @@ needs.
 **Planning:** you have the same `write_todos` and `think_tool` as the main agent.
 For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
 on relevant skills), then call `write_todos` again with an updated full list after each major step.
-Skipping todos on multi-step work is a mistake.\
+Skipping todos on multi-step work is a mistake.
+
+**Back to parent:** reply with **paths** and a **very brief** summary only. Do **not** paste full
+reports, long markdown, or large tool dumps into the parent message — the orchestrator uses your
+paths, `render_files`, and its own user messaging.\
 """
 
 WRITE_TODOS_PLANNING_NOTES = """\
@@ -159,7 +163,7 @@ PLANNING_PROMPT = f"""\
 ## Step 2 — Execution Loop (repeat for every step)
 
 ```
-EXECUTE         → perform the step (tool or subagent delegation)
+EXECUTE         → perform the step in the plan 
 THEN:
   progress        → write_todos again with the full list (mark completed / in_progress / add items)
   blocked         → write_todos: add or adjust items; keep honest in_progress state

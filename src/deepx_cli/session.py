@@ -8,7 +8,6 @@ from rich.console import Console
 
 from deepx.factory import DeepAgentRunner
 from deepx_cli.chat_stream import run_stream_until_settled
-from deepx_cli.chat_sync import run_turn_sync
 from deepx_cli.hitl import create_terminal_hitl
 
 
@@ -17,7 +16,11 @@ def _display_agent_name(agent_name: str) -> str:
 
 
 async def _chat_loop_stream_async(
-    runner: DeepAgentRunner, *, user_name: str, resume_hint: str | None
+    runner: DeepAgentRunner,
+    *,
+    user_name: str,
+    resume_hint: str | None,
+    verbose: bool,
 ) -> None:
     console = Console(highlight=False)
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
@@ -31,7 +34,8 @@ async def _chat_loop_stream_async(
     turn = 0
     while True:
         try:
-            user_input = input(f"{user_name}: ").strip()
+            console.print("[bold]You:[/bold]")
+            user_input = input().strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\nExiting.")
             break
@@ -43,11 +47,15 @@ async def _chat_loop_stream_async(
             break
 
         binding = runner.bind(sid, resume=(turn > 0), hitl=hitl)
-        console.print(f"\n[bold]{_display_agent_name(runner._agent_name)}:[/bold]\n")
+        console.print(f"\n[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
         await run_stream_until_settled(
-            binding, user_input, console, stream_text=True
+            binding,
+            user_input,
+            console,
+            stream_text=True,
+            verbose=verbose,
         )
-        console.print()
+        console.print("\n\n")
         turn += 1
 
 
@@ -56,15 +64,21 @@ def run_chat_stream(
     *,
     user_name: str = "You",
     resume_hint: str | None = None,
+    verbose: bool = False,
 ) -> None:
     """Interactive multi-turn chat with streaming and Deepx HITL."""
     asyncio.run(
-        _chat_loop_stream_async(runner, user_name=user_name, resume_hint=resume_hint)
+        _chat_loop_stream_async(
+            runner, user_name=user_name, resume_hint=resume_hint, verbose=verbose
+        )
     )
 
 
 async def _chat_loop_sync_async(
-    runner: DeepAgentRunner, *, user_name: str, resume_hint: str | None
+    runner: DeepAgentRunner,
+    *,
+    user_name: str,
+    resume_hint: str | None,
 ) -> None:
     console = Console(highlight=False)
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
@@ -78,7 +92,8 @@ async def _chat_loop_sync_async(
     turn = 0
     while True:
         try:
-            user_input = input(f"{user_name}: ").strip()
+            console.print("[bold]You:[/bold]")
+            user_input = input().strip()
         except (EOFError, KeyboardInterrupt):
             console.print("\nExiting.")
             break
@@ -90,10 +105,10 @@ async def _chat_loop_sync_async(
             break
 
         binding = runner.bind(sid, resume=(turn > 0), hitl=hitl)
-        console.print(f"\n[bold]{_display_agent_name(runner._agent_name)}:[/bold]\n")
-        result = await run_turn_sync(binding, user_input, console)
+        console.print(f"\n[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
+        result = await binding.run(user_input)
         console.print(str(result.final_output or ""))
-        console.print()
+        console.print("\n\n")
         turn += 1
 
 
@@ -104,6 +119,7 @@ def run_chat_sync(
     resume_hint: str | None = None,
 ) -> None:
     """Interactive multi-turn chat without token streaming (one ``Runner.run`` per message)."""
+    _ = user_name
     asyncio.run(
         _chat_loop_sync_async(runner, user_name=user_name, resume_hint=resume_hint)
     )
@@ -114,6 +130,7 @@ def run_once(
     task: str,
     *,
     session_id: str | None = None,
+    verbose: bool = False,
 ) -> None:
     """Single task with streaming; gated tools prompt on this terminal."""
     console = Console(highlight=False)
@@ -121,10 +138,14 @@ def run_once(
     hitl = create_terminal_hitl(console)
 
     async def _once() -> None:
-        console.print(f"[bold]You:[/bold] {task}\n")
+        console.print("[bold]You:[/bold]")
+        console.print(task)
+        console.print()
         binding = runner.bind(sid, resume=False, hitl=hitl)
-        console.print(f"[bold]{_display_agent_name(runner._agent_name)}:[/bold]\n")
-        await run_stream_until_settled(binding, task, console, stream_text=True)
+        console.print(f"[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
+        await run_stream_until_settled(
+            binding, task, console, stream_text=True, verbose=verbose
+        )
         console.print()
         console.print(f"[dim]Session:[/dim] {sid}\n")
 

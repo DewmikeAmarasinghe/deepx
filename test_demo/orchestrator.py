@@ -3,9 +3,14 @@
 Run from the repository root (the ``test_demo`` tree is not shipped in the wheel)::
 
     uv sync --extra demo
-    uv run --extra demo python -m test_demo.orchestrator --chat
-    uv run --extra demo python -m test_demo.orchestrator --chat_sync
-    uv run --extra demo python -m test_demo.orchestrator --once
+    python -m test_demo.orchestrator --chat
+    python -m test_demo.orchestrator --chat_sync
+    python -m test_demo.orchestrator --once
+    python -m test_demo.orchestrator --once --verbose
+
+``--chat`` (default) streams assistant tokens; ``--verbose`` adds SDK stream events (agent
+switches, tools, raw events). ``--chat_sync`` runs one full model turn per message without token
+streaming. ``--once`` runs a single task (default in-module ``TASK`` or extra CLI args) and exits.
 
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
 orchestrator module is for local development and demos only.
@@ -46,7 +51,13 @@ async def render_files(
     ctx: RunContextWrapper[AgentContext],
     paths: list[str],
 ) -> str:
-    """Render multiple text or markdown files from the project tree to the host terminal."""
+    """Show finished artifacts to the human in the terminal.
+
+    Call **once** when work is **complete** (or when the user should see final outputs), with
+    **every** user-relevant path — e.g. final reports, key tables, or merged PDFs. Do **not** use
+    this for exploratory reading while delegating; specialists return paths, and you consolidate
+    before rendering.
+    """
     sid = ctx.context.session_id
     parts: list[str] = []
     w = _render_console.size.width or 120
@@ -95,31 +106,40 @@ ORCH_SKILLS_DIR = REPO_ROOT / "test_demo" / "skills" / "orchestrate"
 orch_tools = [render_files]
 
 DEMO_ORCHESTRATOR_SYS = """\
-## Which specialist for what
+## Role
+
+You **only coordinate** specialists. You do **not** do deep web research, SQL, or PDF work yourself,
+and you do **not** ingest full specialist file bodies for your own answers — you use **paths**,
+**short** specialist summaries, and **`render_files`** when the user should see finished text.
+
+You may relay **brief** clarifying questions from a specialist to the user when blocked.
+
+## Routing
 
 | Goal | Use |
 |------|-----|
-| Live web research, citations, long-form markdown reports from the open web | **Call the `web_agent` tool** with one self-contained brief (objective, scope, deliverable paths). |
-| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **Use the `transfer_to_sql_agent` handoff** (not the web tool). Every SQL tool call needs **`db_name`** (e.g. `chinook.db`, `northwind.db`). |
+| Live web research, citations, long-form markdown from the open web | **Hand off** with **`transfer_to_web_agent`** (same run/session). Give one self-contained brief. |
+| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **Call the `sql_agent` tool** with a self-contained brief. Every SQL call needs **`db_name`** (e.g. `chinook.db`, `northwind.db`). |
 | PDF merge/split/extract, forms, pdf skill workflows | **Call the `pdf_agent` tool** with a self-contained brief. |
-| Search Hugging Face Hub / docs via MCP (only if this run includes `hf_agent`) | **Call the `hf_agent` tool**; keep answers short and write long dumps under `/_outputs/`. |
-| Show the user finished markdown in the terminal | **Call `render_files`** with absolute-style paths under the project (e.g. `/_outputs/report.md`). |
+| Hugging Face Hub / docs via MCP (only if this run includes `hf_agent`) | **Call the `hf_agent` tool**; keep answers short; large dumps under `/_outputs/`. |
+| Show the user finished markdown or text in the terminal | **`render_files`** once task is done — all relevant final paths (not for exploratory reads mid-delegation). |
 | Host shell when file tools are not enough | **`execute`** (bounded; same backend as the orchestrator). |
 
-**Delegation:** one strong call per specialist when possible; pass **file paths** between steps, not huge pasted bodies. If a specialist returns large content, have it save under `/_outputs/` and refer to paths only.
+**Delegation:** one strong call or handoff per specialist when possible; pass **file paths** between
+steps, not huge pasted bodies. Specialists return paths; you **`render_files`** for the user at the end.
 """
 
 
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
-        "Coordinates web research, SQL (via sql_agent), and PDF workflows. "
+        "Coordinates web research (handoff), SQL (tool), and PDF workflows. "
         "Uses planning tools; delegates execution to specialists."
     ),
     subagents=[
-        SubagentRef(web_agent_runner),
+        SubagentRef(web_agent_runner, expose="handoff"),
         *(
-            [SubagentRef(sql_agent_runner, expose="handoff")]
+            [SubagentRef(sql_agent_runner, expose="tool")]
             if sql_agent_runner is not None
             else []
         ),
@@ -198,6 +218,11 @@ def main() -> None:
         action="store_true",
         help="Interactive multi-turn session without token streaming.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Log SDK stream events (agents, tools, raw) in addition to assistant text.",
+    )
     args, rest = parser.parse_known_args()
 
     from deepx_cli.session import run_chat_stream, run_chat_sync, run_once
@@ -205,11 +230,11 @@ def main() -> None:
     task = " ".join(rest).strip() or TASK
 
     if args.once:
-        run_once(orchestrator_runner, task)
+        run_once(orchestrator_runner, task, verbose=args.verbose)
     elif args.chat_sync:
         run_chat_sync(orchestrator_runner)
     else:
-        run_chat_stream(orchestrator_runner)
+        run_chat_stream(orchestrator_runner, verbose=args.verbose)
 
 
 if __name__ == "__main__":
