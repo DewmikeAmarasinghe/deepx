@@ -67,13 +67,11 @@ LOCALSHELL_TOOLS_PROMPT = """\
 ## Host shell (`execute`)
 
 This run includes **`execute`**: a **host shell** in the backend’s project root (same tree as file
-tools). Pass **`commands`**: a list of **1–5** shell strings; they run **in parallel** with the
-same **`timeout_seconds`** (capped). Prefer one `execute` with several commands over many serial
-calls when steps are independent (e.g. multiple `tvly` queries).
+tools). Pass one non-interactive **`command`** string per call; **`timeout_seconds`** is capped.
 
-Prefer file tools for project files. Large combined **`execute`** output may be spilled to
+Prefer file tools for project files. Large **`execute`** stdout/stderr may be spilled to
 **`/_outputs/large_tool_results/`** like any other oversized tool result — use **`read_file`** on
-the path from the tool response if that happens. The tool message labels each command’s block in order.
+the path from the tool response if that happens.
 """
 
 

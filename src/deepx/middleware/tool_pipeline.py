@@ -48,11 +48,9 @@ def _hints_from_args_json(args_json: str) -> str:
     if not isinstance(obj, dict):
         return ""
     parts: list[str] = []
-    cmds = obj.get("commands")
-    if isinstance(cmds, list) and cmds:
-        first = cmds[0]
-        if isinstance(first, str) and first.strip():
-            parts.append(_slug_hint(first.strip(), 28))
+    cmd = obj.get("command")
+    if isinstance(cmd, str) and cmd.strip():
+        parts.append(_slug_hint(cmd.strip(), 28))
     for key in ("url", "urls", "query", "pattern", "path", "db_name", "queries"):
         v = obj.get(key)
         if v is None:

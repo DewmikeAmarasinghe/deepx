@@ -3,7 +3,7 @@
 SAMPLE_TASKS: list[str] = [
     """\
 https://www.parliament.lk/en  Find the directory of current MPs. Go to their profiles and finally create a table showing name, party, phone number, date of birth, religion. The table should have 
-only 50 such profile inforamtion. Number the table rows.
+only 30 such profile inforamtion. Number the table rows.
 """,
     """\
 Go to the blog site https://thamalu.blogspot.com/ and find the 5 most top read articles go to each link and then create a summary of each article.. Finally create create a report showing the articles and their summaries.. Then create an overall summary of the blog.
