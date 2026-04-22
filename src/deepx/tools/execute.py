@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-
 from agents import RunContextWrapper, function_tool
 
 from deepx.context import AgentContext
@@ -33,11 +31,9 @@ async def execute(
         return "No command provided."
     t = float(timeout_seconds)
     t = min(max(t, 1.0), EXECUTE_TIMEOUT_CAP_S)
-    return await asyncio.to_thread(
-        lambda: b.execute(
-            sid,
-            cmd,
-            timeout=t,
-            max_chars=EXECUTE_MAX_OUTPUT_CHARS,
-        )
+    return b.execute(
+        sid,
+        cmd,
+        timeout=t,
+        max_chars=EXECUTE_MAX_OUTPUT_CHARS,
     )

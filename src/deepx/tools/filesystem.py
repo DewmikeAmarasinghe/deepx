@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+import time
 from collections.abc import Iterable
 from typing import Literal
 
@@ -76,7 +76,7 @@ def _format_size(n: int) -> str:
 
 
 @function_tool
-def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
+async def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
     """List files in a directory. Use before read_file or edit_file to explore the filesystem."""
     r = ctx.context.backend.ls(ctx.context.session_id, path)
     if r.error:
@@ -98,7 +98,7 @@ def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
 
 
 @function_tool
-def read_file(
+async def read_file(
     ctx: RunContextWrapper[AgentContext],
     path: str,
     offset: int = 0,
@@ -142,7 +142,7 @@ def read_file(
 
 
 @function_tool
-def write_file(
+async def write_file(
     ctx: RunContextWrapper[AgentContext], path: str, content: str
 ) -> str:
     """Writes to a new file in the filesystem.
@@ -159,7 +159,7 @@ def write_file(
 
 
 @function_tool
-def edit_file(
+async def edit_file(
     ctx: RunContextWrapper[AgentContext],
     path: str,
     old_string: str,
@@ -182,7 +182,7 @@ def edit_file(
 
 
 @function_tool
-def grep(
+async def grep(
     ctx: RunContextWrapper[AgentContext],
     pattern: str,
     path: str | None = None,
@@ -227,13 +227,12 @@ async def glob(
     - Aborts with a clear error if the scan exceeds an internal time limit.
     """
     sid = ctx.context.session_id
-    try:
-        gr = await asyncio.wait_for(
-            asyncio.to_thread(ctx.context.backend.glob, sid, pattern, path),
-            timeout=GLOB_TIMEOUT_S,
+    start = time.monotonic()
+    gr = ctx.context.backend.glob(sid, pattern, path)
+    if time.monotonic() - start > GLOB_TIMEOUT_S:
+        return (
+            f"Error: glob exceeded {GLOB_TIMEOUT_S:.0f}s (narrow the pattern or path)."
         )
-    except asyncio.TimeoutError:
-        return f"Error: glob timed out after {GLOB_TIMEOUT_S:.0f}s (narrow the pattern or path)."
     if gr.error:
         return gr.error
     if not gr.files:

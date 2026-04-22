@@ -177,7 +177,8 @@ async def web_map(
 WEB_TOOLS = [web_search, web_extract, web_map]
 
 
-def build_web_agent_runner(*, temporal_workflow: bool = False):
+def build_web_agent_runner(*, checkpointer: str | None = None):
+    cp = _WEB_DB if checkpointer is None else checkpointer
     return create_deep_agent(
         name="web_agent",
         description=(
@@ -204,11 +205,10 @@ def build_web_agent_runner(*, temporal_workflow: bool = False):
             "JSON into chat; keep bulky tool output in files and point to them briefly."
         ),
         backend=_DEMO_BACKEND,
-        checkpointer=_WEB_DB,
+        checkpointer=cp,
         debug=True,
         include_general_purpose=False,
         subagents=None,
-        temporal_workflow=temporal_workflow,
     )
 
 

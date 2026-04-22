@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from agents.items import ToolApprovalItem
-from agents.run_context import RunContextWrapper
 from rich.console import Console
 
+from deepx.hitl import ApprovalChoice, apply_approval_handler
 
-def approval_choice(console: Console, item: ToolApprovalItem) -> str:
+
+class HitlPendingMeta(TypedDict, total=False):
+    agent_name: str
+    tool_name: str
+    args_preview: str
+
+
+def approval_choice(console: Console, item: ToolApprovalItem) -> ApprovalChoice:
     ag = getattr(item, "agent", None)
     agent_name = getattr(ag, "name", None) if ag is not None else None
     agent_name = agent_name or "agent"
@@ -18,6 +25,23 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
         args_preview = str(
             getattr(raw, "arguments", "") or getattr(raw, "args", "") or ""
         )
+    return approval_choice_from_meta(
+        console,
+        {
+            "agent_name": agent_name,
+            "tool_name": tool_name,
+            "args_preview": args_preview,
+        },
+    )
+
+
+def approval_choice_from_meta(
+    console: Console, meta: HitlPendingMeta
+) -> ApprovalChoice:
+    """Terminal prompt from workflow query payload (Temporal HITL pump)."""
+    agent_name = meta.get("agent_name") or "agent"
+    tool_name = meta.get("tool_name") or "tool"
+    args_preview = meta.get("args_preview") or ""
     console.print()
     console.print(
         f"[yellow]{agent_name}:[/yellow] approve tool [bold]{tool_name}[/bold]"
@@ -41,24 +65,15 @@ def approval_choice(console: Console, item: ToolApprovalItem) -> str:
 def apply_choices_to_state(
     state: Any, interruptions: list[ToolApprovalItem], console: Console
 ) -> None:
-    ctx = getattr(state, "_context", None)
-    for item in list(interruptions):
-        if ctx is not None:
-            call_id = RunContextWrapper._resolve_call_id(item) or ""
-            pre = ctx.get_approval_status(
-                item.tool_name or "",
-                call_id,
-                existing_pending=item,
-            )
-            if pre is True:
-                continue
-        choice = approval_choice(console, item)
-        if choice == "reject":
-            state.reject(item)
-        elif choice == "once":
-            state.approve(item, always_approve=False)
-        else:
-            state.approve(item, always_approve=True)
+    def _handler(item: ToolApprovalItem) -> ApprovalChoice:
+        return approval_choice(console, item)
+
+    apply_approval_handler(state, interruptions, _handler)
 
 
-__all__ = ["approval_choice", "apply_choices_to_state"]
+__all__ = [
+    "HitlPendingMeta",
+    "approval_choice",
+    "approval_choice_from_meta",
+    "apply_choices_to_state",
+]

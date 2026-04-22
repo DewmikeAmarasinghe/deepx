@@ -5,7 +5,6 @@ import os
 import uuid
 
 from rich.console import Console
-from rich.panel import Panel
 
 from deepx.factory import DeepAgentRunner
 from deepx_cli.chat_stream import run_stream_until_settled
@@ -21,7 +20,7 @@ def use_temporal() -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-def _panel_title(agent_name: str) -> str:
+def _display_agent_name(agent_name: str) -> str:
     return agent_name.replace("_", " ").title()
 
 
@@ -30,7 +29,7 @@ async def _chat_loop_async(
 ) -> None:
     console = Console(highlight=False)
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-    default_label = _panel_title(runner._agent_name)
+    default_label = _display_agent_name(runner._agent_name)
 
     if resume_hint:
         console.print(f"\n[dim]Session:[/dim] {sid}  — resume: `{resume_hint} {sid}`\n")
@@ -42,11 +41,28 @@ async def _chat_loop_async(
     if ut:
         console.print(
             "[dim]USE_TEMPORAL: worker runs the workflow (no token streaming in this CLI). "
-            "Tool approvals use the worker stdin when interactive.[/dim]\n"
+            "Tool approvals use this terminal + Temporal signals.[/dim]\n"
         )
 
-    w = console.size.width or 120
+    chat_handle = None
+    chat_seq = -1
+    hitl_pump: asyncio.Task[None] | None = None
+    temporal_client = None
+
     try:
+        if ut:
+            from test_demo.temporal.client import (
+                connect_temporal_client,
+                ensure_chat_workflow,
+                end_temporal_chat_session,
+                run_temporal_turn_chat,
+                temporal_hitl_pump,
+            )
+
+            temporal_client = await connect_temporal_client()
+            chat_handle = await ensure_chat_workflow(temporal_client, sid)
+            hitl_pump = asyncio.create_task(temporal_hitl_pump(chat_handle, console))
+
         while True:
             try:
                 user_input = input(f"{user_name}: ").strip()
@@ -57,60 +73,36 @@ async def _chat_loop_async(
             if not user_input:
                 continue
             if user_input == "/bye":
+                if ut and chat_handle is not None:
+                    await end_temporal_chat_session(chat_handle)
                 console.print("Goodbye.")
                 break
 
-            console.print()
-            console.print(
-                Panel(
-                    user_input,
-                    title=user_name,
-                    border_style="blue",
-                    expand=True,
-                    width=w,
-                )
-            )
-            console.print()
-
             if ut:
-                out = await run_via_temporal(
-                    prompt=user_input,
-                    session_id=sid,
-                    resume=(turn > 0),
+                assert chat_handle is not None
+                out, chat_seq = await run_temporal_turn_chat(
+                    chat_handle, user_input, chat_seq
                 )
-                console.print(
-                    Panel(
-                        out,
-                        title=default_label,
-                        border_style="green",
-                        expand=True,
-                        width=w,
-                    )
-                )
-                console.print()
+                console.print(f"[bold]{default_label}:[/bold] {out}\n")
             else:
                 binding = runner.bind(sid, resume=(turn > 0))
+                console.print()
                 stream = await run_stream_until_settled(
                     binding, user_input, console, stream_text=True
                 )
                 try:
-                    active = stream.last_agent.name
+                    stream_title = _display_agent_name(stream.last_agent.name)
                 except Exception:
-                    active = runner._agent_name
-                title = _panel_title(active)
-                console.print(
-                    Panel(
-                        str(stream.final_output),
-                        title=title,
-                        border_style="green",
-                        expand=True,
-                        width=w,
-                    )
-                )
-                console.print()
+                    stream_title = default_label
+                console.print(f"[dim]— {stream_title}[/dim]\n")
             turn += 1
     finally:
-        pass
+        if hitl_pump is not None:
+            hitl_pump.cancel()
+            try:
+                await hitl_pump
+            except asyncio.CancelledError:
+                pass
 
 
 def run_chat(
@@ -134,27 +126,28 @@ def run_once(
     sid = session_id or os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
     ut = use_temporal()
 
-    w = console.size.width or 120
-
     async def _once() -> None:
+        console.print(f"[bold]You:[/bold] {task}\n")
         if ut:
-            out = await run_via_temporal(prompt=task, session_id=sid, resume=False)
+            out = await run_via_temporal(
+                prompt=task, session_id=sid, resume=False, console=console
+            )
             body = out
-            title = _panel_title(runner._agent_name)
+            title = _display_agent_name(runner._agent_name)
+            console.print(f"[bold]{title}:[/bold] {body}\n")
         else:
             binding = runner.bind(sid, resume=False)
+            default_t = _display_agent_name(runner._agent_name)
+            console.print()
             stream = await run_stream_until_settled(
                 binding, task, console, stream_text=True
             )
-            body = str(stream.final_output)
             try:
-                title = _panel_title(stream.last_agent.name)
+                stream_title = _display_agent_name(stream.last_agent.name)
             except Exception:
-                title = _panel_title(runner._agent_name)
-        console.print(
-            Panel(body, title=title, border_style="green", expand=True, width=w)
-        )
-        console.print(f"\n[dim]Session:[/dim] {sid}\n")
+                stream_title = default_t
+            console.print(f"[dim]— {stream_title}[/dim]\n")
+        console.print(f"[dim]Session:[/dim] {sid}\n")
 
     asyncio.run(_once())
 

@@ -1,13 +1,29 @@
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
 from typing import Any
 
+from agents.items import ToolApprovalItem
 from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
 from rich.console import Console
 
 from deepx.factory import DeepRunBinding
 from deepx_cli.approvals import apply_choices_to_state
+
+ApprovalResolver = Callable[
+    [Any, list[ToolApprovalItem], Console],
+    Awaitable[None],
+]
+
+
+async def _default_resolve_approvals(
+    state: Any,
+    interruptions: list[ToolApprovalItem],
+    console: Console,
+) -> None:
+    await asyncio.to_thread(apply_choices_to_state, state, interruptions, console)
 
 
 async def drain_stream(
@@ -52,8 +68,6 @@ async def drain_stream(
                 out = getattr(raw, "output", "")
             text = (str(out) if out is not None else "").replace("\n", " ")
             console.print(f"[dim]· tool_output[/dim] {text}")
-        elif stream_text and name == "message_output_item":
-            console.print(f"[dim]· {name}[/dim]")
 
 
 async def run_binding_until_settled(
@@ -61,13 +75,15 @@ async def run_binding_until_settled(
     inp: str | RunState[Any, Any],
     *,
     console: Console,
+    resolve_approvals: ApprovalResolver | None = None,
 ) -> RunResult:
     """Run to completion, prompting for SDK tool approvals on the outer :class:`RunResult`."""
+    resolver = resolve_approvals or _default_resolve_approvals
     result = await binding.run(inp)
     while result.interruptions:
         console.print()
         state = result.to_state()
-        apply_choices_to_state(state, list(result.interruptions), console)
+        await resolver(state, list(result.interruptions), console)
         result = await binding.run(state)
     return result
 
@@ -79,7 +95,9 @@ async def run_stream_until_settled(
     *,
     stream_text: bool = False,
     verbose_tools: bool = False,
+    resolve_approvals: ApprovalResolver | None = None,
 ) -> RunResultStreaming:
+    resolver = resolve_approvals or _default_resolve_approvals
     stream = binding.run_streamed(inp)
     await drain_stream(
         stream, console, stream_text=stream_text, verbose_tools=verbose_tools
@@ -87,7 +105,7 @@ async def run_stream_until_settled(
     while stream.interruptions:
         console.print()
         state = stream.to_state()
-        apply_choices_to_state(state, list(stream.interruptions), console)
+        await resolver(state, list(stream.interruptions), console)
         stream = binding.run_streamed(state)
         await drain_stream(
             stream, console, stream_text=stream_text, verbose_tools=verbose_tools
@@ -96,6 +114,7 @@ async def run_stream_until_settled(
 
 
 __all__ = [
+    "ApprovalResolver",
     "drain_stream",
     "run_binding_until_settled",
     "run_stream_until_settled",

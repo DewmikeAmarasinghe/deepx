@@ -187,13 +187,12 @@ def _subagent_tool_from_runner(
     max_turns: int,
     backend: BackendProtocol,
     needs_approval: bool,
-    temporal_workflow: bool,
 ) -> Tool:
     """Expose a subagent as a tool: nested ``Runner.run`` with SDK-aligned agent-tool HITL.
 
     Nested ``needs_approval`` tools surface on the parent run via
     ``record_agent_tool_run_result`` / ``peek_agent_tool_run_result``. Each delegation uses its own
-    session (SQLite path or async list when ``temporal_workflow``).
+    session derived from ``checkpointer`` (see :func:`deepx.sessions.create_session`).
     """
     agent = runner._agent
 
@@ -213,9 +212,7 @@ def _subagent_tool_from_runner(
             resume=False,
             is_subagent=True,
         )
-        session = create_session(
-            sub_sid, checkpointer, temporal_workflow=temporal_workflow
-        )
+        session = create_session(sub_sid, checkpointer)
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
         tool_state_scope_id = get_agent_tool_state_scope(ctx)
@@ -413,7 +410,7 @@ def create_deep_agent(
     memory: list[str] | None = None,
     response_format: type | None = None,
     backend: BackendProtocol | None = None,
-    checkpointer: str = ":memory:",
+    checkpointer: str = "memory",
     debug: bool = True,
     max_turns: int = 1000,
     run_hooks: Sequence[RunHooksBase[AgentContext, AgentType[AgentContext]]] = (),
@@ -427,7 +424,6 @@ def create_deep_agent(
     tool_use_behavior: Any | None = None,
     reset_tool_choice: bool | None = None,
     prompt: "Prompt | DynamicPromptFunction | None" = None,
-    temporal_workflow: bool = False,
 ) -> "DeepAgentRunner":
     """Build a :class:`DeepAgentRunner`: one OpenAI Agents ``Agent`` plus Deepx filesystem, skills, and sessions.
 
@@ -445,8 +441,9 @@ def create_deep_agent(
 
     **Sessions**
 
-    ``checkpointer`` is the SQLite path (or ``:memory:``) passed to :func:`deepx.sessions.create_session`
-    when you :meth:`~DeepAgentRunner.bind`. One bound conversation uses **one** session database;
+    ``checkpointer`` is ``\"memory\"`` (in-process list session) or a SQLite file path passed to
+    :func:`deepx.sessions.create_session` when you :meth:`~DeepAgentRunner.bind`. One bound
+    conversation uses **one** session store;
     a specialist reached via **handoff** shares that same run and session—its own ``checkpointer``
     on the runner is relevant when that specialist is **bound and run alone**, not for in-run
     handoff history.
@@ -467,11 +464,10 @@ def create_deep_agent(
     ``run_hooks`` are composed **after** :class:`deepx.middleware.filesystem.FilesystemHooks`.
     ``agent_hooks`` map to ``Agent.hooks`` (per-turn agent callbacks), not run-level hooks.
 
-    **Temporal (demo)**
+    **Durable / restricted event loops (demo)**
 
-    For fine-grained Temporal history (plugin-managed activities per model/tool step), await
-    ``Runner.run`` / ``run_binding_until_settled`` from **workflow** code with
-    ``OpenAIAgentsPlugin`` and ``UnsandboxedWorkflowRunner``—see ``test_demo/temporal/``.
+    Use ``checkpointer=\"memory\"`` when the host cannot use SQLite session I/O (e.g. some workflow
+    sandboxes). See ``test_demo/temporal/`` for a Temporal + OpenAI Agents example.
 
     **Defaults**
 
@@ -486,7 +482,7 @@ def create_deep_agent(
     setup_observability()
 
     extra_run_hooks = tuple(run_hooks)
-    checkpointer = checkpointer.strip() or ":memory:"
+    checkpointer = checkpointer.strip() or "memory"
     sub_refs = _normalize_subagents(subagents)
 
     if include_general_purpose and not any(
@@ -506,7 +502,6 @@ def create_deep_agent(
                     max_turns=max_turns,
                     extra_run_hooks=extra_run_hooks,
                     response_format=response_format,
-                    temporal_workflow=temporal_workflow,
                 ),
                 "tool",
             ),
@@ -540,7 +535,6 @@ def create_deep_agent(
                     max_turns=max_turns,
                     backend=resolved_backend,
                     needs_approval=ref.needs_approval,
-                    temporal_workflow=temporal_workflow,
                 )
             )
 
@@ -586,7 +580,6 @@ def create_deep_agent(
         agent_name=name,
         description=description,
         middleware_hooks=extra_run_hooks,
-        temporal_workflow=temporal_workflow,
     )
 
 
@@ -602,7 +595,6 @@ def _make_general_purpose_runner(
     max_turns: int,
     extra_run_hooks: tuple[RunHooksBase[AgentContext, AgentType[AgentContext]], ...],
     response_format: type | None,
-    temporal_workflow: bool,
 ) -> "DeepAgentRunner":
     """Same tools/skills/memory file paths as parent; does not inherit MCP or extra handoffs."""
     return create_deep_agent(
@@ -624,7 +616,6 @@ def _make_general_purpose_runner(
         max_turns=max_turns,
         run_hooks=extra_run_hooks,
         include_general_purpose=False,
-        temporal_workflow=temporal_workflow,
     )
 
 
@@ -642,11 +633,7 @@ class DeepRunBinding:
         self._runner = runner
         self.session_id = session_id
         self.ctx = runner._make_ctx(session_id, resume)
-        self.session = create_session(
-            session_id,
-            runner._checkpointer,
-            temporal_workflow=runner._temporal_workflow,
-        )
+        self.session = create_session(session_id, runner._checkpointer)
         self.agent = runner._prepare_agent()
         self.hooks = hooks if hooks is not None else runner._make_hooks()
 
@@ -697,7 +684,6 @@ class DeepAgentRunner:
         middleware_hooks: tuple[
             RunHooksBase[AgentContext, AgentType[AgentContext]], ...
         ] = (),
-        temporal_workflow: bool = False,
     ) -> None:
         self._agent = agent
         self._backend = backend
@@ -709,7 +695,6 @@ class DeepAgentRunner:
         self._agent_name = agent_name
         self.description = description
         self._middleware_hooks = middleware_hooks
-        self._temporal_workflow = temporal_workflow
 
     @property
     def backend(self) -> BackendProtocol:

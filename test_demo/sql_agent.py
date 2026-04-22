@@ -66,20 +66,18 @@ def default_task_for_stem(stem: str) -> str:
 
 
 has_demo_dbs = TEST_DBS.is_dir() and any(TEST_DBS.glob("*.db"))
-sql_tools = (
-    create_sql_tools(TEST_DBS, tool_prefix="sql")
-    if has_demo_dbs
-    else []
-)
+sql_tools = create_sql_tools(TEST_DBS, tool_prefix="sql") if has_demo_dbs else []
 available_db_names = (
     ", ".join(sorted(p.name for p in TEST_DBS.glob("*.db")))
     if TEST_DBS.is_dir()
     else ""
 )
 
-def build_sql_agent_runner(*, temporal_workflow: bool = False):
+
+def build_sql_agent_runner(*, checkpointer: str | None = None):
     if not sql_tools:
         return None
+    cp = sql_session_db if checkpointer is None else checkpointer
     return create_deep_agent(
         name="sql_agent",
         description=(
@@ -102,11 +100,10 @@ def build_sql_agent_runner(*, temporal_workflow: bool = False):
             "Return explicit SQL and readable tables."
         ),
         backend=demo_backend,
-        checkpointer=sql_session_db,
+        checkpointer=cp,
         debug=True,
         include_general_purpose=False,
         subagents=None,
-        temporal_workflow=temporal_workflow,
     )
 
 

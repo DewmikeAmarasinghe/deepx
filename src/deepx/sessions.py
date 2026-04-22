@@ -6,10 +6,20 @@ from agents.memory.session import SessionABC
 from agents.memory.session_settings import SessionSettings, resolve_session_limit
 
 
+def is_memory_checkpointer(checkpointer: str) -> bool:
+    """True when history should use :class:`AsyncListSession` (no SQLite, no thread pool).
+
+    Accepts the sentinel ``\"memory\"`` or legacy SQLite in-memory URI ``\":memory:\"``.
+    """
+    s = checkpointer.strip().lower()
+    return s in ("memory", ":memory:")
+
+
 class AsyncListSession(SessionABC):
     """In-process async session store (no threads, no SQLite).
 
-    For environments whose event loop cannot run ``asyncio.to_thread`` (e.g. Temporal workflows).
+    Used when :func:`is_memory_checkpointer` is true for ``checkpointer`` (e.g. durable
+    workflow sandboxes that cannot run ``asyncio.to_thread`` for SQLite).
     """
 
     def __init__(
@@ -43,19 +53,16 @@ class AsyncListSession(SessionABC):
         self._items.clear()
 
 
-def create_session(
-    session_id: str,
-    checkpointer: str = ":memory:",
-    *,
-    temporal_workflow: bool = False,
-):
+def create_session(session_id: str, checkpointer: str = "memory"):
     """Conversation history for the agents SDK.
 
-    ``checkpointer`` is a SQLite path or ``:memory:`` unless ``temporal_workflow=True``, in which
-    case an :class:`AsyncListSession` is used (no background thread pool).
+    - ``checkpointer`` is ``\"memory\"`` or ``\":memory:\"`` → :class:`AsyncListSession`.
+    - Otherwise → :class:`~agents.memory.SQLiteSession` at the given filesystem path.
     """
     resolved = checkpointer.strip()
-    if temporal_workflow:
+    if not resolved:
+        resolved = "memory"
+    if is_memory_checkpointer(resolved):
         raw: SessionABC = AsyncListSession(session_id)
     else:
         raw = SQLiteSession(session_id, resolved)
@@ -72,3 +79,6 @@ def create_session(
         underlying_session=raw,
         should_trigger_compaction=should_compact_at_90_percent,
     )
+
+
+__all__ = ["AsyncListSession", "create_session", "is_memory_checkpointer"]

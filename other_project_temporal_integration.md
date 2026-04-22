@@ -1,3 +1,6 @@
+This is all the code related to a different codebase made with using openai-agents sdk and temporal openai-agents plugin for it
+
+file tree
 ├── deep_research
 │   ├── agents
 │   │   ├── clarifying_agent.py

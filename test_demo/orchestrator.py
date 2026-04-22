@@ -27,6 +27,8 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 from agents import RunContextWrapper, function_tool  # noqa: E402
+from rich.console import Console  # noqa: E402
+from rich.panel import Panel  # noqa: E402
 
 from deepx import DeepAgentRunner, SubagentRef, create_deep_agent  # noqa: E402
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
@@ -36,6 +38,8 @@ from test_demo.pdf_agent import build_pdf_agent_runner  # noqa: E402
 from test_demo.sql_agent import build_sql_agent_runner  # noqa: E402
 from test_demo.web_agent import build_web_agent_runner  # noqa: E402
 
+_RENDER_FILES_LINE_LIMIT = 10_000_000
+_render_console = Console(highlight=False)
 
 
 @function_tool
@@ -46,18 +50,34 @@ async def render_files(
     """Render multiple text or markdown files from the project tree to the host terminal."""
     sid = ctx.context.session_id
     parts: list[str] = []
+    w = _render_console.size.width or 120
     for path in paths:
         p = (path or "").strip()
         if not p:
             continue
-        rr = ctx.context.backend.read(sid, p)
-        bar = "=" * 72
+        rr = ctx.context.backend.read(sid, p, 0, _RENDER_FILES_LINE_LIMIT)
         if rr.error:
-            print(f"\n{bar}\n{p}\n{rr.error}\n{bar}\n", flush=True)
+            _render_console.print(
+                Panel(
+                    rr.error,
+                    title=f"render_files · {p}",
+                    border_style="yellow",
+                    expand=True,
+                    width=w,
+                )
+            )
             parts.append(f"{p}: error")
             continue
         text = rr.content or ""
-        print(f"\n{bar}\n{p}\n{bar}\n{text}\n{bar}\n", flush=True)
+        _render_console.print(
+            Panel(
+                text,
+                title=f"render_files · {p}",
+                border_style="yellow",
+                expand=True,
+                width=w,
+            )
+        )
         parts.append(f"{p}: {len(text)} chars")
     return "Rendered: " + "; ".join(parts) if parts else "No paths provided."
 
@@ -92,10 +112,13 @@ DEMO_ORCHESTRATOR_SYS = """\
 
 
 def _build_orchestrator(
-    *, checkpointer: str, temporal_workflow: bool = False
+    *,
+    checkpointer: str,
+    specialist_checkpointer: str | None = None,
 ) -> DeepAgentRunner:
-    sql_r = build_sql_agent_runner(temporal_workflow=temporal_workflow)
-    hf_r = hf_mod.build_hf_agent_runner(temporal_workflow=temporal_workflow)
+    sc = specialist_checkpointer
+    sql_r = build_sql_agent_runner(checkpointer=sc)
+    hf_r = hf_mod.build_hf_agent_runner(checkpointer=sc)
     return create_deep_agent(
         name="orchestrator",
         description=(
@@ -104,14 +127,10 @@ def _build_orchestrator(
         ),
         subagents=[
             SubagentRef(
-                build_web_agent_runner(temporal_workflow=temporal_workflow),
+                build_web_agent_runner(checkpointer=sc),
             ),
-            *(
-                [SubagentRef(sql_r, expose="handoff")]
-                if sql_r is not None
-                else []
-            ),
-            SubagentRef(build_pdf_agent_runner(temporal_workflow=temporal_workflow)),
+            *([SubagentRef(sql_r, expose="handoff")] if sql_r is not None else []),
+            SubagentRef(build_pdf_agent_runner(checkpointer=sc)),
             *([SubagentRef(hf_r)] if hf_r is not None else []),
         ],
         tools=orch_tools,
@@ -120,14 +139,13 @@ def _build_orchestrator(
         checkpointer=checkpointer,
         debug=True,
         backend=DEMO_BACKEND,
-        temporal_workflow=temporal_workflow,
     )
 
 
-orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB, temporal_workflow=False)
+orchestrator_runner = _build_orchestrator(checkpointer=ORCH_DB)
 orchestrator_runner_workflow = _build_orchestrator(
-    checkpointer=ORCH_DB,
-    temporal_workflow=True,
+    checkpointer="memory",
+    specialist_checkpointer="memory",
 )
 
 TASK = """

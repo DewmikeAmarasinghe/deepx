@@ -76,7 +76,9 @@ def run_log_append_plan_event(
     p.write_text(json.dumps(arr, indent=2), encoding="utf-8")
 
 
-def run_log_write_tool(backend: BackendProtocol, session_id: str, log_data: dict) -> None:
+def run_log_write_tool(
+    backend: BackendProtocol, session_id: str, log_data: dict
+) -> None:
     dr = resolve_data_root(backend)
     tool_name = str(log_data["tool_name"])
     inp = log_data.get("input", {})
@@ -101,7 +103,9 @@ def run_log_write_tool(backend: BackendProtocol, session_id: str, log_data: dict
     existing = [int(x.stem) for x in dir_path.glob("*.json") if x.stem.isdigit()]
     next_id = max(existing, default=0) + 1
     disk_entry = {**entry, "call_id": str(next_id)}
-    (dir_path / f"{next_id}.json").write_text(json.dumps(disk_entry, indent=2), encoding="utf-8")
+    (dir_path / f"{next_id}.json").write_text(
+        json.dumps(disk_entry, indent=2), encoding="utf-8"
+    )
 
 
 def _make_logged_invoke(

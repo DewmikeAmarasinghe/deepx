@@ -64,7 +64,7 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
         return p
 
     @function_tool(name_override=f"{pre}db_list_tables")
-    def db_list_tables(ctx: RunContextWrapper, db_name: str) -> str:
+    async def db_list_tables(ctx: RunContextWrapper, db_name: str) -> str:
         """List table names in ``db_name`` (must be a ``*.db`` file under the demo ``test_dbs`` folder)."""
         _ = ctx
         sqlite_path = str(_resolve_db(db_name))
@@ -75,7 +75,7 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
         return ", ".join(r[0] for r in rows) or "No tables found."
 
     @function_tool(name_override=f"{pre}db_schema")
-    def db_schema(ctx: RunContextWrapper, db_name: str, table_names: str) -> str:
+    async def db_schema(ctx: RunContextWrapper, db_name: str, table_names: str) -> str:
         """Return ``CREATE TABLE`` and a few sample rows for each comma-separated table in ``table_names``.
 
         Binary columns appear as ``<BLOB n bytes>`` so large embedded images do not flood the context.
@@ -99,7 +99,9 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
                     continue
                 schema = row[0]
                 qident = canonical.replace('"', '""')
-                sample_rows = conn.execute(f'SELECT * FROM "{qident}" LIMIT 3').fetchall()
+                sample_rows = conn.execute(
+                    f'SELECT * FROM "{qident}" LIMIT 3'
+                ).fetchall()
                 cols = [
                     d[0]
                     for d in conn.execute(
@@ -114,7 +116,7 @@ def create_sql_tools(test_dbs_dir: Path, *, tool_prefix: str = "") -> list:
         return "\n\n".join(parts)
 
     @function_tool(name_override=f"{pre}db_query")
-    def db_query(ctx: RunContextWrapper, db_name: str, query: str) -> str:
+    async def db_query(ctx: RunContextWrapper, db_name: str, query: str) -> str:
         """Run a single read-only ``SELECT`` on ``db_name``. Writes and DDL keywords are rejected."""
         _ = ctx
         sqlite_path = str(_resolve_db(db_name))

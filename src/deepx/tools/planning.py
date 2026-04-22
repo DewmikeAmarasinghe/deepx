@@ -169,7 +169,7 @@ This tool is optional; do not call it on every step.\
 
 
 @function_tool(description_override=THINK_TOOL_DESCRIPTION)
-def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
+async def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
     """Structured reflection; prefer updating `write_todos` when the plan must change."""
     todos = [
         {"id": t.id, "content": t.content, "status": t.status.value}
@@ -188,7 +188,7 @@ def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
 
 
 @function_tool(description_override=WRITE_TODOS_TOOL_DESCRIPTION)
-def write_todos(
+async def write_todos(
     ctx: RunContextWrapper[AgentContext],
     todos: list[TodoInput],
 ) -> str:
