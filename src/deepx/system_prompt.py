@@ -9,14 +9,15 @@ import yaml
 from agents import Agent, RunContextWrapper
 
 from deepx.backends.filesystem import resolve_data_root, resolve_host_root
+from deepx.backends.local_shell import LocalShellBackend
 from deepx.context import AgentContext
 
 # ---------------------------------------------------------------------------
 # Prompt constants
 # ---------------------------------------------------------------------------
 
-FILESYSTEM_PROMPT = """\
-## Filesystem and shell
+FILESYSTEM_TOOLS_PROMPT = """\
+## Filesystem tools
 
 ### Paths (file tools)
 
@@ -26,16 +27,17 @@ write the runtime `.deepx` tree via file tools; use **`save_memory`** for durabl
 
 Project root for this run: `{host_root}`.
 
-### Built-in tool groups
+### Built-in tool groups (this run)
 
-- **Filesystem & host:** `ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`, `execute`
+- **Filesystem:** `ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`
 - **Planning:** `write_todos`, `think_tool`
 - **Memory:** `save_memory`
 
-### `execute`
+### `write_todos` (canonical plan)
 
-Prefer file tools for project files. Commands use a
-**timeout** (capped); unsupported backends return a clear error instead of running a shell.
+- Each call **replaces the entire todo list**; include every item you want to keep.
+- Never issue **parallel** `write_todos` calls in the same model turn.
+- Skip for trivial one-off tasks; use for multi-step work where a visible plan helps.
 
 ### File tools
 
@@ -46,15 +48,32 @@ lines in the numbered view.
 
 ### Deliverables (project tree)
 
-Create/Put artifacts under **`/_outputs/`** (for example `/_outputs/report.md`). 
+Create/Put artifacts under **`/_outputs/`** (for example `/_outputs/report.md`).
 Keep the tree tidy: remove scratch files when done.
 
 ### Large tool results
 
-When a tool return exceeds the context budget, the framework **writes the full text** under
-**`/_outputs/large_tool_results/<readable_name>.txt`** and replaces the tool message with
-instructions plus a **head/tail preview**. Use **`read_file(path, offset=0, limit=)`** (and
-paginate) to pull the saved content back into context — never paste the entire file into chat.
+When a tool return (including **`execute`** when available) exceeds the context budget, the
+framework **writes the full text** under **`/_outputs/large_tool_results/<readable_name>.txt`**
+and replaces the tool message with instructions plus a **head/tail preview**.
+
+**Prefer `read_file` on the exact path** from that tool message (with `offset` / `limit`, paginate)
+to pull content back into context. Do **not** rely on `glob` under `large_tool_results/` unless you
+have lost the path — `read_file` is the primary workflow. Never paste the entire evicted file into chat.
+"""
+
+
+LOCALSHELL_TOOLS_PROMPT = """\
+## Host shell (`execute`)
+
+This run includes **`execute`**: a **host shell** in the backend’s project root (same tree as file
+tools). Pass **`commands`**: a list of **1–5** shell strings; they run **in parallel** with the
+same **`timeout_seconds`** (capped). Prefer one `execute` with several commands over many serial
+calls when steps are independent (e.g. multiple `tvly` queries).
+
+Prefer file tools for project files. Large combined **`execute`** output may be spilled to
+**`/_outputs/large_tool_results/`** like any other oversized tool result — use **`read_file`** on
+the path from the tool response if that happens. The tool message labels each command’s block in order.
 """
 
 
@@ -103,40 +122,29 @@ your own process unless the user asked for a post-mortem.\
 """
 
 SUBAGENT_ROLE_PROMPT = """\
-You are a subagent. Your response goes to an orchestrating agent, not to a human user.
+You are working as a **specialist subagent**. Your audience is an **orchestrator**, not the end user.
 
-Return structured results: include the exact file paths of every file you created, key
-findings, and any data the orchestrator needs to proceed. Be direct and concise — the
-orchestrator reads your output programmatically.
+**What you do:** own the specialist work end-to-end — plan with `write_todos`, use skills and
+tools, and write **complete, final artifacts** under the project tree (especially `/_outputs/`).
 
-**Deliverables:** write real project paths the orchestrator can `read_file`. When the parent will
-**`render_files`** or ship work to a **human**, artifacts must be **complete** (not “see other file”
-stubs). Remove drafts and scratch files when the task is done; keep only final outputs the user or the orchestrator
-needs.
+**What you return to the parent:** only
+- **Absolute-style paths** to every deliverable you created or updated, and
+- a **very short** summary (what you did, what to open, blockers if any).
 
-**Planning:** you have the same `write_todos` and `think_tool` as the main agent.
-For any multi-step task, call `write_todos` **before** heavy tool use (after any quick `read_file`
-on relevant skills), then call `write_todos` again with an updated full list after each major step.
-Skipping todos on multi-step work is a mistake.
+**Hard limits for the parent message:** do **not** paste full reports, long markdown, raw CLI
+dumps, or huge JSON. The orchestrator shows files to the user with **`render_files`** and only
+needs your paths plus a brief recap. If a tool result was evicted to `/_outputs/large_tool_results/`,
+use **`read_file`** and read them.
+Then you should to finish the work and return your output as previously mentioned.
 
-**Back to parent:** reply with **paths** and a **very brief** summary only. Do **not** paste full
-reports, long markdown, or large tool dumps into the parent message — the orchestrator uses your
-paths, `render_files`, and its own user messaging.\
+**Quality:** when the user will see output via `render_files`, files must be **complete** (no “see
+other file” stubs). Delete scratch files when done; keep final outputs only.
+
+**Planning:** same `write_todos` / `think_tool` rules as the main agent — multi-step work requires
+an up-to-date todo list after each major step.\
 """
 
-WRITE_TODOS_PLANNING_NOTES = """\
-### `write_todos` (canonical plan)
-
-- Each call **replaces the entire todo list**; include every item you want to keep.
-- Never issue **parallel** `write_todos` calls in the same model turn.
-- Skip for trivial one-off tasks; use for multi-step work where a visible plan helps.
-"""
-
-PLANNING_PROMPT = f"""\
----
-
-{WRITE_TODOS_PLANNING_NOTES}
-
+PLANNING_PROMPT = """\
 ## Step 1 — Capability Assessment (before writing any plan)
 
 1. **Inventory your tools.** Tools whose descriptions say they run a **subagent** invoke full
@@ -162,8 +170,13 @@ PLANNING_PROMPT = f"""\
 
 ## Step 2 — Execution Loop (repeat for every step)
 
+**Mandatory:** after **every step in the plan**, you **must**
+call **`write_todos` again with the full list** — same items plus updated `completed` /
+`in_progress` / new rows. A stale or missing plan on multi-step work is wrong. Never issue
+parallel `write_todos` in one turn.
+
 ```
-EXECUTE         → perform the step in the plan 
+EXECUTE         → perform the step in the plan
 THEN:
   progress        → write_todos again with the full list (mark completed / in_progress / add items)
   blocked         → write_todos: add or adjust items; keep honest in_progress state
@@ -176,6 +189,9 @@ THEN:
   questions and has no memory of your prior work. Include all context it needs.
 - **Call each subagent once with the full scope** of what that agent is responsible for. Do not
   split the same agent's work across many tiny calls if one call can carry the whole brief.
+- Specialists return **paths and a short summary**; they do the reading and writing. **Do not
+  `read_file` their deliverables** just to rewrite them — use **`render_files`** for the user when
+  work is complete (unless you must verify a specific fact).
 - Ask subagents to **use as few files as practical** (fewer files usually means fewer follow-up
   reads). They may still use multiple files when the task requires it.
 - **Pass file paths between agents** — do not read large file bodies only to paste them back
@@ -429,7 +445,10 @@ def build_system_prompt(
 
     hr = str(host_p) if host_p is not None else "the configured project root"
     _ = data_p, checkpointer
-    sections.append(_section("FILESYSTEM", FILESYSTEM_PROMPT.format(host_root=hr)))
+    fs_blocks = FILESYSTEM_TOOLS_PROMPT.format(host_root=hr)
+    if isinstance(ctx.context.backend, LocalShellBackend):
+        fs_blocks = f"{fs_blocks}\n{LOCALSHELL_TOOLS_PROMPT}"
+    sections.append(_section("FILESYSTEM", fs_blocks))
 
     if ctx.context.plan.todos:
         lines = [

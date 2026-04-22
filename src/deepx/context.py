@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from deepx.backends.protocol import BackendProtocol
-from deepx.hitl import Hitl
+from deepx.middleware.hitl import Hitl
 
 if TYPE_CHECKING:
     from deepx.tools.planning import Plan

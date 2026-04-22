@@ -16,7 +16,6 @@ class LocalShellBackend(FilesystemBackend):
         command: str,
         *,
         timeout: float = 120.0,
-        max_chars: int = 50_000,
     ) -> str:
         _ = session_id
         cmd = (command or "").strip()
@@ -38,6 +37,4 @@ class LocalShellBackend(FilesystemBackend):
         except OSError as e:
             return f"Error: {e}"
         out = (proc.stdout or "") + (proc.stderr or "")
-        if len(out) > max_chars:
-            out = out[:max_chars] + "\n...[truncated]"
         return f"exit_code={proc.returncode}\n{out}"

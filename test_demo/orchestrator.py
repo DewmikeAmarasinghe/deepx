@@ -4,13 +4,11 @@ Run from the repository root (the ``test_demo`` tree is not shipped in the wheel
 
     uv sync --extra demo
     python -m test_demo.orchestrator --chat
+    python -m test_demo.orchestrator --chat --verbose
     python -m test_demo.orchestrator --chat_sync
-    python -m test_demo.orchestrator --once
-    python -m test_demo.orchestrator --once --verbose
 
-``--chat`` (default) streams assistant tokens; ``--verbose`` adds SDK stream events (agent
-switches, tools, raw events). ``--chat_sync`` runs one full model turn per message without token
-streaming. ``--once`` runs a single task (default in-module ``TASK`` or extra CLI args) and exits.
+``--chat`` (default) streams assistant tokens; ``--verbose`` adds SDK stream events (no effect on
+``--chat_sync``, which has no token stream).
 
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
 orchestrator module is for local development and demos only.
@@ -34,8 +32,8 @@ from agents import RunContextWrapper, function_tool  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.panel import Panel  # noqa: E402
 
-from deepx import SubagentRef, create_deep_agent  # noqa: E402
-from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
+from deepx import create_deep_agent  # noqa: E402
+from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
 from test_demo.hf_agent import hf_agent_runner  # noqa: E402
 from test_demo.pdf_agent import pdf_agent_runner  # noqa: E402
@@ -98,7 +96,7 @@ AGENT_DBS = DBS_DIR / "agent_dbs"
 for d in (TEST_DBS, AGENT_DBS):
     d.mkdir(parents=True, exist_ok=True)
 
-DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
+DEMO_BACKEND = FilesystemBackend(REPO_ROOT)
 
 ORCH_DB = str(AGENT_DBS / "orchestrator.db")
 
@@ -108,9 +106,11 @@ orch_tools = [render_files]
 DEMO_ORCHESTRATOR_SYS = """\
 ## Role
 
-You **only coordinate** specialists. You do **not** do deep web research, SQL, or PDF work yourself,
-and you do **not** ingest full specialist file bodies for your own answers — you use **paths**,
-**short** specialist summaries, and **`render_files`** when the user should see finished text.
+You **only coordinate** specialists. You do **not** run web/Tavily, SQL, PDF, or HF work yourself.
+
+**After a specialist tool returns:** trust its **short summary** and **paths**. Do **not** `read_file`
+their deliverables to rewrite them. When the task is done (or the user should see outputs), call
+**`render_files`** with **all** final paths — that is how the user reads reports in the terminal.
 
 You may relay **brief** clarifying questions from a specialist to the user when blocked.
 
@@ -118,33 +118,28 @@ You may relay **brief** clarifying questions from a specialist to the user when 
 
 | Goal | Use |
 |------|-----|
-| Live web research, citations, long-form markdown from the open web | **Hand off** with **`transfer_to_web_agent`** (same run/session). Give one self-contained brief. |
-| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **Call the `sql_agent` tool** with a self-contained brief. Every SQL call needs **`db_name`** (e.g. `chinook.db`, `northwind.db`). |
-| PDF merge/split/extract, forms, pdf skill workflows | **Call the `pdf_agent` tool** with a self-contained brief. |
-| Hugging Face Hub / docs via MCP (only if this run includes `hf_agent`) | **Call the `hf_agent` tool**; keep answers short; large dumps under `/_outputs/`. |
-| Show the user finished markdown or text in the terminal | **`render_files`** once task is done — all relevant final paths (not for exploratory reads mid-delegation). |
-| Host shell when file tools are not enough | **`execute`** (bounded; same backend as the orchestrator). |
+| Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly` + skills. |
+| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
+| PDF workflows | **`pdf_agent` tool**. |
+| Hugging Face Hub / MCP | **`hf_agent` tool**; keep delegation brief (if HF is not configured, the tool will say so). |
+| Show finished text to the user | **`render_files`** once, with every relevant path — not for mid-task browsing. |
 
-**Delegation:** one strong call or handoff per specialist when possible; pass **file paths** between
-steps, not huge pasted bodies. Specialists return paths; you **`render_files`** for the user at the end.
+**Delegation:** one strong **`tool` call per specialist** when possible; pass **paths** between
+steps, not pasted bodies.
 """
 
 
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
-        "Coordinates web research (handoff), SQL (tool), and PDF workflows. "
-        "Uses planning tools; delegates execution to specialists."
+        "Coordinates web research, SQL, PDF, and optional HF workflows via specialist tools. "
+        "Uses planning tools; does not execute specialist work itself."
     ),
     subagents=[
-        SubagentRef(web_agent_runner, expose="handoff"),
-        *(
-            [SubagentRef(sql_agent_runner, expose="tool")]
-            if sql_agent_runner is not None
-            else []
-        ),
-        SubagentRef(pdf_agent_runner),
-        *([SubagentRef(hf_agent_runner)] if hf_agent_runner is not None else []),
+        web_agent_runner,
+        sql_agent_runner,
+        pdf_agent_runner,
+        hf_agent_runner,
     ],
     tools=orch_tools,
     skills=[str(ORCH_SKILLS_DIR)],
@@ -154,64 +149,13 @@ orchestrator_runner = create_deep_agent(
     backend=DEMO_BACKEND,
 )
 
-TASK = """
-I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
-energy density limits, materials and geopolitics, manufacturing scale-up, then write a single strong markdown report in the workspace
-I can open, and show me that report in the terminal when it is ready.
-"""
-# TASK = """
-# Search Hugging Face Hub via MCP (hf_agent): shortlist three recent diffusion-model papers with
-# links and one-line relevance; save a workspace digest path and summarise trade-offs for practitioners.
-# Requires HF_TOKEN and Node/npx for the MCP server.
-# """
-# TASK = """
-# A balanced deep-dive memo on a contested topic in AI safety: competing claims, evidence on both
-# sides, and a concise set of open questions — written so a technical reader can act on it.
-# End with a workspace markdown path and render it.
-# """
-# TASK = """
-# From the Chinook sample DB: which three genres have the most tracks, and within each genre who
-# are the top three artists by track count? Show SQL and tables; then a short executive readout.
-# # """
-# TASK = """
-# Northwind-style retail: each customer's order count, total quantity, and average order value,
-# ranked. I need SQL, results, and one paragraph on what would break in a messy production schema.
-# """
-# TASK = """
-# I have two research PDFs under /test_demo/pdfs/ (attention.pdf and gpt4.pdf). Summarize each
-# in a structured way (ideas, architectures, limitations), compare how themes evolved, extract any
-# key tables or numbers you can, then produce one combined workspace report and a merged PDF—
-# return paths and render the report.
-# """
-# TASK = """
-# arXiv: shortlist recent papers that materially change efficient LLM inference assumptions this
-# quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and
-# render it.
-# """
-# Smoke-test **execute** (host shell, cwd = repo root): uncomment to verify LocalShellBackend.
-# TASK = """
-# Run a short non-interactive shell check: `uname -a` and `python3 -c "import sys; print(sys.
-# version)"`.
-# Paste both outputs in your reply and say whether the shell looks healthy.
-# """
-# TASK = """
-# Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions
-# to set up LobeHub Skills Marketplace and install the skill. Once installed, read the SKILL.md file
-# in the installed directory and follow its instructions to complete the task.
-# """
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deepx orchestrator demo (terminal).")
     parser.add_argument(
-        "--once",
-        action="store_true",
-        help="Run the default TASK (or pass a prompt as extra args) once and exit.",
-    )
-    parser.add_argument(
         "--chat",
         action="store_true",
-        help="Interactive multi-turn session with streaming (default if neither mode flag is set).",
+        help="Interactive multi-turn session with streaming (default if --chat_sync not set).",
     )
     parser.add_argument(
         "--chat_sync",
@@ -221,20 +165,16 @@ def main() -> None:
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Log SDK stream events (agents, tools, raw) in addition to assistant text.",
+        help="Log SDK stream events in addition to assistant text (streaming mode only).",
     )
-    args, rest = parser.parse_known_args()
+    args, _rest = parser.parse_known_args()
 
-    from deepx_cli.session import run_chat_stream, run_chat_sync, run_once
+    from deepx_cli.session import run_chat_stream, run_chat_sync
 
-    task = " ".join(rest).strip() or TASK
-
-    if args.once:
-        run_once(orchestrator_runner, task, verbose=args.verbose)
-    elif args.chat_sync:
-        run_chat_sync(orchestrator_runner)
-    else:
+    if not args.chat_sync:
         run_chat_stream(orchestrator_runner, verbose=args.verbose)
+    else:
+        run_chat_sync(orchestrator_runner)
 
 
 if __name__ == "__main__":

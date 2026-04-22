@@ -1,8 +1,8 @@
 """Hugging Face Hub MCP subagent (demo-only).
 
-Requires ``HF_TOKEN`` or ``HUGGINGFACE_HUB_TOKEN``, Node/npx on PATH for
-``npx @llmindset/hf-mcp-server`` (stdio MCP). If no token is set,
-:attr:`hf_agent_runner` is ``None``.
+With ``HF_TOKEN`` or ``HUGGINGFACE_TOKEN`` and Node/npx on PATH for
+``npx @llmindset/hf-mcp-server`` (stdio MCP), this agent uses the Hub MCP server.
+Without a token, the runner still exists and reports that MCP is not configured.
 """
 
 from __future__ import annotations
@@ -21,21 +21,39 @@ load_dotenv()
 
 from agents.mcp import MCPServerStdio, MCPServerStdioParams  # noqa: E402
 
-from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
+from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
 from deepx.factory import DeepAgentRunner, create_deep_agent  # noqa: E402
 
-_DEMO_BACKEND = LocalShellBackend(_REPO_ROOT)
+_DEMO_BACKEND = FilesystemBackend(_REPO_ROOT)
 _AGENT_DBS = _REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
 _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _HF_DB = str(_AGENT_DBS / "hf_agent.db")
 
 _hf_token = (
-    os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_TOKEN") or ""
+    os.environ.get("HF_TOKEN")
+    or os.environ.get("HUGGINGFACE_TOKEN")
+    or ""
 ).strip()
 
-hf_agent_runner: DeepAgentRunner | None
+_hf_disabled_prompt = """\
+You are **hf_agent**, but Hugging Face MCP is **not** configured: set **HF_TOKEN** (or
+**HUGGINGFACE_HUB_TOKEN**) and ensure **Node/npx** is available for the MCP server. Reply briefly;
+do not pretend to call Hub tools.
+"""
+
 if not _hf_token:
-    hf_agent_runner = None
+    hf_agent_runner: DeepAgentRunner = create_deep_agent(
+        name="hf_agent",
+        description=(
+            "Hugging Face Hub via MCP (requires HF_TOKEN and npx). Not configured in this environment."
+        ),
+        tools=[],
+        system_prompt=_hf_disabled_prompt,
+        backend=_DEMO_BACKEND,
+        checkpointer=_HF_DB,
+        debug=True,
+        subagents=None,
+    )
 else:
     _hf_env = os.environ.copy()
     _hf_env["HF_TOKEN"] = _hf_token

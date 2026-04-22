@@ -67,9 +67,13 @@ def run_chat_stream(
     verbose: bool = False,
 ) -> None:
     """Interactive multi-turn chat with streaming and Deepx HITL."""
+    _ = user_name
     asyncio.run(
         _chat_loop_stream_async(
-            runner, user_name=user_name, resume_hint=resume_hint, verbose=verbose
+            runner,
+            user_name=user_name,
+            resume_hint=resume_hint,
+            verbose=verbose,
         )
     )
 
@@ -125,35 +129,7 @@ def run_chat_sync(
     )
 
 
-def run_once(
-    runner: DeepAgentRunner,
-    task: str,
-    *,
-    session_id: str | None = None,
-    verbose: bool = False,
-) -> None:
-    """Single task with streaming; gated tools prompt on this terminal."""
-    console = Console(highlight=False)
-    sid = session_id or os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-    hitl = create_terminal_hitl(console)
-
-    async def _once() -> None:
-        console.print("[bold]You:[/bold]")
-        console.print(task)
-        console.print()
-        binding = runner.bind(sid, resume=False, hitl=hitl)
-        console.print(f"[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
-        await run_stream_until_settled(
-            binding, task, console, stream_text=True, verbose=verbose
-        )
-        console.print()
-        console.print(f"[dim]Session:[/dim] {sid}\n")
-
-    asyncio.run(_once())
-
-
 __all__ = [
     "run_chat_stream",
     "run_chat_sync",
-    "run_once",
 ]

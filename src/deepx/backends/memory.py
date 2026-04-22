@@ -194,7 +194,6 @@ class InMemoryBackend(BackendProtocol):
         command: str,
         *,
         timeout: float = 120.0,
-        max_chars: int = 50_000,
     ) -> str:
-        _ = session_id, command, timeout, max_chars
+        _ = session_id, command, timeout
         return "Shell execution is not available on InMemoryBackend."

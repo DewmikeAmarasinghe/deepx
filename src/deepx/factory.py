@@ -1,8 +1,8 @@
 """Deepx agent factory: builds :class:`DeepAgentRunner` on top of the OpenAI Agents SDK.
 
-Layout: constants → :class:`SubagentRef` / helpers → subagent ``function_tool`` (nested
-``Runner.run`` + per-call session) → :func:`create_deep_agent` → general-purpose runner →
-:class:`DeepRunBinding` / :class:`DeepAgentRunner` → memory loader → exports.
+Layout: constants → subagent ``function_tool`` (nested ``Runner.run`` + per-call session) →
+:func:`create_deep_agent` → general-purpose runner → :class:`DeepRunBinding` /
+:class:`DeepAgentRunner` → memory loader → exports.
 """
 
 from __future__ import annotations
@@ -12,11 +12,10 @@ import dataclasses
 import re
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from agents import Agent, RunContextWrapper, Runner, function_tool, handoff
+from agents import Agent, RunContextWrapper, Runner, function_tool
 from agents.agent import Agent as AgentType
 from agents.lifecycle import RunHooksBase
 from agents.model_settings import ModelSettings
@@ -28,8 +27,9 @@ from agents.tool_context import ToolContext
 from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
-from deepx.hitl import Hitl
-from deepx.middleware.filesystem import FilesystemHooks, apply_tool_pipeline
+from deepx.middleware.filesystem import FilesystemHooks
+from deepx.middleware.tool_pipeline import apply_tool_pipeline
+from deepx.middleware.hitl import Hitl
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.sessions import create_session
@@ -38,7 +38,7 @@ from deepx.system_prompt import (
     format_skills_for_prompt,
     skills_catalog_for_host,
 )
-from deepx.tools import BUILTIN_TOOLS
+from deepx.tools import builtin_tools_for_backend
 
 DEFAULT_MODEL = "gpt-5-nano"
 
@@ -81,27 +81,16 @@ def _format_subagent_output(run_result: RunResult | RunResultStreaming) -> str:
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class SubagentRef:
-    """Expose another :class:`DeepAgentRunner` as an SDK tool or handoff."""
-
-    runner: "DeepAgentRunner"
-    expose: Literal["tool", "handoff"] = "tool"
-    tool_name: str | None = None
-
-
 def _normalize_subagents(
-    raw: "Sequence[SubagentRef | DeepAgentRunner] | None",
-) -> list[SubagentRef]:
-    out: list[SubagentRef] = []
+    raw: "Sequence[DeepAgentRunner] | None",
+) -> list[DeepAgentRunner]:
+    out: list[DeepAgentRunner] = []
     for item in raw or []:
-        if isinstance(item, SubagentRef):
+        if isinstance(item, DeepAgentRunner):
             out.append(item)
-        elif isinstance(item, DeepAgentRunner):
-            out.append(SubagentRef(item, "tool"))
         else:
             raise TypeError(
-                "subagents entries must be SubagentRef or DeepAgentRunner, "
+                "subagents entries must be DeepAgentRunner, "
                 f"got {type(item).__name__}"
             )
     return out
@@ -172,33 +161,35 @@ def _merge_optional_agent_fields(
 
 def _subagent_tool_from_runner(
     *,
-    runner: "DeepAgentRunner",
-    tool_name: str,
-    checkpointer: str,
+    runner: DeepAgentRunner,
     max_turns: int,
-    backend: BackendProtocol,
 ) -> Tool:
     """Expose a subagent as a tool: nested ``Runner.run`` with a per-call session."""
     agent = runner._agent
+    tname = re.sub(r"[^a-zA-Z0-9_]", "_", runner._agent_name)
 
     async def _invoke(ctx: ToolContext, input: str) -> str:
         ac = ctx.context
         if not isinstance(ac, AgentContext):
             raise TypeError("Deepx tools expect AgentContext on the run context")
-        skills_sub = _skills_prompt_for_backend(backend, runner._skill_roots)
+        sub_backend = runner._backend
+        sub_memory = runner._memory
+        sub_debug = runner._debug
+        ckpt = runner._checkpointer
+        skills_sub = _skills_prompt_for_backend(sub_backend, runner._skill_roots)
         sub_sid = f"{ac.session_id}:{agent.name}:{ctx.tool_call_id}"
         sub_ctx = AgentContext(
             session_id=ac.session_id,
-            backend=ac.backend,
+            backend=sub_backend,
             agent_name=agent.name,
-            memory=runner._memory,
+            memory=sub_memory,
             skills=skills_sub,
-            debug=runner._debug,
+            debug=sub_debug,
             resume=False,
             is_subagent=True,
             hitl=ac.hitl,
         )
-        session = create_session(sub_sid, checkpointer)
+        session = create_session(sub_sid, ckpt)
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
         run_result = await Runner.run(
@@ -213,7 +204,7 @@ def _subagent_tool_from_runner(
 
     tool = function_tool(
         _invoke,
-        name_override=tool_name,
+        name_override=tname,
         description_override=runner.description or "",
         use_docstring_info=False,
     )
@@ -229,7 +220,7 @@ def create_deep_agent(
     name: str = "agent",
     description: str = "",
     system_prompt: str = "",
-    subagents: Sequence[SubagentRef | DeepAgentRunner] | None = None,
+    subagents: Sequence[DeepAgentRunner] | None = None,
     skills: list[str] | None = None,
     memory: list[str] | None = None,
     response_format: type | None = None,
@@ -268,22 +259,16 @@ def create_deep_agent(
 
     ``checkpointer`` is a SQLite path (including ``\":memory:\"``) passed to
     :func:`deepx.sessions.create_session` when you :meth:`~DeepAgentRunner.bind`. One bound
-    conversation uses **one** session store;
-    a specialist reached via **handoff** shares that same run and session—its own ``checkpointer``
-    on the runner is relevant when that specialist is **bound and run alone**, not for in-run
-    handoff history.
+    conversation uses **one** session store. Nested specialist **tool** calls use a derived session
+    id and the child runner's checkpointer.
 
-    **Subagents (:class:`SubagentRef`)**
+    **Subagents**
 
-    - ``expose=\"tool\"`` (default): specialist exposed with a ``function_tool`` that runs a nested
-      ``Runner.run`` and a **per-call** session derived from the parent ``session_id``, subagent
-      name, and ``tool_call_id``. Sensitive tools use :data:`interrupt_on` and
-      :class:`deepx.hitl.Hitl` at :meth:`~DeepAgentRunner.bind` time (not SDK
-      ``needs_approval``).
-    - ``expose=\"handoff\"``: specialist registered with the SDK ``handoff()`` helper on the main
-      ``Agent`` (there is no separate ``handoffs=`` argument on this factory). Use for long-lived
-      context switches (e.g. web research) where the model should **transfer** control rather than
-      return through a tool result.
+    Each :class:`DeepAgentRunner` is exposed as an SDK ``function_tool`` that runs a nested
+    ``Runner.run``. The nested :class:`AgentContext` uses that runner's ``backend``, memory text,
+    and debug flag; it **inherits** the parent's ``session_id`` and ``hitl``. Sensitive tools use :data:`interrupt_on` and
+    :class:`~deepx.middleware.hitl.Hitl` at :meth:`~DeepAgentRunner.bind` time (not SDK
+    ``needs_approval``).
 
     **Hooks**
 
@@ -293,7 +278,7 @@ def create_deep_agent(
     **Human-in-the-loop**
 
     ``interrupt_on`` lists tool names that require host approval before execution. Pass a
-    :class:`~deepx.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
+    :class:`~deepx.middleware.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
     nested specialist runs inherit the same coordinator from the parent context.
 
     **Defaults**
@@ -315,59 +300,38 @@ def create_deep_agent(
         for name in (interrupt_on or [])
         if isinstance(name, str) and name.strip()
     )
-    sub_refs = _normalize_subagents(subagents)
+    sub_runners = _normalize_subagents(subagents)
 
     if include_general_purpose and not any(
-        r.runner._agent_name == "general_purpose" for r in sub_refs
+        r._agent_name == "general_purpose" for r in sub_runners
     ):
-        sub_refs = [
-            *sub_refs,
-            SubagentRef(
-                _make_general_purpose_runner(
-                    model=model,
-                    user_tools=list(tools or []),
-                    skills=skills,
-                    memory=memory,
-                    resolved_backend=backend or FilesystemBackend(Path.home()),
-                    checkpointer=checkpointer,
-                    debug=debug,
-                    max_turns=max_turns,
-                    extra_run_hooks=extra_run_hooks,
-                    response_format=response_format,
-                ),
-                "tool",
+        sub_runners = [
+            *sub_runners,
+            _make_general_purpose_runner(
+                model=model,
+                user_tools=list(tools or []),
+                skills=skills,
+                memory=memory,
+                resolved_backend=backend or FilesystemBackend(Path.cwd()),
+                checkpointer=checkpointer,
+                debug=debug,
+                max_turns=max_turns,
+                extra_run_hooks=extra_run_hooks,
+                response_format=response_format,
             ),
         ]
 
     skill_roots = _collect_skill_roots(skills)
-    resolved_backend = backend or FilesystemBackend(Path.home())
+    resolved_backend = backend or FilesystemBackend(Path.cwd())
     mem_content = _load_memory(memory, resolved_backend)
     user_tools = list(tools or [])
-    base_tools: list[Tool] = [*BUILTIN_TOOLS]
+    base_tools: list[Tool] = list(builtin_tools_for_backend(backend=resolved_backend))
 
     subagent_tools: list[Tool] = []
-    subagent_handoffs: list[Any] = []
-    for ref in sub_refs:
-        runner = ref.runner
-        an = runner._agent_name
-        tname = ref.tool_name or re.sub(r"[^a-zA-Z0-9_]", "_", an)
-        if ref.expose == "handoff":
-            subagent_handoffs.append(
-                handoff(
-                    runner.prepared_agent(),
-                    tool_description_override=runner.description or None,
-                )
-            )
-        else:
-            subagent_tools.append(
-                _subagent_tool_from_runner(
-                    runner=runner,
-                    tool_name=tname,
-                    checkpointer=runner._checkpointer,
-                    max_turns=max_turns,
-                    backend=resolved_backend,
-                )
-            )
+    for sub in sub_runners:
+        subagent_tools.append(
+            _subagent_tool_from_runner(runner=sub, max_turns=max_turns)
+        )
 
     _main_checkpointer = checkpointer
 
@@ -395,7 +359,6 @@ def create_deep_agent(
         instructions=instructions,
         model=model,
         tools=base_tools + user_tools + subagent_tools,
-        handoffs=subagent_handoffs,
         output_type=response_format,
         **merged,
     )
@@ -581,7 +544,7 @@ class DeepAgentRunner:
         return dataclasses.replace(self._agent, tools=wrapped)
 
     def prepared_agent(self) -> Agent:
-        """Agent with filesystem middleware applied (for SDK ``handoff``)."""
+        """Agent with filesystem middleware applied (tool pipeline + HITL)."""
         return self._prepare_agent()
 
     async def run(
@@ -675,6 +638,5 @@ __all__ = [
     "DeepRunBinding",
     "DeepRunResult",
     "Hitl",
-    "SubagentRef",
     "create_deep_agent",
 ]

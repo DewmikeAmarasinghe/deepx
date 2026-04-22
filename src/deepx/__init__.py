@@ -7,12 +7,10 @@ from deepx.factory import (
     DeepAgentRunner,
     DeepRunBinding,
     DeepRunResult,
-    SubagentRef,
     create_deep_agent,
 )
 
 __all__ = [
-    "SubagentRef",
     "create_deep_agent",
     "DeepAgent",
     "DeepAgentRunner",

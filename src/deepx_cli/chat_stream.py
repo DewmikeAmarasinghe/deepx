@@ -46,7 +46,8 @@ async def drain_stream(
     **``verbose_tools=True``** (or ``verbose=True``): prints dim lines for tool calls and outputs.
 
     **``verbose=True``**: also logs **agent switches** (``agent_updated_stream_event``), **run
-    items** (tools, handoffs, message completion), and **raw** stream events. Assistant prose uses
+    items** (tools, message completion), and **raw** stream events (but not per-character
+    ``ResponseFunctionCallArgumentsDeltaEvent`` spam — args appear via tool/run items). Assistant prose uses
     **one** channel: when ``stream_text=True``, live deltas are the prose channel and completed
     ``message_output_item`` events are only summarized (char count) so text is not printed twice.
     ``ResponseTextDoneEvent`` raw events are skipped in that mode for the same reason. Other
@@ -55,8 +56,13 @@ async def drain_stream(
     show_tools = verbose_tools or verbose
 
     try:
-        from openai.types.responses import ResponseTextDeltaEvent, ResponseTextDoneEvent
+        from openai.types.responses import (
+            ResponseFunctionCallArgumentsDeltaEvent,
+            ResponseTextDeltaEvent,
+            ResponseTextDoneEvent,
+        )
     except ImportError:
+        ResponseFunctionCallArgumentsDeltaEvent = None  # type: ignore[assignment,misc]
         ResponseTextDeltaEvent = None  # type: ignore[assignment,misc]
         ResponseTextDoneEvent = None  # type: ignore[assignment,misc]
 
@@ -96,6 +102,11 @@ async def drain_stream(
                     continue
                 if ResponseTextDeltaEvent is not None and isinstance(
                     data, ResponseTextDeltaEvent
+                ):
+                    continue
+                if (
+                    ResponseFunctionCallArgumentsDeltaEvent is not None
+                    and isinstance(data, ResponseFunctionCallArgumentsDeltaEvent)
                 ):
                     continue
                 _end_stream_line_if_needed()

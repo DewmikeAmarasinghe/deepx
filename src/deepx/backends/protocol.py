@@ -110,10 +110,10 @@ class BackendProtocol(abc.ABC):
         command: str,
         *,
         timeout: float = 120.0,
-        max_chars: int = 50_000,
     ) -> str:
         """Run a shell command when supported; otherwise return a fixed error string.
 
         ``session_id`` is reserved for backends that scope execution per session; filesystem-only
         backends ignore it for ``cwd`` and use the host project root instead.
+        Oversized output is not truncated here; tool middleware may spill to large_tool_results.
         """

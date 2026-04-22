@@ -14,7 +14,7 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
+from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
 from deepx.factory import DeepAgentRunner, create_deep_agent  # noqa: E402
 from test_demo.sql_tools import create_sql_tools  # noqa: E402
 
@@ -23,7 +23,7 @@ REPO_ROOT = _REPO_ROOT
 TEST_DBS = DEMO_DIR / "dbs" / "test_dbs"
 SQL_SKILLS_DIR = DEMO_DIR / "skills" / "sql"
 
-demo_backend = LocalShellBackend(REPO_ROOT)
+demo_backend = FilesystemBackend(REPO_ROOT)
 agent_dbs_dir = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
 agent_dbs_dir.mkdir(parents=True, exist_ok=True)
 sql_session_db = str(agent_dbs_dir / "sql_agent.db")
@@ -73,34 +73,38 @@ available_db_names = (
     else ""
 )
 
+_sql_no_dbs_prompt = """\
+You are **sql_agent**, but there are **no** `*.db` files under **test_demo/dbs/test_dbs** in this
+workspace (expected: e.g. chinook.db, northwind.db). You have **no** sql_* tools until those files
+exist. Reply briefly that SQL demos are unavailable and what the user or orchestrator should add;
+do not invent query results.
+"""
 
-sql_agent_runner: DeepAgentRunner | None
-if not sql_tools:
-    sql_agent_runner = None
-else:
-    sql_agent_runner = create_deep_agent(
-        name="sql_agent",
-        description=(
-            "Specialist for read-only SQLite on bundled demo databases. "
-            "Tools: sql_db_list_tables (discover tables), sql_db_schema (DDL + tiny row samples; "
-            "BLOB columns summarized), sql_db_query (SELECT only). "
-            "Every call must include db_name (e.g. chinook.db, northwind.db). "
-            "Prefer orchestrator handoff for long multi-step SQL sessions."
-        ),
-        tools=sql_tools,
-        skills=[str(SQL_SKILLS_DIR)],
-        system_prompt=(
-            "You answer using **sql_*** tools only against files under **test_demo/dbs/test_dbs**. "
-            "Each tool requires **`db_name`**: a filename present there "
-            f"(now: {available_db_names or '(none)'}).\n"
-            "Default demos: **chinook.db** (music retail), **northwind.db** (classic retail) unless "
-            "the user picks another listed file.\n"
-            "For non-trivial tasks, follow skills under the sql skill folder. "
-            "For multi-part work, use write_todos and refresh the list as steps complete. "
-            "Return explicit SQL and readable tables."
-        ),
-        backend=demo_backend,
-        checkpointer=sql_session_db,
-        debug=True,
-        subagents=None,
-    )
+_sql_active_prompt = f"""\
+You answer using **sql_*** tools only against files under **test_demo/dbs/test_dbs**.
+Each tool requires **`db_name`**: a filename present there (now: {available_db_names}).
+Default demos: **chinook.db** (music retail), **northwind.db** (classic retail) unless the user
+picks another listed file.
+For non-trivial tasks, follow skills under the sql skill folder.
+For multi-part work, use write_todos and refresh the list as steps complete.
+Return explicit SQL and readable tables.
+"""
+
+sql_agent_runner: DeepAgentRunner = create_deep_agent(
+    name="sql_agent",
+    description=(
+        "Specialist for read-only SQLite on bundled demo databases. "
+        "Tools: sql_db_list_tables (discover tables), sql_db_schema (DDL + tiny row samples; "
+        "BLOB columns summarized), sql_db_query (SELECT only). "
+        "Every call must include db_name (e.g. chinook.db, northwind.db). "
+        "For long SQL sessions the orchestrator should call this tool with a full brief. "
+        "If no demo DBs are present, the agent reports that state."
+    ),
+    tools=sql_tools,
+    skills=[str(SQL_SKILLS_DIR)],
+    system_prompt=_sql_active_prompt if sql_tools else _sql_no_dbs_prompt,
+    backend=demo_backend,
+    checkpointer=sql_session_db,
+    debug=True,
+    subagents=None,
+)
