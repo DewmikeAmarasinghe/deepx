@@ -6,11 +6,7 @@ from agents.result import RunResultStreaming
 from agents.run_state import RunState
 from rich.console import Console
 
-from deepx.factory import (
-    DeepRunBinding,
-    _cleanup_mcp_servers,
-    _ensure_mcp_servers_connected,
-)
+from deepx.factory import DeepRunBinding
 
 
 async def drain_stream(
@@ -55,14 +51,11 @@ async def run_stream_until_settled(
     *,
     stream_text: bool = False,
 ) -> RunResultStreaming:
-    """Run one streamed turn. Gated tools pause inside tool invoke (Deepx HITL), not SDK interruptions."""
-    await _ensure_mcp_servers_connected(binding.agent)
-    try:
-        stream = binding.run_streamed(inp)
-        await drain_stream(stream, console, stream_text=stream_text)
-        return stream
-    finally:
-        await _cleanup_mcp_servers(binding.agent)
+    """Run one streamed turn. Gated tools pause inside tool invoke (Deepx HITL), not SDK interruptions.
+    """
+    stream = binding.run_streamed(inp)
+    await drain_stream(stream, console, stream_text=stream_text)
+    return stream
 
 
 __all__ = [

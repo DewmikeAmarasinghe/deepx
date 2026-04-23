@@ -1,15 +1,15 @@
-"""Hugging Face Hub MCP subagent (demo-only).
+"""Hugging Face Hub specialist via **hosted** MCP (Streamable HTTP).
 
-Requires **Node.js** with ``npx`` on ``PATH``. The package is fetched on demand via
-``npx -y @llmindset/hf-mcp-server``.
+Uses ``https://huggingface.co/mcp`` with ``Authorization: Bearer <HF_TOKEN>``. Token:
+https://huggingface.co/settings/tokens — browser / OAuth: https://huggingface.co/mcp?login
 
-**Authentication:** set ``HF_TOKEN`` in the **repository root** ``.env`` (next to ``pyproject.toml``)
-or in the process environment. Values are passed to the MCP subprocess via ``env``.
+Set ``HF_TOKEN`` in the repo-root ``.env`` (next to ``pyproject.toml``) or in the process environment.
 
-The OpenAI Agents SDK requires ``await server.connect()`` before MCP tools run; :mod:`deepx.factory`
-does that around each :class:`~agents.Runner` invocation.
+MCP lifecycle is handled in :mod:`deepx.factory` via :class:`agents.mcp.MCPServerManager`.
 
-If tools still fail, some server builds write non–JSON-RPC lines to stdout, which breaks stdio MCP.
+**HITL:** Deepx ``interrupt_on`` only wraps tools that go through :func:`deepx.middleware.tool_pipeline.apply_tool_pipeline`
+(the static ``agent.tools`` list). Hub tools are MCP-backed ``FunctionTool`` instances added at runtime; gate them with
+``require_approval`` on :class:`agents.mcp.MCPServerStreamableHttp` (per-tool map or ``"always"``), not ``interrupt_on``.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(_REPO_ROOT / ".env")
 load_dotenv()
 
-from agents.mcp import MCPServerStdio, MCPServerStdioParams  # noqa: E402
+from agents.mcp import MCPServerStreamableHttp  # noqa: E402
 
 from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
 from deepx.factory import DeepAgentRunner, create_deep_agent  # noqa: E402
@@ -38,56 +38,57 @@ _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _HF_DB = str(_AGENT_DBS / "hf_agent.db")
 
 _hf_token = (os.environ.get("HF_TOKEN") or "").strip()
-if _hf_token:
-    os.environ["HF_TOKEN"] = _hf_token
 
-_hf_disabled_prompt = """\
-You are **hf_agent**, but Hugging Face MCP is **not** configured: set **HF_TOKEN** in the repo-root
-``.env`` or in the process environment, and ensure **Node/npx** is available. Reply briefly;
-do not pretend to call Hub tools.
+_HF_MCP_URL = "https://huggingface.co/mcp"
+
+_HF_SYSTEM = """\
+You use Hugging Face MCP tools to search the Hub and fetch docs. \
+Save substantive results under **/_outputs/** (markdown or JSON); keep the chat reply short \
+with **file paths** and a brief summary — do not paste long tool dumps in the reply.
 """
 
 if not _hf_token:
     hf_agent_runner: DeepAgentRunner = create_deep_agent(
         name="hf_agent",
         description=(
-            "Hugging Face Hub via MCP (requires HF_TOKEN and npx). Not configured in this environment."
+            "Hugging Face Hub via hosted MCP — **not configured**: set HF_TOKEN in .env or the environment."
         ),
         tools=[],
-        system_prompt=_hf_disabled_prompt,
+        system_prompt=(
+            "You are **hf_agent** without HF_TOKEN. Say briefly that Hugging Face MCP is not configured; "
+            "do not pretend to call Hub tools."
+        ),
         backend=_DEMO_BACKEND,
         checkpointer=_HF_DB,
         debug=True,
         subagents=None,
     )
 else:
-    _hf_env = os.environ.copy()
-    _hf_env["HF_TOKEN"] = _hf_token
-    _hf_params: MCPServerStdioParams = {
-        "command": "npx",
-        "args": ["-y", "@llmindset/hf-mcp-server"],
-        "env": _hf_env,
-    }
     hf_agent_runner = create_deep_agent(
         name="hf_agent",
         description=(
-            "Hugging Face Hub via MCP: search models, datasets, spaces, and documentation."
+            "This agent is connected to Hugging Face Hub via hosted MCP (https://huggingface.co/mcp). "
+            "Can search models, datasets, spaces, and docs; write digests under **/_outputs/** and return "
+            "paths plus a short summary."
         ),
         tools=[],
-        system_prompt=(
-            "You use Hugging Face MCP tools to search the Hub and fetch docs. "
-            "Save substantive results under **/_outputs/** (markdown or JSON); keep the chat reply short "
-            "with **file paths** and a brief summary — do not paste long tool dumps in the reply."
-        ),
+        system_prompt=_HF_SYSTEM,
         backend=_DEMO_BACKEND,
         checkpointer=_HF_DB,
         debug=True,
         subagents=None,
         mcp_servers=[
-            MCPServerStdio(
-                _hf_params,
+            MCPServerStreamableHttp(
+                params={
+                    "url": _HF_MCP_URL,
+                    "headers": {"Authorization": f"Bearer {_hf_token}"},
+                    "timeout": 120.0,
+                    "sse_read_timeout": 300.0,
+                },
                 name="huggingface",
-                require_approval="never",
+                cache_tools_list=True,
+                max_retry_attempts=2,
             )
         ],
     )
+

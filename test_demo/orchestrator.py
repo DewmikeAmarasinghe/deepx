@@ -55,6 +55,10 @@ async def render_files(
     **every** user-relevant path — e.g. final reports, key tables, or merged PDFs. Do **not** use
     this for exploratory reading while delegating; specialists return paths, and you consolidate
     before rendering.
+
+    After this returns, **do not** tell the user you “rendered” or “displayed” the file, **do not**
+    repeat the file body or long excerpts, and **do not** offer to paste or open the same paths
+    unless the user asks — they already saw the panel.
     """
     sid = ctx.context.session_id
     parts: list[str] = []
@@ -129,6 +133,10 @@ return **only paths plus a short summary** — not full file bodies.
 **After a specialist tool returns:** trust its **paths** and **short summary**. Do **not** `read_file` those
 files. When outputs should be visible in the terminal, call **`render_files`** once with **all** final paths.
 
+**After `render_files`:** the user already sees the full artifact in the terminal panel. Reply with a **compact**
+shortlist, **paths**, and **recommendation** only — **no** “I rendered … to the terminal”, **no** repeating the
+digest, **no** offering to paste or open the same file unless the user explicitly asks.
+
 **If a specialist’s reply contains a question for the user:** relay it briefly; do not stack your own
 extra questions on top.
 
@@ -139,7 +147,7 @@ extra questions on top.
 | Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly` + skills. |
 | Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
 | PDF workflows | **`pdf_agent` tool**. |
-| Hugging Face Hub / MCP | **`hf_agent` tool**; keep delegation brief (if HF is not configured, the tool will say so). |
+| Hugging Face Hub (hosted MCP) | **`hf_agent` tool**; needs **HF_TOKEN**; keep delegation brief. |
 | Show finished text to the user | **`render_files`** once, with every relevant path — not for mid-task browsing. |
 
 **Delegation:** one strong **`tool` call per specialist** when possible; pass **paths** between
@@ -150,8 +158,12 @@ steps, not pasted bodies.
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
-        "Coordinates web research, SQL, PDF, and optional HF workflows via specialist tools when applicable; "
-        "handles general tasks and file-based work itself when no specialist fits. Uses planning tools."
+        "Front-door planner for the Deepx demo: routes work to **web_agent** (Tavily + arXiv skills), "
+        "**sql_agent** (read-only SQLite on bundled *.db), **pdf_agent** (PDF/forms skills), and "
+        "**hf_agent** (Hugging Face Hub via hosted MCP). Handles general file tasks with built-in tools; "
+        "delegates with one self-contained brief per specialist; uses **write_todos** / **read_todos** "
+        "for multi-step work. Specialists must persist deliverables under **/_outputs/**; the "
+        "orchestrator uses **render_files** for user-visible artifacts without **read_file** on those paths."
     ),
     subagents=[
         web_agent_runner,

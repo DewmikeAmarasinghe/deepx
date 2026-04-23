@@ -93,12 +93,12 @@ Return explicit SQL and readable tables.
 sql_agent_runner: DeepAgentRunner = create_deep_agent(
     name="sql_agent",
     description=(
-        "Specialist for read-only SQLite on bundled demo databases. "
-        "Tools: sql_db_list_tables (discover tables), sql_db_schema (DDL + tiny row samples; "
-        "BLOB columns summarized), sql_db_query (SELECT only). "
-        "Every call must include db_name (e.g. chinook.db, northwind.db). "
-        "For long SQL sessions the orchestrator should call this tool with a full brief. "
-        "If no demo DBs are present, the agent reports that state."
+        "SQLite analyst for **demo databases** under `test_demo/dbs/test_dbs`. "
+        "chinook.db and northwind.db are configured there."
+        "Tools: **sql_db_list_tables**, **sql_db_schema** (DDL + small samples; BLOBs summarized), "
+        "**sql_db_query** (SELECT-only). **Every** tool call needs **db_name** (e.g. `chinook.db`, "
+        "`northwind.db`). Best for aggregations, joins, and explaining schema; returns SQL + readable "
+        "tables. If no `*.db` files exist, the runner is a no-op stub—say so clearly."
     ),
     tools=sql_tools,
     skills=[str(SQL_SKILLS_DIR)],

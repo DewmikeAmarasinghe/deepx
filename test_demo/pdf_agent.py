@@ -13,14 +13,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
+from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.factory import create_deep_agent  # noqa: E402
 
 DEMO_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _REPO_ROOT
 PDF_SKILLS_DIR = DEMO_DIR / "skills" / "pdf"
 
-_DEMO_BACKEND = FilesystemBackend(REPO_ROOT)
+_DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
 _AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
 _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _PDF_DB = str(_AGENT_DBS / "pdf_agent.db")
@@ -29,8 +29,10 @@ _PDF_DB = str(_AGENT_DBS / "pdf_agent.db")
 pdf_agent_runner = create_deep_agent(
     name="pdf_agent",
     description=(
-        "PDF and form workflows: reading, merging, splitting, extracting tables/text, fillable "
-        "forms via file tools and pdf skills."
+        "PDF related tasks specialist"
+        "extract text/tables, metadata, and forms workflows per **pdf** skills under "
+        "`test_demo/skills/pdf`. Writes outputs to agreed paths (typically **/_outputs/**). "
+        "For scanned PDFs, OCR needs host tools (e.g. Tesseract)—state limits plainly."
     ),
     tools=[],
     skills=[str(PDF_SKILLS_DIR)],

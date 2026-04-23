@@ -28,8 +28,9 @@ _WEB_DB = str(_AGENT_DBS / "web_agent.db")
 web_agent_runner = create_deep_agent(
     name="web_agent",
     description=(
-        "Web research specialist: uses Tavily CLI (`tvly`) per skills under "
-        "`test_demo/skills/tavily`; saves structured notes and markdown under the project tree."
+        "Open-web research specialist: runs the **Tavily CLI (`tvly`)** and **arXiv** skills "
+        "(under `test_demo/skills/`), not raw scraping. Use for live pages, news, docs, and paper "
+        "discovery; writes citations and reports under **/_outputs/**. Requires a logged-in `tvly` "
     ),
     tools=None,
     skills=[

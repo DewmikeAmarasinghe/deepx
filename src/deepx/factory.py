@@ -9,16 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import logging
 import re
 import uuid
 from collections.abc import Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agents import Agent, RunContextWrapper, Runner, function_tool
 from agents.agent import Agent as AgentType
 from agents.lifecycle import RunHooksBase
+from agents.mcp import MCPServerManager
 from agents.model_settings import ModelSettings
 from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
@@ -30,6 +31,7 @@ from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks
 from deepx.middleware.hitl import Hitl
+from deepx.middleware.logs import SessionToolLogHooks
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
 from deepx.middleware.tool_pipeline import apply_tool_pipeline
@@ -43,28 +45,22 @@ from deepx.tools import builtin_tools_for_backend
 
 DEFAULT_MODEL = "gpt-5-mini"
 
-logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def _connected_mcp_agent(agent: Agent):
+    """Connect MCP servers for this run using the SDK’s :class:`~agents.mcp.MCPServerManager`.
 
-async def _ensure_mcp_servers_connected(agent: Agent) -> None:
-    """OpenAI Agents SDK requires ``connect()`` on each MCP server before ``list_tools`` / ``call_tool``."""
-    for server in getattr(agent, "mcp_servers", None) or []:
-        if getattr(server, "session", None) is None:
-            await server.connect()
+    ``Runner`` does not call ``server.connect()`` for you. ``AgentBase.mcp_servers`` documents
+    lifecycle management; the manager matches the documented ``async with`` pattern while supporting
+    multiple servers and failed-server drop policies.
+    """
+    mcp = getattr(agent, "mcp_servers", None) or []
+    if not mcp:
+        yield agent
+        return
+    async with MCPServerManager(mcp) as manager:
+        yield dataclasses.replace(agent, mcp_servers=manager.active_servers)
 
-
-async def _cleanup_mcp_servers(agent: Agent) -> None:
-    for server in getattr(agent, "mcp_servers", None) or []:
-        if getattr(server, "session", None) is None:
-            continue
-        try:
-            await server.cleanup()
-        except Exception:
-            logger.debug(
-                "MCP cleanup failed for %r",
-                getattr(server, "name", server),
-                exc_info=True,
-            )
 
 if TYPE_CHECKING:
     from agents.agent import MCPConfig
@@ -215,10 +211,9 @@ def _subagent_tool_from_runner(
         session = create_session(sub_sid, ckpt)
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
-        await _ensure_mcp_servers_connected(agent_wrapped)
-        try:
+        async with _connected_mcp_agent(agent_wrapped) as ag:
             run_result = await Runner.run(
-                agent_wrapped,
+                ag,
                 input,
                 context=sub_ctx,
                 session=session,
@@ -226,8 +221,6 @@ def _subagent_tool_from_runner(
                 max_turns=max_turns,
             )
             return _format_subagent_output(run_result)
-        finally:
-            await _cleanup_mcp_servers(agent_wrapped)
 
     tool = function_tool(
         _invoke,
@@ -307,11 +300,14 @@ def create_deep_agent(
     ``interrupt_on`` lists tool names that require host approval before execution. Pass a
     :class:`~deepx.middleware.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
     nested specialist runs inherit the same coordinator from the parent context.
+    MCP-backed tools (``mcp_servers``) are merged at runtime and are **not** wrapped by
+    ``interrupt_on``; use the SDK’s ``require_approval`` on the MCP server instead.
 
     **Defaults**
 
-    ``model`` is :data:`DEFAULT_MODEL`. ``debug=True`` writes tool JSON logs under
-    ``.deepx/sessions/<id>/logs`` when the backend exposes a workspace root.
+    ``model`` is :data:`DEFAULT_MODEL`. ``debug=True`` enables :class:`~deepx.middleware.logs.SessionToolLogHooks`,
+    writing tool JSON under ``.deepx/sessions/<id>/logs/tools`` (including MCP tool calls) when the
+    backend exposes a workspace root.
 
     **Returns**
 
@@ -468,20 +464,19 @@ class DeepRunBinding:
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
             None if isinstance(inp, RunState) else self.ctx
         )
-        await _ensure_mcp_servers_connected(self.agent)
-        try:
+        async with _connected_mcp_agent(self.agent) as ag:
             return await Runner.run(
-                self.agent,
+                ag,
                 inp,
                 context=resume_ctx,
                 session=self.session,
                 hooks=self.hooks,
                 max_turns=self._runner._max_turns,
             )
-        finally:
-            await _cleanup_mcp_servers(self.agent)
 
     def run_streamed(self, inp: str | RunState) -> RunResultStreaming:
+        """Stream one turn. Agents with ``mcp_servers`` should use :meth:`DeepAgentRunner.run_stream`
+        instead so MCP connect/cleanup wraps the full stream; the orchestrator path has none."""
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
             None if isinstance(inp, RunState) else self.ctx
         )
@@ -560,16 +555,16 @@ class DeepAgentRunner:
 
     def _make_hooks(self) -> RunHooksBase[AgentContext, AgentType[AgentContext]]:
         fs = FilesystemHooks(self._backend)
-        if not self._middleware_hooks:
-            return fs
-        return compose_run_hooks(fs, *self._middleware_hooks)
+        parts: list[RunHooksBase[AgentContext, AgentType[AgentContext]]] = [fs]
+        if self._debug:
+            parts.append(SessionToolLogHooks(self._backend))
+        parts.extend(self._middleware_hooks)
+        return compose_run_hooks(*parts)
 
     def _prepare_agent(self) -> Agent:
         wrapped = apply_tool_pipeline(
             list(self._agent.tools),
             self._backend,
-            agent_name=self._agent.name,
-            debug=self._debug,
             interrupt_on=self._interrupt_on,
         )
         return dataclasses.replace(self._agent, tools=wrapped)
@@ -622,14 +617,19 @@ class DeepAgentRunner:
     ):
         sid = session_id or uuid.uuid4().hex
         b = self.bind(sid, resume=resume)
-        await _ensure_mcp_servers_connected(b.agent)
-        try:
-            stream = b.run_streamed(task)
+        resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = b.ctx
+        async with _connected_mcp_agent(b.agent) as ag:
+            stream = Runner.run_streamed(
+                ag,
+                task,
+                context=resume_ctx,
+                session=b.session,
+                hooks=b.hooks,
+                max_turns=self._max_turns,
+            )
             async for event in stream.stream_events():
                 yield event
             yield {"kind": "done", "output_preview": str(stream.final_output)}
-        finally:
-            await _cleanup_mcp_servers(b.agent)
 
 
 class DeepRunResult:

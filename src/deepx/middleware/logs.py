@@ -7,9 +7,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agents.agent import Agent
+from agents.lifecycle import RunHooksBase
+from agents.run_context import RunContextWrapper
 from agents.tool import FunctionTool, Tool
+from agents.tool_context import ToolContext
 
 from deepx.backends.protocol import BackendProtocol
+from deepx.context import AgentContext
 
 # In-memory fallback when no FilesystemBackend data_root (e.g. InMemoryBackend tests).
 _ephemeral_plans: dict[tuple[str, str], str] = {}
@@ -150,3 +155,49 @@ def wrap_tools_for_logging(
         else:
             out.append(tool)
     return out
+
+
+class SessionToolLogHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
+    """Write one JSON row per tool call under ``.deepx/sessions/<id>/logs/tools/``.
+
+    Uses :func:`on_tool_end` so **MCP-derived** tools (runtime ``FunctionTool`` instances) are logged the
+    same way as static tools. Static tools are no longer double-logged when this hook is used:
+    disable per-tool wrapping via :func:`wrap_tools_for_logging` in the tool pipeline.
+    """
+
+    def __init__(self, backend: BackendProtocol) -> None:
+        self._backend = backend
+
+    async def on_tool_end(
+        self,
+        context: RunContextWrapper[AgentContext],
+        agent: Agent[AgentContext],
+        tool: Tool,
+        result: str,
+    ) -> None:
+        ac = context.context
+        if not isinstance(ac, AgentContext):
+            return
+        name = getattr(tool, "name", None) or "unknown_tool"
+        inp: dict[str, Any] = {}
+        if isinstance(context, ToolContext):
+            raw = (context.tool_arguments or "").strip()
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    inp = parsed if isinstance(parsed, dict) else {"_value": parsed}
+                except json.JSONDecodeError:
+                    inp = {"_raw": raw[:8000]}
+        run_log_write_tool(
+            self._backend,
+            ac.session_id,
+            {
+                "tool_name": name,
+                "agent_name": agent.name,
+                "session_id": ac.session_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "input": inp,
+                "output_chars": len(str(result)),
+                "output": str(result),
+            },
+        )

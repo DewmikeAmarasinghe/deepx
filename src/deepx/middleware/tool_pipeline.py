@@ -22,7 +22,6 @@ from deepx.backends.filesystem import (
 )
 from deepx.backends.protocol import BackendProtocol
 from deepx.middleware.hitl import wrap_tools_for_hitl
-from deepx.middleware.logs import wrap_tools_for_logging
 
 
 def _tool_call_id(ctx: Any) -> str:
@@ -148,13 +147,14 @@ def apply_tool_pipeline(
     tools: list[Tool],
     backend: BackendProtocol,
     *,
-    agent_name: str,
-    debug: bool,
     interrupt_on: frozenset[str] | None = None,
 ) -> list[Tool]:
+    """Large-result eviction + ``interrupt_on`` HITL for static ``agent.tools``.
+
+    Session JSON logs for **all** tools (including MCP) come from :class:`SessionToolLogHooks` when
+    ``debug=True`` on the runner.
+    """
     wrapped = wrap_tools_for_large_tool_results(tools, backend)
-    if debug:
-        wrapped = wrap_tools_for_logging(wrapped, backend, agent_name)
     wrapped = wrap_tools_for_hitl(wrapped, interrupt_on or frozenset())
     return wrapped
 

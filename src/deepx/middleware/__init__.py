@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from deepx.middleware.filesystem import FilesystemHooks
-    from deepx.middleware.logs import wrap_tools_for_logging
+    from deepx.middleware.logs import SessionToolLogHooks, wrap_tools_for_logging
     from deepx.middleware.tool_pipeline import (
         apply_tool_pipeline,
         wrap_tools_for_large_tool_results,
@@ -30,6 +30,7 @@ __all__ = [
     "ChainedRunHooks",
     "compose_run_hooks",
     "FilesystemHooks",
+    "SessionToolLogHooks",
     "Hitl",
     "HitlCallback",
     "HitlDecision",
@@ -52,6 +53,10 @@ def __getattr__(name: str) -> Any:
         import deepx.middleware.tool_pipeline as _tp
 
         return getattr(_tp, name)
+    if name == "SessionToolLogHooks":
+        from deepx.middleware.logs import SessionToolLogHooks
+
+        return SessionToolLogHooks
     if name == "wrap_tools_for_logging":
         from deepx.middleware.logs import wrap_tools_for_logging
 
