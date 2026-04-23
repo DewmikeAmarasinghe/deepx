@@ -11,10 +11,10 @@ def setup_observability() -> None:
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
     os.environ.setdefault("LANGSMITH_PROJECT", "default")
     try:
+        from agents.tracing import set_trace_processors
         from langsmith.integrations.openai_agents_sdk import (
             OpenAIAgentsTracingProcessor,
         )
-        from agents.tracing import set_trace_processors
 
         set_trace_processors([OpenAIAgentsTracingProcessor()])  # type: ignore[list-item]
     except Exception:

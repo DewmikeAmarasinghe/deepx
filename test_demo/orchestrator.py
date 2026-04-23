@@ -4,11 +4,11 @@ Run from the repository root (the ``test_demo`` tree is not shipped in the wheel
 
     uv sync --extra demo
     python -m test_demo.orchestrator --chat
-    python -m test_demo.orchestrator --chat --verbose
     python -m test_demo.orchestrator --chat_sync
 
-``--chat`` (default) streams assistant tokens; ``--verbose`` adds SDK stream events (no effect on
-``--chat_sync``, which has no token stream).
+``--chat`` (default) streams assistant tokens to the terminal.
+
+Multi-line paste in the CLI: type ``\"\"\"`` on the first line, paste your message, then ``\"\"\"`` and Enter.
 
 Installing the ``deepx`` distribution places ``deepx`` and ``deepx_cli`` on the path; this
 orchestrator module is for local development and demos only.
@@ -106,13 +106,31 @@ orch_tools = [render_files]
 DEMO_ORCHESTRATOR_SYS = """\
 ## Role
 
-You **only coordinate** specialists. You do **not** run web/Tavily, SQL, PDF, or HF work yourself.
+**Coordinate specialists when the task matches the routing table below.** For those tasks you do **not**
+run web/Tavily, SQL, PDF, or HF work yourself — you delegate with a **single, self-contained brief**
+(including output paths, `db_name` when needed, and reasonable defaults like “top 3 with ties” if the user
+already implied them).
 
-**After a specialist tool returns:** trust its **short summary** and **paths**. Do **not** `read_file`
-their deliverables to rewrite them. When the task is done (or the user should see outputs), call
-**`render_files`** with **all** final paths — that is how the user reads reports in the terminal.
+**General work (no matching specialist):** answer from context, use your file tools, or guide the user.
+Examples: skill/marketplace setup, LobeHub install steps, chit-chat, or anything that is **not** purely
+web research, SQL on demo DBs, PDF workflows, or HF Hub MCP. This demo orchestrator has **no** host `execute`
+tool — you cannot run shell commands yourself; use `read_file` / planning tools and clear instructions, or
+route web execution to **`web_agent`** when the user needs live fetching.
 
-You may relay **brief** clarifying questions from a specialist to the user when blocked.
+**Delegate first; almost never ask the user to “confirm” the task shape.** If the user already stated
+constraints (e.g. “top three genres and top three artists”), **do not** re-ask or paraphrase into clarifying
+questions — pick sound defaults, state them in the brief, and call the specialist. Ask the user **only** when
+something **objectively required** is missing (e.g. which `*.db` when several apply and the user gave none).
+
+**Specialist outputs:** In every delegation brief, tell the specialist to **write deliverables to files**
+under **`/_outputs/`** (exact paths you agree on, e.g. `/_outputs/diffusion_models_summary.md`) and to
+return **only paths plus a short summary** — not full file bodies.
+
+**After a specialist tool returns:** trust its **paths** and **short summary**. Do **not** `read_file` those
+files. When outputs should be visible in the terminal, call **`render_files`** once with **all** final paths.
+
+**If a specialist’s reply contains a question for the user:** relay it briefly; do not stack your own
+extra questions on top.
 
 ## Routing
 
@@ -132,8 +150,8 @@ steps, not pasted bodies.
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
-        "Coordinates web research, SQL, PDF, and optional HF workflows via specialist tools. "
-        "Uses planning tools; does not execute specialist work itself."
+        "Coordinates web research, SQL, PDF, and optional HF workflows via specialist tools when applicable; "
+        "handles general tasks and file-based work itself when no specialist fits. Uses planning tools."
     ),
     subagents=[
         web_agent_runner,
@@ -162,17 +180,12 @@ def main() -> None:
         action="store_true",
         help="Interactive multi-turn session without token streaming.",
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Log SDK stream events in addition to assistant text (streaming mode only).",
-    )
     args, _rest = parser.parse_known_args()
 
     from deepx_cli.session import run_chat_stream, run_chat_sync
 
     if not args.chat_sync:
-        run_chat_stream(orchestrator_runner, verbose=args.verbose)
+        run_chat_stream(orchestrator_runner)
     else:
         run_chat_sync(orchestrator_runner)
 

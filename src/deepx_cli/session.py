@@ -9,6 +9,7 @@ from rich.console import Console
 from deepx.factory import DeepAgentRunner
 from deepx_cli.chat_stream import run_stream_until_settled
 from deepx_cli.hitl import create_terminal_hitl
+from deepx_cli.input_multiline import read_user_turn
 
 
 def _display_agent_name(agent_name: str) -> str:
@@ -20,7 +21,6 @@ async def _chat_loop_stream_async(
     *,
     user_name: str,
     resume_hint: str | None,
-    verbose: bool,
 ) -> None:
     console = Console(highlight=False)
     sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
@@ -30,12 +30,15 @@ async def _chat_loop_stream_async(
         console.print(f"\n[dim]Session:[/dim] {sid}  — resume: `{resume_hint} {sid}`\n")
     else:
         console.print(f"\n[dim]Session:[/dim] {sid}\n")
+    console.print(
+        '[dim]Multi-line: first line exactly """ then paste; end with """ and Enter.[/dim]\n'
+    )
 
     turn = 0
     while True:
         try:
             console.print("[bold]You:[/bold]")
-            user_input = input().strip()
+            user_input = read_user_turn()
         except (EOFError, KeyboardInterrupt):
             console.print("\nExiting.")
             break
@@ -53,7 +56,6 @@ async def _chat_loop_stream_async(
             user_input,
             console,
             stream_text=True,
-            verbose=verbose,
         )
         console.print("\n\n")
         turn += 1
@@ -64,7 +66,6 @@ def run_chat_stream(
     *,
     user_name: str = "You",
     resume_hint: str | None = None,
-    verbose: bool = False,
 ) -> None:
     """Interactive multi-turn chat with streaming and Deepx HITL."""
     _ = user_name
@@ -73,7 +74,6 @@ def run_chat_stream(
             runner,
             user_name=user_name,
             resume_hint=resume_hint,
-            verbose=verbose,
         )
     )
 
@@ -92,12 +92,15 @@ async def _chat_loop_sync_async(
         console.print(f"\n[dim]Session:[/dim] {sid}  — resume: `{resume_hint} {sid}`\n")
     else:
         console.print(f"\n[dim]Session:[/dim] {sid}\n")
+    console.print(
+        '[dim]Multi-line: first line exactly """ then paste; end with """ and Enter.[/dim]\n'
+    )
 
     turn = 0
     while True:
         try:
             console.print("[bold]You:[/bold]")
-            user_input = input().strip()
+            user_input = read_user_turn()
         except (EOFError, KeyboardInterrupt):
             console.print("\nExiting.")
             break

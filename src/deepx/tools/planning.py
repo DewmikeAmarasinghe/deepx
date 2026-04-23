@@ -138,8 +138,7 @@ This tool is optional; do not call it on every step.\
 async def think_tool(ctx: RunContextWrapper[AgentContext], reflection: str) -> str:
     """Structured reflection; prefer updating `write_todos` when the plan must change."""
     todos = [
-        {"content": t.content, "status": t.status.value}
-        for t in ctx.context.plan.todos
+        {"content": t.content, "status": t.status.value} for t in ctx.context.plan.todos
     ]
     plan_block = (
         json.dumps(todos, indent=2)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import logging
 import re
 import uuid
 from collections.abc import Sequence
@@ -28,10 +29,10 @@ from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks
-from deepx.middleware.tool_pipeline import apply_tool_pipeline
 from deepx.middleware.hitl import Hitl
 from deepx.middleware.observability import setup_observability
 from deepx.middleware.run_hooks import compose_run_hooks
+from deepx.middleware.tool_pipeline import apply_tool_pipeline
 from deepx.sessions import create_session
 from deepx.system_prompt import (
     build_system_prompt,
@@ -40,7 +41,30 @@ from deepx.system_prompt import (
 )
 from deepx.tools import builtin_tools_for_backend
 
-DEFAULT_MODEL = "gpt-5-nano"
+DEFAULT_MODEL = "gpt-5-mini"
+
+logger = logging.getLogger(__name__)
+
+
+async def _ensure_mcp_servers_connected(agent: Agent) -> None:
+    """OpenAI Agents SDK requires ``connect()`` on each MCP server before ``list_tools`` / ``call_tool``."""
+    for server in getattr(agent, "mcp_servers", None) or []:
+        if getattr(server, "session", None) is None:
+            await server.connect()
+
+
+async def _cleanup_mcp_servers(agent: Agent) -> None:
+    for server in getattr(agent, "mcp_servers", None) or []:
+        if getattr(server, "session", None) is None:
+            continue
+        try:
+            await server.cleanup()
+        except Exception:
+            logger.debug(
+                "MCP cleanup failed for %r",
+                getattr(server, "name", server),
+                exc_info=True,
+            )
 
 if TYPE_CHECKING:
     from agents.agent import MCPConfig
@@ -90,8 +114,7 @@ def _normalize_subagents(
             out.append(item)
         else:
             raise TypeError(
-                "subagents entries must be DeepAgentRunner, "
-                f"got {type(item).__name__}"
+                f"subagents entries must be DeepAgentRunner, got {type(item).__name__}"
             )
     return out
 
@@ -192,15 +215,19 @@ def _subagent_tool_from_runner(
         session = create_session(sub_sid, ckpt)
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
-        run_result = await Runner.run(
-            agent_wrapped,
-            input,
-            context=sub_ctx,
-            session=session,
-            hooks=hooks,
-            max_turns=max_turns,
-        )
-        return _format_subagent_output(run_result)
+        await _ensure_mcp_servers_connected(agent_wrapped)
+        try:
+            run_result = await Runner.run(
+                agent_wrapped,
+                input,
+                context=sub_ctx,
+                session=session,
+                hooks=hooks,
+                max_turns=max_turns,
+            )
+            return _format_subagent_output(run_result)
+        finally:
+            await _cleanup_mcp_servers(agent_wrapped)
 
     tool = function_tool(
         _invoke,
@@ -441,14 +468,18 @@ class DeepRunBinding:
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
             None if isinstance(inp, RunState) else self.ctx
         )
-        return await Runner.run(
-            self.agent,
-            inp,
-            context=resume_ctx,
-            session=self.session,
-            hooks=self.hooks,
-            max_turns=self._runner._max_turns,
-        )
+        await _ensure_mcp_servers_connected(self.agent)
+        try:
+            return await Runner.run(
+                self.agent,
+                inp,
+                context=resume_ctx,
+                session=self.session,
+                hooks=self.hooks,
+                max_turns=self._runner._max_turns,
+            )
+        finally:
+            await _cleanup_mcp_servers(self.agent)
 
     def run_streamed(self, inp: str | RunState) -> RunResultStreaming:
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
@@ -591,10 +622,14 @@ class DeepAgentRunner:
     ):
         sid = session_id or uuid.uuid4().hex
         b = self.bind(sid, resume=resume)
-        stream = b.run_streamed(task)
-        async for event in stream.stream_events():
-            yield event
-        yield {"kind": "done", "output_preview": str(stream.final_output)}
+        await _ensure_mcp_servers_connected(b.agent)
+        try:
+            stream = b.run_streamed(task)
+            async for event in stream.stream_events():
+                yield event
+            yield {"kind": "done", "output_preview": str(stream.final_output)}
+        finally:
+            await _cleanup_mcp_servers(b.agent)
 
 
 class DeepRunResult:

@@ -1,6 +1,12 @@
-"""Sample task strings for manual testing (e.g. copy into the orchestrator CLI)."""
+ORCHESTRATOR_TASKS: list[str] = [
+    """\
+Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions
+to set up LobeHub Skills Marketplace and install the skill in test_demo/skills folder. Once installed, read its SKILL.md file
+in the installed directory and follow its instructions to find the weather of colombo, Sri Lanka now.
+""",
+]
 
-SAMPLE_TASKS: list[str] = [
+WEB_AGENT_TASKS: list[str] = [
     """\
 https://www.parliament.lk/en  Find the directory of current MPs. Go to their profiles and finally create a table showing name, party, phone number, date of birth, religion. The table should have 
 only 30 such profile inforamtion. Number the table rows.
@@ -14,36 +20,74 @@ energy density limits, materials and geopolitics, manufacturing scale-up, then w
 I can open, and show me that report in the terminal when it is ready.
 """,
     """\
-Search Hugging Face Hub via MCP (hf_agent): shortlist three recent diffusion-model papers with
-links and one-line relevance; save a workspace digest path and summarise trade-offs for practitioners.
-Requires HF_TOKEN and Node/npx for the MCP server.
+arXiv: shortlist recent papers that materially change efficient LLM inference assumptions this
+quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and
+render it.
+""",
+]
+
+SQL_AGENT_TASKS: list[str] = [
+    """\
+The Chinook database contains information about customers, invoices,
+invoice line items, tracks, albums, artists, genres, and employees.
+
+A stakeholder reports that sales from high-value customers may be
+concentrated in only a few music genres.
+
+Investigate customer spending patterns by month, broken down by genre
+and customer country. Identify the top five revenue-generating genres,
+the customers contributing most to each, and any months with unusual
+spending spikes or declines.
+
+Return SQL, result tables, and a short business analysis explaining
+possible drivers behind the trends.
 """,
     """\
-From the Chinook sample DB: which three genres have the most tracks, and within each genre who
-are the top three artists by track count? Show SQL and tables; then a short executive readout.
+The Northwind database contains information about customers, employees,
+orders, order details, products, categories, suppliers, and shippers.
+
+A stakeholder reports that revenue dropped sharply during 1998.
+
+Investigate monthly revenue trends for 1997–1998, broken down by
+product category and shipping country. Identify the largest
+month-over-month declines, the customers and product categories
+contributing most to the drop, and any operational patterns that
+may explain the change.
+
+Return SQL, result tables, and a short root-cause analysis.
 """,
-    """\
-Northwind-style retail: each customer's order count, total quantity, and average order value,
-ranked. I need SQL, results, and one paragraph on what would break in a messy production schema.
-""",
+]
+
+PDF_AGENT_TASKS: list[str] = [
     """\
 I have two research PDFs under /test_demo/pdfs/ (attention.pdf and gpt4.pdf). Summarize each
 in a structured way (ideas, architectures, limitations), compare how themes evolved, extract any
 key tables or numbers you can, then produce one combined workspace report and a merged PDF—
 return paths and render the report.
 """,
-    """\
-arXiv: shortlist recent papers that materially change efficient LLM inference assumptions this
-quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and
-render it.
-""",
-    """\
-Run a short non-interactive shell check: `uname -a` and `python3 -c "import sys; print(sys.version)"`.
-Paste both outputs in your reply and say whether the shell looks healthy.
-""",
-    """\
-Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions
-to set up LobeHub Skills Marketplace and install the skill in test_demo/skills folder. Once installed, read its SKILL.md file
-in the installed directory and follow its instructions to complete the task.
-""",
+]
+
+HF_AGENT_TASKS: list[str] = [
+        """\
+You have a huggingface sub agent who is connected to the Hugging Face Hub via MCP.
+
+Search the Hugging Face Hub for three recent diffusion-model papers or official model cards.
+Choose items that are practically useful for ML engineers and preferably from 2025–2026.
+
+For each item, provide:
+- title
+- link
+- one-line explanation of why it is relevant
+
+Then compare the three options in a short summary focusing on:
+- quality
+- inference speed
+- compute requirements
+- best use case
+
+Finally, save a short digest to:
+_outputs/diffusion_models_summary.md
+
+Return the final shortlist, the saved workspace path, and a brief recommendation on which model a practitioner should evaluate first.
+"""
 ]

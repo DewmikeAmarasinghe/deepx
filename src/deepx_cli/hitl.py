@@ -32,6 +32,9 @@ def create_terminal_hitl(console: Console) -> Hitl:
             console.print("  [3] Allow for rest of this session (this tool name)")
             while True:
                 choice = input("Choice [1-3]: ").strip().lower()
+                if not choice:
+                    console.print("[dim](empty — type 1, 2, or 3)[/dim]")
+                    continue
                 if choice in ("1", "r", "reject", "n", "no"):
                     return HitlDecision.REJECT
                 if choice in ("2", "o", "once", "y", "yes"):
