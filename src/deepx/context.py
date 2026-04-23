@@ -22,6 +22,7 @@ class AgentContext:
     resume: bool = False
     is_subagent: bool = False
     hitl: Hitl | None = None
+    interrupt_on: frozenset[str] = field(default_factory=frozenset)
 
     def __post_init__(self) -> None:
         from deepx.tools.planning import Plan as PlanModel

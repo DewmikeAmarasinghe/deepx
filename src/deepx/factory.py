@@ -207,6 +207,7 @@ def _subagent_tool_from_runner(
             resume=False,
             is_subagent=True,
             hitl=ac.hitl,
+            interrupt_on=runner._interrupt_on,
         )
         session = create_session(sub_sid, ckpt)
         agent_wrapped = runner._prepare_agent()
@@ -302,6 +303,12 @@ def create_deep_agent(
     nested specialist runs inherit the same coordinator from the parent context.
     MCP-backed tools (``mcp_servers``) are merged at runtime and are **not** wrapped by
     ``interrupt_on``; use the SDK’s ``require_approval`` on the MCP server instead.
+
+    :func:`~deepx.middleware.tool_pipeline.apply_tool_pipeline` runs only on ``agent.tools`` in
+    :meth:`~DeepAgentRunner._prepare_agent`, **before** the SDK merges MCP-derived tools.
+    Extending ``interrupt_on`` to MCP tools is not a matter of reordering that call—it would need
+    a stable hook into the merged tool list or bridging SDK approvals
+    (``ToolApprovalItem`` / ``RunState.approve()``) to :class:`~deepx.middleware.hitl.Hitl`.
 
     **Defaults**
 
@@ -420,8 +427,7 @@ def _make_general_purpose_runner(
         tools=user_tools,
         name="general_purpose",
         description=(
-            "General-purpose agent for isolated multi-step tasks. "
-            "Has access to the same filesystem and planning tools as the main agent."
+            "General-purpose agent for tasks like, searching for files and content, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. This agent has access to all tools as the main agent."
         ),
         system_prompt="",
         subagents=None,
@@ -551,6 +557,7 @@ class DeepAgentRunner:
             skills=si,
             debug=self._debug,
             resume=resume,
+            interrupt_on=self._interrupt_on,
         )
 
     def _make_hooks(self) -> RunHooksBase[AgentContext, AgentType[AgentContext]]:

@@ -29,8 +29,8 @@ web_agent_runner = create_deep_agent(
     name="web_agent",
     description=(
         "Open-web research specialist: runs the **Tavily CLI (`tvly`)** and **arXiv** skills "
-        "(under `test_demo/skills/`), not raw scraping. Use for live pages, news, docs, and paper "
-        "discovery; writes citations and reports under **/_outputs/**. Requires a logged-in `tvly` "
+        "(under `test_demo/skills/`). Use for live pages, news, docs, and paper "
+        "discovery and related tasks. Writes citations and reports under **/_outputs/**. Requires a logged-in `tvly` "
     ),
     tools=None,
     skills=[

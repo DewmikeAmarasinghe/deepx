@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 import json
 import re
 from datetime import datetime, timezone
@@ -10,7 +9,7 @@ from typing import Any
 from agents.agent import Agent
 from agents.lifecycle import RunHooksBase
 from agents.run_context import RunContextWrapper
-from agents.tool import FunctionTool, Tool
+from agents.tool import Tool
 from agents.tool_context import ToolContext
 
 from deepx.backends.protocol import BackendProtocol
@@ -113,56 +112,11 @@ def run_log_write_tool(
     )
 
 
-def _make_logged_invoke(
-    original_invoke: Any,
-    tool_name: str,
-    agent_name: str,
-    backend: BackendProtocol,
-) -> Any:
-    async def logged_invoke(ctx: Any, args_json: str) -> Any:
-        result = await original_invoke(ctx, args_json)
-        session_id = ctx.context.session_id
-        run_log_write_tool(
-            backend,
-            session_id,
-            {
-                "tool_name": tool_name,
-                "agent_name": agent_name,
-                "session_id": session_id,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "input": json.loads(args_json) if args_json else {},
-                "output_chars": len(str(result)),
-                "output": str(result),
-            },
-        )
-        return result
-
-    return logged_invoke
-
-
-def wrap_tools_for_logging(
-    tools: list[Tool],
-    backend: BackendProtocol,
-    agent_name: str,
-) -> list[Tool]:
-    out: list[Tool] = []
-    for tool in tools:
-        if isinstance(tool, FunctionTool):
-            logged = _make_logged_invoke(
-                tool.on_invoke_tool, tool.name, agent_name, backend
-            )
-            out.append(dataclasses.replace(tool, on_invoke_tool=logged))
-        else:
-            out.append(tool)
-    return out
-
-
 class SessionToolLogHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
-    """Write one JSON row per tool call under ``.deepx/sessions/<id>/logs/tools/``.
+    """Append one JSON file per tool call under ``.deepx/sessions/<id>/logs/tools/<tool>/``.
 
-    Uses :func:`on_tool_end` so **MCP-derived** tools (runtime ``FunctionTool`` instances) are logged the
-    same way as static tools. Static tools are no longer double-logged when this hook is used:
-    disable per-tool wrapping via :func:`wrap_tools_for_logging` in the tool pipeline.
+    Covers static tools and MCP-backed tools (the latter are merged at runtime and never pass
+    through per-tool logging wrappers).
     """
 
     def __init__(self, backend: BackendProtocol) -> None:
@@ -201,3 +155,13 @@ class SessionToolLogHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
                 "output": str(result),
             },
         )
+
+
+__all__ = [
+    "SessionToolLogHooks",
+    "resolve_data_root",
+    "run_log_append_plan_event",
+    "run_log_load_plan",
+    "run_log_save_plan",
+    "run_log_write_tool",
+]

@@ -5,11 +5,13 @@ https://huggingface.co/settings/tokens — browser / OAuth: https://huggingface.
 
 Set ``HF_TOKEN`` in the repo-root ``.env`` (next to ``pyproject.toml``) or in the process environment.
 
-MCP lifecycle is handled in :mod:`deepx.factory` via :class:`agents.mcp.MCPServerManager`.
+When ``HF_TOKEN`` is unset, :data:`hf_agent_runner` is ``None`` and the orchestrator omits this subagent.
 
-**HITL:** Deepx ``interrupt_on`` only wraps tools that go through :func:`deepx.middleware.tool_pipeline.apply_tool_pipeline`
-(the static ``agent.tools`` list). Hub tools are MCP-backed ``FunctionTool`` instances added at runtime; gate them with
-``require_approval`` on :class:`agents.mcp.MCPServerStreamableHttp` (per-tool map or ``"always"``), not ``interrupt_on``.
+MCP lifecycle: :class:`agents.mcp.MCPServerManager` in :mod:`deepx.factory`.
+
+**Gating:** Deepx ``interrupt_on`` only applies to tools wrapped in :func:`deepx.middleware.tool_pipeline.apply_tool_pipeline`.
+MCP Hub tools are not in that list, so ``interrupt_on`` cannot gate them. Use SDK ``require_approval`` on the MCP server
+only if your runner resumes :class:`~agents.items.ToolApprovalItem` (the demo CLI does not yet).
 """
 
 from __future__ import annotations
@@ -38,31 +40,20 @@ _AGENT_DBS.mkdir(parents=True, exist_ok=True)
 _HF_DB = str(_AGENT_DBS / "hf_agent.db")
 
 _hf_token = (os.environ.get("HF_TOKEN") or "").strip()
+if _hf_token:
+    os.environ["HF_TOKEN"] = _hf_token
 
 _HF_MCP_URL = "https://huggingface.co/mcp"
 
 _HF_SYSTEM = """\
 You use Hugging Face MCP tools to search the Hub and fetch docs. \
-Save substantive results under **/_outputs/** (markdown or JSON); keep the chat reply short \
-with **file paths** and a brief summary — do not paste long tool dumps in the reply.
+When the orchestrator specifies paths, write substantive results under **/_outputs/** (markdown or JSON). \
+Keep the chat reply short: **file paths** and a brief summary — do not paste long tool dumps in the reply.
 """
 
+hf_agent_runner: DeepAgentRunner | None
 if not _hf_token:
-    hf_agent_runner: DeepAgentRunner = create_deep_agent(
-        name="hf_agent",
-        description=(
-            "Hugging Face Hub via hosted MCP — **not configured**: set HF_TOKEN in .env or the environment."
-        ),
-        tools=[],
-        system_prompt=(
-            "You are **hf_agent** without HF_TOKEN. Say briefly that Hugging Face MCP is not configured; "
-            "do not pretend to call Hub tools."
-        ),
-        backend=_DEMO_BACKEND,
-        checkpointer=_HF_DB,
-        debug=True,
-        subagents=None,
-    )
+    hf_agent_runner = None
 else:
     hf_agent_runner = create_deep_agent(
         name="hf_agent",
@@ -86,9 +77,9 @@ else:
                     "sse_read_timeout": 300.0,
                 },
                 name="huggingface",
+                require_approval="never",
                 cache_tools_list=True,
                 max_retry_attempts=2,
             )
         ],
     )
-

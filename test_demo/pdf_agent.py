@@ -31,22 +31,22 @@ pdf_agent_runner = create_deep_agent(
     description=(
         "PDF related tasks specialist"
         "extract text/tables, metadata, and forms workflows per **pdf** skills under "
-        "`test_demo/skills/pdf`. Writes outputs to agreed paths (typically **/_outputs/**). "
+        "`test_demo/skills/pdf`. Writes outputs to agreed paths (typically **/_outputs/**). and returns paths plus a short summary."
         "For scanned PDFs, OCR needs host tools (e.g. Tesseract)—state limits plainly."
     ),
     tools=[],
     skills=[str(PDF_SKILLS_DIR)],
     system_prompt=(
-        "You specialise in PDF tasks. For multi-step work, call **`write_todos` first** (after "
-        "`read_file` on **pdf** / **forms** skill entry paths), then **`write_todos`** again with "
-        "an updated full list as you go.\n"
-        "Follow the skill workflows; use file tools and skills (no host shell in this agent). "
-        "Write outputs under sensible project paths and return paths.\n"
-        "**OCR / scanned PDFs:** if the user needs OCR, say clearly that **Tesseract** (or similar) "
-        "must be installed on the host system—pip packages alone are not enough."
+        "You specialise in PDF and forms. **`read_file`** skill `SKILL.md` entries first; use **`execute`** to run "
+        "companion scripts under the skill tree (e.g. `python /test_demo/skills/pdf/.../script.py ...`) when documented.\n\n"
+        "Use **file tools** for reading/writing project files. When the orchestrator gives target paths, put "
+        "**human-facing deliverables** under **`/_outputs/`** (and return those paths to the parent).\n\n"
+        "For multi-step work: **`write_todos`** after skilling up; refresh the list as steps complete.\n\n"
+        "**OCR / scanned PDFs:** if the user needs OCR, say clearly that **Tesseract** (or similar) must be on the host."
     ),
     backend=_DEMO_BACKEND,
     checkpointer=_PDF_DB,
     debug=True,
     subagents=None,
+    interrupt_on=["execute"],
 )

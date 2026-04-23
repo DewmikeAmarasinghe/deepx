@@ -108,8 +108,6 @@ ORCH_SKILLS_DIR = REPO_ROOT / "test_demo" / "skills" / "orchestrate"
 orch_tools = [render_files]
 
 DEMO_ORCHESTRATOR_SYS = """\
-## Role
-
 **Coordinate specialists when the task matches the routing table below.** For those tasks you do **not**
 run web/Tavily, SQL, PDF, or HF work yourself — you delegate with a **single, self-contained brief**
 (including output paths, `db_name` when needed, and reasonable defaults like “top 3 with ties” if the user
@@ -147,30 +145,30 @@ extra questions on top.
 | Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly` + skills. |
 | Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
 | PDF workflows | **`pdf_agent` tool**. |
-| Hugging Face Hub (hosted MCP) | **`hf_agent` tool**; needs **HF_TOKEN**; keep delegation brief. |
+| Hugging Face Hub (hosted MCP) | **`hf_agent` tool** when configured (**HF_TOKEN**); keep delegation brief. |
 | Show finished text to the user | **`render_files`** once, with every relevant path — not for mid-task browsing. |
 
 **Delegation:** one strong **`tool` call per specialist** when possible; pass **paths** between
 steps, not pasted bodies.
 """
 
+_ORCH_SUBAGENTS = [
+    web_agent_runner,
+    sql_agent_runner,
+    pdf_agent_runner,
+]
+if hf_agent_runner is not None:
+    _ORCH_SUBAGENTS.append(hf_agent_runner)
+
 
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
-        "Front-door planner for the Deepx demo: routes work to **web_agent** (Tavily + arXiv skills), "
-        "**sql_agent** (read-only SQLite on bundled *.db), **pdf_agent** (PDF/forms skills), and "
-        "**hf_agent** (Hugging Face Hub via hosted MCP). Handles general file tasks with built-in tools; "
-        "delegates with one self-contained brief per specialist; uses **write_todos** / **read_todos** "
-        "for multi-step work. Specialists must persist deliverables under **/_outputs/**; the "
-        "orchestrator uses **render_files** for user-visible artifacts without **read_file** on those paths."
+        "Open-web research specialist: runs the **Tavily CLI (`tvly`)** and **arXiv** skills "
+        "(under `test_demo/skills/`), not raw scraping. Use for live pages, news, docs, and paper "
+        "discovery; writes citations and reports under **/_outputs/**. Requires a logged-in `tvly` "
     ),
-    subagents=[
-        web_agent_runner,
-        sql_agent_runner,
-        pdf_agent_runner,
-        hf_agent_runner,
-    ],
+    subagents=_ORCH_SUBAGENTS,
     tools=orch_tools,
     skills=[str(ORCH_SKILLS_DIR)],
     system_prompt=DEMO_ORCHESTRATOR_SYS,

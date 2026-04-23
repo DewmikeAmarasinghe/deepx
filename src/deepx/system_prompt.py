@@ -133,7 +133,8 @@ tools, and write **complete, final artifacts** under the project tree (especiall
 dumps, or huge JSON. The orchestrator shows files to the user with **`render_files`** and only
 needs your paths plus a brief recap. If a tool result was evicted to `/_outputs/large_tool_results/`,
 use **`read_file`** and read them.
-Then you should to finish the work and return your output as previously mentioned.
+
+Finish the work, then return to the parent only **paths** and a **short summary** as above.
 
 **Quality:** when the user will see output via `render_files`, files must be **complete** (no “see
 other file” stubs). Delete scratch files when done; keep final outputs only.
@@ -196,11 +197,11 @@ THEN:
   into the next prompt. Subagents share the same project tree.
 - Parallelise subagent calls only when there is **zero data dependency** between them.
 
-## Human-in-the-loop (host)
+{subagents}
 
-Some tools are configured with ``interrupt_on``: the host may **pause before the tool runs** until a
-human approves or rejects. If a call is rejected, revise your plan with `write_todos` and try a
-different approach.
+## Human-in-the-loop
+
+{interrupt_section}
 
 ## Step 4 — Cleanup
 
@@ -400,6 +401,58 @@ def _section(title: str, content: str) -> str:
     return f"# {title}\n\n{content}"
 
 
+def _subagent_roster_markdown(agent: Agent) -> str:
+    """Markdown block listing subagent handoff tools on this assembly (any depth)."""
+    names: list[str] = []
+    for t in getattr(agent, "tools", None) or []:
+        if getattr(t, "_is_agent_tool", False):
+            raw = getattr(t, "name", "")
+            if isinstance(raw, str) and raw.strip():
+                names.append(raw.strip())
+    if not names:
+        return (
+            "### Subagent tools (delegation)\n\n"
+            "No subagent delegation tools on this agent—you only have direct tools (and skills, if any).\n"
+        )
+    lines = [
+        "### Subagent tools (delegation)",
+        "",
+        "Call each **by tool name** (function tool). Every delegated agent shares this project tree.",
+        "",
+    ]
+    for n in sorted(names):
+        lines.append(f"- `{n}`")
+    lines.extend(
+        [
+            "",
+            "When you delegate, follow the bullets above: **one** self-contained brief per specialist, and "
+            "tell them **exact output paths** under `/_outputs/` when the parent orchestrator requires artifacts there.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _interrupt_planning_body(interrupt_on: frozenset[str]) -> str:
+    """Body under ``## Human-in-the-loop`` (MCP vs Deepx gating)."""
+    chunks: list[str] = []
+    if not interrupt_on:
+        chunks.append(
+            "No tools on this agent use Deepx host confirmation before execution "
+            "(`interrupt_on` is empty for this runner)."
+        )
+    else:
+        chunks.append(
+            "The host may **pause before these tools run** until a human approves or rejects "
+        )
+        chunks.append("")
+        chunks.extend(f"- `{n}`" for n in sorted(interrupt_on))
+        chunks.append("")
+        chunks.append(
+            "If a call is rejected, revise your plan with `write_todos` and try a different approach."
+        )
+    return "\n".join(chunks)
+
+
 def build_system_prompt(
     ctx: RunContextWrapper[AgentContext],
     agent: Agent,
@@ -427,7 +480,13 @@ def build_system_prompt(
     if ctx.context.is_subagent:
         sections.append(_section("YOUR ROLE", SUBAGENT_ROLE_PROMPT))
 
-    sections.append(_section("PLANNING & DELEGATION", PLANNING_PROMPT))
+    roster = _subagent_roster_markdown(agent)
+    interrupt_body = _interrupt_planning_body(ctx.context.interrupt_on)
+    planning = PLANNING_PROMPT.format(
+        subagents=roster,
+        interrupt_section=interrupt_body,
+    )
+    sections.append(_section("PLANNING & DELEGATION", planning))
 
     all_skills = ctx.context.skills.strip()
 
@@ -449,9 +508,7 @@ def build_system_prompt(
     sections.append(_section("FILESYSTEM", fs_blocks))
 
     if ctx.context.plan.todos:
-        lines = [
-            f"({t.status.value}) {t.content}" for t in ctx.context.plan.todos
-        ]
+        lines = [f"({t.status.value}) {t.content}" for t in ctx.context.plan.todos]
         sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 
     return _SEP.join(sections)

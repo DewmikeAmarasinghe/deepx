@@ -109,7 +109,7 @@ def wrap_tools_for_hitl(
             if not isinstance(call_id, str) or not call_id.strip():
                 call_id = "unknown"
 
-            agent_label = (ac.agent_name or getattr(ctx, "agent", None) or "")
+            agent_label = ac.agent_name or getattr(ctx, "agent", None) or ""
             if hasattr(agent_label, "name"):
                 agent_label = getattr(agent_label, "name", "") or str(agent_label)
             agent_label = str(agent_label).strip() or "agent"
