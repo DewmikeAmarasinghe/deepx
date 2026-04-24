@@ -17,7 +17,7 @@ async def execute(
 ) -> str:
     """Run one **host shell** command in the backend’s project root (same tree as file tools).
 
-    Pass **`command`**: a non-interactive shell string. **`timeout_seconds`** is clamped. Unsupported
+    Pass **`command`**: a non-interactive shell string. **`timeout_seconds`** defaults to 120 seconds and is bounded by maximum of 600 seconds. Unsupported
     backends return a clear error. Very large stdout/stderr may be spilled to
     **`/_outputs/large_tool_results/`** by the framework — use **`read_file`** on the path from the
     tool message if so.

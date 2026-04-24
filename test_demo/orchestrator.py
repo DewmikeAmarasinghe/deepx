@@ -142,10 +142,10 @@ extra questions on top.
 
 | Goal | Use |
 |------|-----|
-| Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly` + skills. |
+| Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly`, tavily skills, and **write-report** for deliverables. |
 | Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
 | PDF workflows | **`pdf_agent` tool**. |
-| Hugging Face Hub (hosted MCP) | **`hf_agent` tool** when configured (**HF_TOKEN**); keep delegation brief. |
+| Hugging Face Hub | **`hf_agent` tool** when configured (**HF_TOKEN**); keep delegation brief. |
 | Show finished text to the user | **`render_files`** once, with every relevant path — not for mid-task browsing. |
 
 **Delegation:** one strong **`tool` call per specialist** when possible; pass **paths** between
@@ -164,9 +164,9 @@ if hf_agent_runner is not None:
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
-        "Open-web research specialist: runs the **Tavily CLI (`tvly`)** and **arXiv** skills "
-        "(under `test_demo/skills/`), not raw scraping. Use for live pages, news, docs, and paper "
-        "discovery; writes citations and reports under **/_outputs/**. Requires a logged-in `tvly` "
+        "Coordinates **web_agent** (Tavily CLI + report standards), **sql_agent**, **pdf_agent**, and "
+        "optional **hf_agent**. Delegates with self-contained briefs; specialists write under **/_outputs/**. "
+        "You plan, route, and use **render_files**—you do not replace specialists for their domains."
     ),
     subagents=_ORCH_SUBAGENTS,
     tools=orch_tools,

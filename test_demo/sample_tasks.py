@@ -1,28 +1,28 @@
 ORCHESTRATOR_TASKS: list[str] = [
     """\
-Curl https://lobehub.com/skills/openclaw-openclaw-weather/skill.md, then follow the instructions
-to set up LobeHub Skills Marketplace and install the skill in test_demo/skills folder. Once installed, read its SKILL.md file
-in the installed directory and follow its instructions to find the weather of colombo, Sri Lanka now.
+You are a capable agent like openclaw. I want you to register a new skill for yourself. Fetch https://lobehub.com/skills/openclaw-openclaw-weather/skill.md and save it in 
+test_demo/skills/weather/SKILL.md.
+Then edit your agent definition in test_demo/orchestrator.py file to include the new skill.
+Then use that new skill to find the current weather of colombo, Sri Lanka.
+Save your outputs to the _outputs/weather_task_output folder.
 """,
 ]
 
 WEB_AGENT_TASKS: list[str] = [
     """\
 https://www.parliament.lk/en  Find the directory of current MPs. Go to their profiles and finally create a table showing name, party, phone number, date of birth, religion. The table should have 
-only 30 such profile inforamtion. Number the table rows.
+only 50 such profile inforamtion. Number the table rows.
+Save your outputs to the _outputs/parliament_task_output folder.
 """,
     """\
 Go to the blog site https://thamalu.blogspot.com/ and find the 5 most top read articles go to each link and then create a summary of each article.. Finally create create a report showing the articles and their summaries.. Then create an overall summary of the blog.
+Save your outputs to the _outputs/blog_task_output folder.
 """,
     """\
 I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
 energy density limits, materials and geopolitics, manufacturing scale-up, then write a single strong markdown report in the workspace
 I can open, and show me that report in the terminal when it is ready.
-""",
-    """\
-arXiv: shortlist recent papers that materially change efficient LLM inference assumptions this
-quarter; for each, title, why it matters, and a link. Write paths to a workspace digest and
-render it.
+Save your outputs to the _outputs/sodium_ion_task_output folder.
 """,
 ]
 
@@ -41,6 +41,8 @@ spending spikes or declines.
 
 Return SQL, result tables, and a short business analysis explaining
 possible drivers behind the trends.
+
+Save your outputs to the _outputs/chinook_task_output folder.
 """,
     """\
 The Northwind database contains information about customers, employees,
@@ -55,6 +57,8 @@ contributing most to the drop, and any operational patterns that
 may explain the change.
 
 Return SQL, result tables, and a short root-cause analysis.
+
+Save your output to the _outputs/northwind_task_output folder.
 """,
 ]
 
@@ -64,12 +68,13 @@ I have two research PDFs under /test_demo/pdfs/ (attention.pdf and gpt4.pdf). Su
 in a structured way (ideas, architectures, limitations), compare how themes evolved, extract any
 key tables or numbers you can, then produce one combined workspace report and a merged PDF—
 return paths and render the report.
+Save your output to the _outputs/pdf_task_output folder.
 """,
 ]
 
 HF_AGENT_TASKS: list[str] = [
-        """\
-You have a huggingface sub agent who is connected to the Hugging Face Hub via MCP.
+    """\
+You have a huggingface sub agent with Hugging Face Hub tools (when HF_TOKEN is set).
 
 Search the Hugging Face Hub for three recent diffusion-model papers or official model cards.
 Choose items that are practically useful for ML engineers and preferably from 2025–2026.
@@ -89,5 +94,7 @@ Finally, save a short digest to:
 _outputs/diffusion_models_summary.md
 
 Return the final shortlist, the saved workspace path, and a brief recommendation on which model a practitioner should evaluate first.
+
+Save your output to the _outputs/hf_task_output folder.
 """
 ]

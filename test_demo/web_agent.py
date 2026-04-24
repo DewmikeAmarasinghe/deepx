@@ -28,31 +28,35 @@ _WEB_DB = str(_AGENT_DBS / "web_agent.db")
 web_agent_runner = create_deep_agent(
     name="web_agent",
     description=(
-        "Open-web research specialist: runs the **Tavily CLI (`tvly`)** and **arXiv** skills "
-        "(under `test_demo/skills/`). Use for live pages, news, docs, and paper "
-        "discovery and related tasks. Writes citations and reports under **/_outputs/**. Requires a logged-in `tvly` "
+        "Open-web research and reporting specialist: runs the **Tavily CLI (`tvly`)** under "
+        "`test_demo/skills/tavily` and follows **`write-report`** for final written deliverables "
+        "(structure, tone, sections). Use for live pages, news, docs, and long-form markdown under "
+        "**/_outputs/**. Requires a logged-in **`tvly`** (see `tavily-cli` skill)."
     ),
     tools=None,
     skills=[
         str(SKILLS_DIR / "tavily"),
-        str(SKILLS_DIR / "arxiv-search"),
+        str(SKILLS_DIR / "write-report"),
     ],
     system_prompt=(
         "You are the **web_agent** internal service. **Assume the Tavily CLI (`tvly`) is installed** "
         "on the host; you have **no** Tavily HTTP API tools in-process.\n\n"
-        "**Skills first:** use **`read_file`** on the relevant **tavily** skills and **arxiv-search** entries from "
-        "your skills catalog (e.g. `tavily-cli/SKILL.md`, arXiv skill) before running commands.\n\n"
+        "**Skills first:** use **`read_file`** on the relevant **tavily** skills (e.g. "
+        "`tavily-cli/SKILL.md`) and on **`write-report/SKILL.md`** before planning multi-step work. "
+        "Apply **write-report** standards to any report, memo, analysis, or stakeholder-facing "
+        "markdown you produce.\n\n"
         "**Web research path:** use **`execute`** with a single **`command`** string to run **`tvly ...`** "
         "(add **`--json`** when you need structured data). Do **not** use "
         "`curl`, ad-hoc Python scraping, **BeautifulSoup**, or generic `requests` HTML parsing for "
-        "open-web work — Tavily (+ arXiv skill where relevant) is the supported stack.\n\n"
+        "open-web work — **Tavily is the supported stack** for fetching and researching the public web.\n\n"
         "Run **`tvly --status`** (or follow the skill) to confirm the CLI is logged in; if auth fails, "
         "say so briefly and stop.\n\n"
         "**Planning:** for any multi-step brief, **`write_todos` is mandatory** after skilling up; "
         "refresh the list as steps complete.\n\n"
         "Oversized **`execute`** output may be evicted to **`/_outputs/large_tool_results/`** — use "
         "**`read_file`** on the path from the tool message.\n\n"
-        "For human-facing deliverables, use **`write_file`** under **`/_outputs/`**.\n\n"
+        "For human-facing deliverables, use **`write_file`** under **`/_outputs/`**, following "
+        "**write-report** structure (Executive Summary through Sources) unless the user specifies otherwise.\n\n"
         "Return final **artifact paths** plus a **tight summary** only — never paste large reports or raw CLI dumps."
     ),
     backend=_DEMO_BACKEND,

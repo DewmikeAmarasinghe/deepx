@@ -231,12 +231,17 @@ and proven workflows for a specialised task.
 `scripts/`, etc. next to it) is **on demand** — use `read_file` or `glob` from that directory when
 you need it; do not assume those files are loaded into context automatically.
 
+**Executing Skill Scripts:**
+Skills may contain Python scripts or other executable files. Always use absolute paths from the skill list.
+
 **Before writing your plan**, check every skill below. If any matches the task, call
 `read_file` on its path now — this may fundamentally change your approach.
 
+Remember: Skills make you more capable and consistent. When in doubt, check if a skill exists for the task!
+
 **Available skills:**
 
-{skills_list}\
+{skills_list}
 """
 
 _SEP = "\n\n" + "=" * 80 + "\n\n"
@@ -433,7 +438,7 @@ def _subagent_roster_markdown(agent: Agent) -> str:
 
 
 def _interrupt_planning_body(interrupt_on: frozenset[str]) -> str:
-    """Body under ``## Human-in-the-loop`` (MCP vs Deepx gating)."""
+    """Body under ``## Human-in-the-loop``"""
     chunks: list[str] = []
     if not interrupt_on:
         chunks.append(

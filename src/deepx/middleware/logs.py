@@ -115,8 +115,7 @@ def run_log_write_tool(
 class SessionToolLogHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
     """Append one JSON file per tool call under ``.deepx/sessions/<id>/logs/tools/<tool>/``.
 
-    Covers static tools and MCP-backed tools (the latter are merged at runtime and never pass
-    through per-tool logging wrappers).
+    Hooks run for each tool invocation the runner records.
     """
 
     def __init__(self, backend: BackendProtocol) -> None:

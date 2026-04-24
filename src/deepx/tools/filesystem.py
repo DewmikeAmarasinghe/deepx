@@ -77,7 +77,10 @@ def _format_size(n: int) -> str:
 
 @function_tool
 async def ls(ctx: RunContextWrapper[AgentContext], path: str = "/") -> str:
-    """List files in a directory. Use before read_file or edit_file to explore the filesystem."""
+    """Lists all files in a directory.
+
+    This is useful for exploring the filesystem and finding the right file to read or edit.
+    You should almost ALWAYS use this tool before using the read_file or edit_file tools."""
     r = ctx.context.backend.ls(ctx.context.session_id, path)
     if r.error:
         return r.error

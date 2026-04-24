@@ -149,10 +149,12 @@ def apply_tool_pipeline(
     *,
     interrupt_on: frozenset[str] | None = None,
 ) -> list[Tool]:
-    """Large-result eviction + ``interrupt_on`` HITL for static ``agent.tools``.
+    """Large-result eviction + ``interrupt_on`` HITL for ``agent.tools``.
 
-    Session JSON logs for **all** tools (including MCP) come from :class:`SessionToolLogHooks` when
-    ``debug=True`` on the runner.
+    Expose remote MCP servers as ``FunctionTool`` instances on ``tools=`` so they are included here;
+    Deepx does not merge a separate ``Agent.mcp_servers`` tool list.
+
+    Session JSON logs come from :class:`SessionToolLogHooks` when ``debug=True`` on the runner.
     """
     wrapped = wrap_tools_for_large_tool_results(tools, backend)
     wrapped = wrap_tools_for_hitl(wrapped, interrupt_on or frozenset())

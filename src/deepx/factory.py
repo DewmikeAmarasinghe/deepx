@@ -12,14 +12,12 @@ import dataclasses
 import re
 import uuid
 from collections.abc import Sequence
-from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agents import Agent, RunContextWrapper, Runner, function_tool
 from agents.agent import Agent as AgentType
 from agents.lifecycle import RunHooksBase
-from agents.mcp import MCPServerManager
 from agents.model_settings import ModelSettings
 from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
@@ -46,24 +44,7 @@ from deepx.tools import builtin_tools_for_backend
 DEFAULT_MODEL = "gpt-5-mini"
 
 
-@asynccontextmanager
-async def _connected_mcp_agent(agent: Agent):
-    """Connect MCP servers for this run using the SDK’s :class:`~agents.mcp.MCPServerManager`.
-
-    ``Runner`` does not call ``server.connect()`` for you. ``AgentBase.mcp_servers`` documents
-    lifecycle management; the manager matches the documented ``async with`` pattern while supporting
-    multiple servers and failed-server drop policies.
-    """
-    mcp = getattr(agent, "mcp_servers", None) or []
-    if not mcp:
-        yield agent
-        return
-    async with MCPServerManager(mcp) as manager:
-        yield dataclasses.replace(agent, mcp_servers=manager.active_servers)
-
-
 if TYPE_CHECKING:
-    from agents.agent import MCPConfig
     from agents.lifecycle import AgentHooks
     from agents.prompts import DynamicPromptFunction, Prompt
 
@@ -146,8 +127,6 @@ def _collect_skill_roots(main: list[str] | None) -> list[str]:
 
 def _merge_optional_agent_fields(
     *,
-    mcp_servers: list[Any] | None,
-    mcp_config: "MCPConfig | None",
     model_settings: ModelSettings | None,
     input_guardrails: list[Any] | None,
     output_guardrails: list[Any] | None,
@@ -157,10 +136,6 @@ def _merge_optional_agent_fields(
     prompt: "Prompt | DynamicPromptFunction | None",
 ) -> dict[str, Any]:
     opts: dict[str, Any] = {}
-    if mcp_servers is not None:
-        opts["mcp_servers"] = mcp_servers
-    if mcp_config is not None:
-        opts["mcp_config"] = mcp_config
     if model_settings is not None:
         opts["model_settings"] = model_settings
     if input_guardrails is not None:
@@ -212,16 +187,15 @@ def _subagent_tool_from_runner(
         session = create_session(sub_sid, ckpt)
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
-        async with _connected_mcp_agent(agent_wrapped) as ag:
-            run_result = await Runner.run(
-                ag,
-                input,
-                context=sub_ctx,
-                session=session,
-                hooks=hooks,
-                max_turns=max_turns,
-            )
-            return _format_subagent_output(run_result)
+        run_result = await Runner.run(
+            agent_wrapped,
+            input,
+            context=sub_ctx,
+            session=session,
+            hooks=hooks,
+            max_turns=max_turns,
+        )
+        return _format_subagent_output(run_result)
 
     tool = function_tool(
         _invoke,
@@ -251,8 +225,6 @@ def create_deep_agent(
     max_turns: int = 1000,
     run_hooks: Sequence[RunHooksBase[AgentContext, AgentType[AgentContext]]] = (),
     include_general_purpose: bool = True,
-    mcp_servers: list[Any] | None = None,
-    mcp_config: "MCPConfig | None" = None,
     model_settings: ModelSettings | None = None,
     input_guardrails: list[Any] | None = None,
     output_guardrails: list[Any] | None = None,
@@ -301,20 +273,18 @@ def create_deep_agent(
     ``interrupt_on`` lists tool names that require host approval before execution. Pass a
     :class:`~deepx.middleware.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
     nested specialist runs inherit the same coordinator from the parent context.
-    MCP-backed tools (``mcp_servers``) are merged at runtime and are **not** wrapped by
-    ``interrupt_on``; use the SDK’s ``require_approval`` on the MCP server instead.
 
-    :func:`~deepx.middleware.tool_pipeline.apply_tool_pipeline` runs only on ``agent.tools`` in
-    :meth:`~DeepAgentRunner._prepare_agent`, **before** the SDK merges MCP-derived tools.
-    Extending ``interrupt_on`` to MCP tools is not a matter of reordering that call—it would need
-    a stable hook into the merged tool list or bridging SDK approvals
-    (``ToolApprovalItem`` / ``RunState.approve()``) to :class:`~deepx.middleware.hitl.Hitl`.
+    **Remote MCP / Hub tools**
+
+    Deepx does **not** pass ``mcp_servers`` into the OpenAI Agents ``Agent``. Expose MCP servers as
+    normal ``function_tool`` / :class:`~agents.tool.FunctionTool` instances on ``tools=`` (for
+    example via FastMCP’s ``Client``) so :func:`~deepx.middleware.tool_pipeline.apply_tool_pipeline`
+    (eviction + ``interrupt_on`` + :class:`~deepx.middleware.hitl.Hitl`) applies uniformly.
 
     **Defaults**
 
     ``model`` is :data:`DEFAULT_MODEL`. ``debug=True`` enables :class:`~deepx.middleware.logs.SessionToolLogHooks`,
-    writing tool JSON under ``.deepx/sessions/<id>/logs/tools`` (including MCP tool calls) when the
-    backend exposes a workspace root.
+    writing tool JSON under ``.deepx/sessions/<id>/logs/tools`` when the backend exposes a workspace root.
 
     **Returns**
 
@@ -374,8 +344,6 @@ def create_deep_agent(
         )
 
     merged = _merge_optional_agent_fields(
-        mcp_servers=mcp_servers,
-        mcp_config=mcp_config,
         model_settings=model_settings,
         input_guardrails=input_guardrails,
         output_guardrails=output_guardrails,
@@ -421,7 +389,7 @@ def _make_general_purpose_runner(
     extra_run_hooks: tuple[RunHooksBase[AgentContext, AgentType[AgentContext]], ...],
     response_format: type | None,
 ) -> "DeepAgentRunner":
-    """Same tools/skills/memory file paths as parent; does not inherit MCP or extra handoffs."""
+    """Same tools/skills/memory file paths as parent; does not add extra handoffs."""
     return create_deep_agent(
         model=model,
         tools=user_tools,
@@ -470,19 +438,17 @@ class DeepRunBinding:
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
             None if isinstance(inp, RunState) else self.ctx
         )
-        async with _connected_mcp_agent(self.agent) as ag:
-            return await Runner.run(
-                ag,
-                inp,
-                context=resume_ctx,
-                session=self.session,
-                hooks=self.hooks,
-                max_turns=self._runner._max_turns,
-            )
+        return await Runner.run(
+            self.agent,
+            inp,
+            context=resume_ctx,
+            session=self.session,
+            hooks=self.hooks,
+            max_turns=self._runner._max_turns,
+        )
 
     def run_streamed(self, inp: str | RunState) -> RunResultStreaming:
-        """Stream one turn. Agents with ``mcp_servers`` should use :meth:`DeepAgentRunner.run_stream`
-        instead so MCP connect/cleanup wraps the full stream; the orchestrator path has none."""
+        """Stream one turn using the bound prepared agent (same tool list as :meth:`run`)."""
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = (
             None if isinstance(inp, RunState) else self.ctx
         )
@@ -625,18 +591,17 @@ class DeepAgentRunner:
         sid = session_id or uuid.uuid4().hex
         b = self.bind(sid, resume=resume)
         resume_ctx: RunContextWrapper[AgentContext] | AgentContext | None = b.ctx
-        async with _connected_mcp_agent(b.agent) as ag:
-            stream = Runner.run_streamed(
-                ag,
-                task,
-                context=resume_ctx,
-                session=b.session,
-                hooks=b.hooks,
-                max_turns=self._max_turns,
-            )
-            async for event in stream.stream_events():
-                yield event
-            yield {"kind": "done", "output_preview": str(stream.final_output)}
+        stream = Runner.run_streamed(
+            b.agent,
+            task,
+            context=resume_ctx,
+            session=b.session,
+            hooks=b.hooks,
+            max_turns=self._max_turns,
+        )
+        async for event in stream.stream_events():
+            yield event
+        yield {"kind": "done", "output_preview": str(stream.final_output)}
 
 
 class DeepRunResult:
