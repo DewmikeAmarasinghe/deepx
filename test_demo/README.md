@@ -4,9 +4,32 @@ This directory contains an **example multi-agent setup** for the Deepx repositor
 
 - **Root readme:** [`README.md`](../README.md)  
 - **Framework:** [`src/deepx/README.md`](../src/deepx/README.md)  
-- **Terminal chat:** [`src/deepx_cli/README.md`](../src/deepx_cli/README.md)
+- **Terminal chat:** [`src/deepx_cli/README.md`](../src/deepx_cli/README.md) (minimal REPL only).
+- **Removed experiments** (Temporal, Chainlit, old MCP wiring): [`removed_features.md`](../removed_features.md).
 
 **Setup:** from the repository root, `uv sync --extra demo`, ensure **`OPENAI_API_KEY`** (and any provider keys your agents need) are available, e.g. via `.env` loaded in the demo entrypoints.
+
+---
+
+## `test_demo/` tree (overview)
+
+```text
+test_demo/
+├── orchestrator.py        # CLI: --chat, --chat_sync, --session (main demo entry)
+├── web_agent.py
+├── sql_agent.py
+├── pdf_agent.py
+├── hf_agent.py
+├── sql_tools.py
+├── sample_tasks.py
+├── __init__.py
+├── dbs/
+│   ├── agent_dbs/*.db     # per-agent SQLite checkpointers
+│   └── test_dbs/*.db      # chinook, northwind sample DBs
+├── pdfs/                  # sample PDFs for pdf_agent
+├── skills/                # tavily, write-report, pdf, sql, …
+└── scripts/               # optional standalone helpers
+```
 
 ---
 

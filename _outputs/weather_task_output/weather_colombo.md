@@ -1,0 +1,5 @@
+- Timestamp (UTC): 2026-04-27 09:17:32Z
+- Temperature: 32 °C (feels like 40 °C)
+- Wind: 14 km/h (WSW)
+- Precipitation: 0.1 mm currently; hourly forecasts show a high chance of rain nearby
+- Recommendation: Expect hot, humid conditions with possible rain—carry a light rain jacket and stay hydrated.

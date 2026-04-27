@@ -1,0 +1,15 @@
+{
+  "tool_name": "grep",
+  "agent_name": "orchestrator",
+  "session_id": "840198630f63",
+  "timestamp": "2026-04-27T09:14:19.187886+00:00",
+  "input": {
+    "pattern": "skills=",
+    "path": "",
+    "glob_pattern": "**/*.py",
+    "output_mode": "files_with_matches"
+  },
+  "output_chars": 148,
+  "output": "/src/deepx/factory.py\n/src/deepx/system_prompt.py\n/test_demo/orchestrator.py\n/test_demo/pdf_agent.py\n/test_demo/sql_agent.py\n/test_demo/web_agent.py",
+  "call_id": "1"
+}

@@ -1,156 +1,335 @@
-# Deepx framework (`deepx`)
+# `deepx` — core framework
 
-This package implements the **Deepx** agent framework: a **`DeepAgentRunner`** built from **`create_deep_agent`**, running on the OpenAI Agents SDK with a pluggable **`BackendProtocol`**, composed **run hooks**, a **tool pipeline** (large-result eviction + HITL wrapping), and a **dynamic system prompt** (`deepx.system_prompt.build_system_prompt`).
+`deepx` is the core library: **backend abstraction**, **factory** (`create_deep_agent`), **middleware** (hooks + tool pipeline + HITL), **built-in tools**, **SQLite session + compaction**, and **dynamic system prompt** assembly. It has **no UI dependencies**; the terminal helpers live in [`deepx_cli`](../deepx_cli/README.md).
 
-Higher-level docs: **[repository `README.md`](../../README.md)** (links to this file, CLI, and `test_demo`).
-
----
-
-## What the framework does
-
-1. **Workspace scope** — All file tools operate through a **backend**. Paths are **agent paths** rooted at the backend’s **`root_dir`** (project root), plus a metadata tree at **`/.deepx/...`** mapped to `<root_dir>/.deepx/...` on disk for filesystem backends.
-2. **Built-in tools** — `ls`, `read_file`, `write_file`, `edit_file`, `grep`, `glob`, **`save_memory`**, **`write_todos`**, **`think_tool`**, and optionally **`execute`** when the backend is a **`LocalShellBackend`** (`deepx.tools.builtin_tools_for_backend`).
-3. **Subagents as tools** — Each **`DeepAgentRunner`** in **`subagents=`** becomes an SDK **`function_tool`** that runs a nested **`Runner.run`** with that runner’s own backend, memory, and `debug`, while **reusing the parent `session_id` and `Hitl`** (`deepx.factory._subagent_tool_from_runner`).
-4. **Sessions** — **`checkpointer`** is a SQLite path (or `":memory:"`) used by **`deepx.sessions.create_session`**, which wraps **`SQLiteSession`** in **`OpenAIResponsesCompactionSession`** with a compaction rule at ~90% of the model context window.
-5. **Human-in-the-loop** — Tool names listed in **`interrupt_on`** are wrapped so each invocation can consult **`deepx.middleware.hitl.Hitl`** before running. Approvals keyed by **`(agent_name, tool_name)`** can be persisted under **`/.deepx/sessions/<session_id>/approvals.json`** via the **tool runner’s** `backend` (important when the orchestrator and specialists use different backends).
+- **Repo overview:** [`README.md`](../../README.md)  
+- **Removed / historical design:** [`removed_features.md`](../../removed_features.md)
 
 ---
 
-## Backends define scope
-
-Backends implement **`deepx.backends.protocol.BackendProtocol`**: `ls`, `read`, `grep`, `glob`, `write`, `edit`, and **`execute`** (optional / may return a fixed “not available” string).
-
-| Backend | Module | Role |
-|---------|--------|------|
-| **`FilesystemBackend`** | `deepx.backends.filesystem` | Maps agent paths under **`root_dir`**; **`.deepx`** content is **not** visible to normal file tools (only via `/.deepx/...` agent paths). **`execute`** returns a message that shell is unavailable—use **`LocalShellBackend`** for `execute`. |
-| **`LocalShellBackend`** | `deepx.backends.local_shell` | Subclass of **`FilesystemBackend`**; **`execute`** runs **`subprocess.run(..., shell=True, cwd=root_dir)`** with timeout capped at 600s. |
-| **`InMemoryBackend`** | `deepx.backends.memory` | In-process dict storage with the **same path rules** as the filesystem backend (including **`/.deepx/...`**). Useful for tests or a virtual workspace; pair with a real **`root_dir`** if you want **`data_root`** aligned to a repo (e.g. `<repo>/.deepx` on disk is not automatic unless you mirror with a filesystem backend or custom logic). |
-
-Shared helpers and constants live in **`deepx.backends.utils`** (e.g. **`data_root_for_host`**, **`data_root_as_agent_path`**, **`OUTPUTS_PREFIX`** `/_outputs`, **`OUTPUTS_LARGE_TOOL_RESULTS_PREFIX`**, **`MAX_READ_FILE_LINES`**, tool-result eviction messages, **`resolve_root_dir`**, **`resolve_data_root`**, **`resolve_backend_paths`**, and path normalization helpers used by backends).
-
-**`BackendProtocol.resolve_path`** — Optional host path for an agent path; used when tooling needs a real filesystem path.
-
----
-
-## Agent-visible output locations
-
-- **`/_outputs/`** — Conventional tree for **user-facing deliverables** the model can write (replace rules are relaxed under this prefix per backend implementation). In a demo with **`FilesystemBackend(REPO_ROOT)`**, this is `<repo>/_outputs/`.
-- **`/_outputs/large_tool_results/`** — Large tool outputs may be spilled here by **`deepx.middleware.tool_pipeline`** with a preview in the tool result.
-- **`/.deepx/...`** — Session metadata: e.g. **`sessions/<id>/approvals.json`** (HITL), **`sessions/<id>/logs/...`** (when logging is enabled—see **Debug** below), **`AGENTS.md`** (via **`save_memory`**), plan snapshots under **`logs/plans/`** when **`debug=True`**.
-
----
-
-## Middleware
-
-Middleware is mostly **run hooks** (SDK **`RunHooksBase`**) and **tool wrappers** applied when the agent is prepared.
-
-| Piece | Module | Purpose |
-|-------|--------|---------|
-| **`FilesystemHooks`** | `deepx.middleware.filesystem` | On agent start: sets **`context.agent_name`**, syncs **`plan.agent_name`**, and if **`context.resume`**, loads a saved plan JSON via **`run_log_load_plan`**. |
-| **`SessionToolLogHooks`** | `deepx.middleware.logs` | On tool end: writes one JSON file per call under **`/.deepx/sessions/<id>/logs/tools/<tool_name>/<n>.json`**. **Only registered when `debug=True`** on the runner (`DeepAgentRunner._make_hooks`). |
-| **`apply_tool_pipeline`** | `deepx.middleware.tool_pipeline` | Wraps **`FunctionTool`** instances: eviction of huge results to **`/_outputs/large_tool_results/`**, then **`wrap_tools_for_hitl`** for **`interrupt_on`** tools. |
-| **`Hitl` / `wrap_tools_for_hitl`** | `deepx.middleware.hitl` | Prompt policy (async callback); **`consult(..., tool_backend=ac.backend)`** so persistence uses the **agent that owns the tool**. |
-| **`compose_run_hooks` / `ChainedRunHooks`** | `deepx.middleware.run_hooks` | Runs multiple hook objects in sequence. |
-| **`setup_observability`** | `deepx.middleware.observability` | Called from **`create_deep_agent`**; registers LangSmith tracing for the Agents SDK when **`LANGSMITH_API_KEY`** is set. |
-
-**Plan persistence vs debug:** **`write_todos`** always updates in-memory **`Plan`**. Calls to **`run_log_save_plan`** and **`run_log_append_plan_event`** run **only when `ctx.context.debug` is True** (`deepx.tools.planning`). So **`sessions/.../logs/plans/`** and plan event JSON are **debug-gated**; **`SessionToolLogHooks`** is also **debug-gated**.
-
----
-
-## Core types and entrypoints
-
-- **`create_deep_agent`** — `deepx.factory.create_deep_agent` (alias **`DeepAgent`**).
-- **`DeepAgentRunner`** — Holds the SDK **`Agent`**, backend, checkpointer path, `max_turns`, skill roots, memory string, `debug`, `interrupt_on`, etc. **`bind(session_id, resume=..., hitl=...)`** returns **`DeepRunBinding`**.
-- **`DeepRunBinding`** — Prepared agent, **`create_session(session_id, checkpointer)`**, **`AgentContext`** (`ctx`), optional **`hitl.attach_session(runner._backend, session_id)`** for loading approvals from the **bound** runner’s backend.
-- **`AgentContext`** — `deepx.context.AgentContext`: `session_id`, `backend`, `agent_name`, `plan`, `memory`, `skills`, `debug`, `resume`, `hitl`, `interrupt_on`.
-- **`Hitl`** — Exported from **`deepx.factory`** (and **`deepx.middleware.hitl`**).
-
----
-
-## `create_deep_agent` parameters
-
-Below matches **`deepx.factory.create_deep_agent`** as implemented. Several optional fields are passed through to the OpenAI Agents **`Agent`** constructor (same general ideas as in the upstream SDK: model tuning, guardrails, hooks, tool-use behavior, dynamic prompts).
-
-| Parameter | Default / notes |
-|-----------|-----------------|
-| **`model`** | `DEFAULT_MODEL` (`"gpt-5-mini"`). |
-| **`tools`** | Extra user **`Tool`** / **`FunctionTool`** instances (in addition to built-ins and subagent tools). |
-| **`name`** | Agent name (default `"agent"`). |
-| **`description`** | Used for subagent tool description when this runner is exposed as a tool. |
-| **`system_prompt`** | **Role / task** text only; merged into the full prompt by **`build_system_prompt`**. |
-| **`subagents`** | Sequence of **`DeepAgentRunner`**; each becomes a **`function_tool`**. |
-| **`skills`** | List of **directory paths** (skill roots); resolved and cataloged for the prompt. |
-| **`memory`** | List of **file paths** (not inline prose); loaded in order, joined with `\n\n`, passed as **`AgentContext.memory`**. Relative paths: backend **`resolve_root_dir`** first, then **cwd** (`_load_memory`). |
-| **`response_format`** | Passed to **`Agent`** as **`output_type`** (structured output / Pydantic model type). |
-| **`backend`** | **`BackendProtocol`**; default **`FilesystemBackend(Path.cwd())`** if omitted. |
-| **`checkpointer`** | SQLite DB path or `":memory:"`; stripped; used by **`create_session`**. |
-| **`debug`** | **`True`** by default. When **`True`**, **`SessionToolLogHooks`** is attached and plan files/events under **`logs/`** are written when todos change (see planning module). |
-| **`max_turns`** | Passed to **`Runner.run`** / nested runs (default `1000`). |
-| **`run_hooks`** | Extra **`RunHooksBase`** instances, **composed after** **`FilesystemHooks`** (and after **`SessionToolLogHooks`** if `debug`). |
-| **`include_general_purpose`** | If **`True`** and no subagent named `general_purpose`, appends an auto-created general-purpose **`DeepAgentRunner`** sharing tools/skills/memory/backend/checkpointer. |
-| **`model_settings`** | Forwarded to **`Agent`** as **`model_settings`**. |
-| **`input_guardrails`** / **`output_guardrails`** | Forwarded to **`Agent`**. |
-| **`agent_hooks`** | Forwarded as **`Agent.hooks`** (per-agent lifecycle hooks in the SDK). |
-| **`tool_use_behavior`** | Forwarded to **`Agent`**. |
-| **`reset_tool_choice`** | Forwarded to **`Agent`**. |
-| **`prompt`** | Forwarded to **`Agent`** as **`prompt`** (SDK dynamic prompt / override). |
-| **`interrupt_on`** | List of tool **name strings**; must exist on the assembled tool list or **`ValueError`**. Wrapped for HITL via **`apply_tool_pipeline`**. |
-
----
-
-## Package file map (`src/deepx/`)
-
-| Path | Role |
-|------|------|
-| **`__init__.py`** | Public exports: **`create_deep_agent`**, **`DeepAgent`**, **`DeepAgentRunner`**, **`DeepRunBinding`**, **`DeepRunResult`**, backends, **`BackendProtocol`**. |
-| **`_version.py`** | Package version (Hatch reads this). |
-| **`factory.py`** | **`create_deep_agent`**, **`DeepAgentRunner`**, **`DeepRunBinding`**, **`DeepRunResult`**, **`_load_memory`**, subagent tool wiring, **`Hitl`** export in module **`__all__`**. |
-| **`context.py`** | **`AgentContext`** dataclass. |
-| **`sessions.py`** | **`create_session`** — SQLite + compaction session. |
-| **`system_prompt.py`** | **`build_system_prompt`**, prompt sections, skills discovery helpers. |
-| **`backends/protocol.py`** | **`BackendProtocol`**, result dataclasses, eviction constants. |
-| **`backends/filesystem.py`** | **`FilesystemBackend`**. |
-| **`backends/local_shell.py`** | **`LocalShellBackend`**. |
-| **`backends/memory.py`** | **`InMemoryBackend`**. |
-| **`backends/utils.py`** | Paths, eviction helpers, **`MAX_READ_FILE_LINES`**, backend path resolution. |
-| **`middleware/__init__.py`** | Lazy exports for middleware symbols. |
-| **`middleware/filesystem.py`** | **`FilesystemHooks`**. |
-| **`middleware/logs.py`** | Plan + tool JSON logging helpers; **`SessionToolLogHooks`**. |
-| **`middleware/hitl.py`** | **`Hitl`**, **`HitlRequest`**, **`HitlDecision`**, **`wrap_tools_for_hitl`**. |
-| **`middleware/tool_pipeline.py`** | Large-result eviction + HITL wrapping. |
-| **`middleware/run_hooks.py`** | **`compose_run_hooks`**, **`ChainedRunHooks`**. |
-| **`middleware/observability.py`** | **`setup_observability`**. |
-| **`tools/__init__.py`** | **`builtin_tools_for_backend`**, tool group constants. |
-| **`tools/filesystem.py`** | File tools (`ls`, `read_file`, …). |
-| **`tools/execute.py`** | **`execute`** tool (uses backend **`execute`**). |
-| **`tools/agent_memory.py`** | **`save_memory`**. |
-| **`tools/planning.py`** | **`write_todos`**, **`think_tool`**, **`Plan`** model. |
-
----
-
-## Nested specialist sessions
-
-Subagent tool calls use a **derived** session id:
-
-`f"{parent_session_id}:{subagent_agent.name}:{tool_call_id}"`
-
-with the **child runner’s** **`checkpointer`** (`deepx.factory._subagent_tool_from_runner`). The **CLI session id** you pass to **`bind`** remains the parent’s; nested SQLite sessions are separate rows/DBs as configured per runner.
-
----
-
-## Imports
+## Public API
 
 ```python
 from deepx import (
-    create_deep_agent,
+    create_deep_agent,   # main factory (alias: DeepAgent)
     DeepAgentRunner,
     DeepRunBinding,
+    DeepRunResult,
     FilesystemBackend,
-    LocalShellBackend,
     InMemoryBackend,
+    LocalShellBackend,
     BackendProtocol,
 )
-from deepx.factory import Hitl  # HITL coordinator
+
+from deepx.context import AgentContext   # not re-exported from deepx.__init__
+from deepx.factory import Hitl           # HITL coordinator (also on deepx.factory.__all__)
 ```
 
-For middleware symbols, prefer **`deepx.middleware`** lazy attributes or direct submodule imports (see **`middleware/__init__.py`**).
+Submodules (`deepx.middleware`, `deepx.tools`, …) are **public for imports** but not covered by a separate “stable facade” beyond the package above.
+
+---
+
+## Framework package tree (`src/deepx/`)
+
+```text
+src/deepx/
+├── __init__.py              # create_deep_agent, runners, backends, BackendProtocol
+├── _version.py
+├── factory.py               # create_deep_agent, DeepAgentRunner, DeepRunBinding, DeepRunResult, Hitl
+├── context.py               # AgentContext
+├── sessions.py              # create_session → SQLite + compaction
+├── system_prompt.py         # build_system_prompt (Agent.instructions)
+├── backends/
+│   ├── __init__.py
+│   ├── protocol.py          # BackendProtocol, result dataclasses, eviction constants
+│   ├── filesystem.py        # FilesystemBackend
+│   ├── local_shell.py       # LocalShellBackend
+│   ├── memory.py            # InMemoryBackend
+│   └── utils.py             # paths, data_root_as_agent_path, MAX_READ_FILE_LINES, …
+├── middleware/
+│   ├── __init__.py          # lazy exports
+│   ├── filesystem.py        # FilesystemHooks
+│   ├── logs.py              # SessionToolLogHooks, plan/tool log helpers
+│   ├── hitl.py              # Hitl, wrap_tools_for_hitl
+│   ├── tool_pipeline.py     # eviction + apply_tool_pipeline
+│   ├── run_hooks.py         # compose_run_hooks, ChainedRunHooks
+│   └── observability.py     # setup_observability (LangSmith)
+└── tools/
+    ├── __init__.py          # builtin_tools_for_backend
+    ├── filesystem.py        # ls, read_file, write_file, edit_file, grep, glob
+    ├── execute.py
+    ├── planning.py          # write_todos, think_tool, Plan
+    └── agent_memory.py      # save_memory
+```
+
+---
+
+## What the framework does (short)
+
+1. **Backend** — All file I/O goes through **`BackendProtocol`**. Agent paths start with **`/`** under **`root_dir`**; metadata uses **`/.deepx/...`** (on disk: usually `<root_dir>/.deepx/...`).
+2. **Tools** — Built-ins + your **`tools=`** + **subagent** `function_tool`s; **`apply_tool_pipeline`** adds **large-result eviction** and **HITL** for **`interrupt_on`** names.
+3. **Prompt** — **`system_prompt`** is only the **ROLE** slice; **`build_system_prompt`** fills CORE BEHAVIOR, CONTEXT, planning roster, skills, memory, filesystem rules, current plan—on **every** LLM call via **`Agent.instructions`**.
+4. **Sessions** — **`checkpointer`** is a SQLite path (or `":memory:"`); **`create_session`** wraps **`SQLiteSession`** in **`OpenAIResponsesCompactionSession`** (compaction near **90%** of context window using **`gpt-5-nano`** in `sessions.py`).
+5. **Subagents** — Each **`DeepAgentRunner`** in **`subagents=`** becomes a **`function_tool`** running nested **`Runner.run`** with the **child’s** backend/memory/debug and the **parent’s** `session_id` + **`Hitl`**.
+
+---
+
+## `factory.py` — `create_deep_agent` and runners
+
+### `create_deep_agent`
+
+Main entry point: builds an OpenAI Agents SDK **`Agent`**, wraps it in **`DeepAgentRunner`**, wires **backend**, **tool list** (after pipeline), **dynamic instructions**, **composed hooks**, and stores **checkpointer** path for **`bind()`**.
+
+```python
+runner = create_deep_agent(
+    model="gpt-5-mini",
+    name="orchestrator",
+    description="…",                    # subagent tool description when this runner is a tool
+    system_prompt="…",                # ROLE only; framework appends the rest
+    tools=[…],                        # extra FunctionTool / Tool (MCP wrappers, etc.)
+    subagents=[web_runner, sql_runner],
+    skills=["./test_demo/skills/pdf"],
+    memory=[".deepx/AGENTS.md"],
+    backend=FilesystemBackend(root),
+    checkpointer="path/or.db",          # or ":memory:"
+    debug=True,
+    max_turns=1000,
+    interrupt_on=["execute"],
+    include_general_purpose=True,
+    response_format=None,
+    run_hooks=(),
+    model_settings=None,
+    input_guardrails=None,
+    output_guardrails=None,
+    agent_hooks=None,
+    tool_use_behavior=None,
+    reset_tool_choice=None,
+    prompt=None,
+)
+```
+
+**Design notes:**
+
+- **`memory`** — List of **file paths** only. Resolved in order: backend **`_root_dir`** (if set) for relative paths, then **cwd**. Contents joined with `\n\n` → **`AgentContext.memory`** → **MEMORY** section.
+- **`skills`** — Roots scanned for **`SKILL.md`**; catalog (name, description, path) goes into **SKILLS**. Bodies are **not** auto-inlined; the model uses **`read_file`**.
+- **`interrupt_on`** — Each name must match a tool on the **final** list (built-ins + **`tools=`** + subagent tools) or **`ValueError`** at build time.
+- **`debug=True`** (default) — Adds **`SessionToolLogHooks`** and enables **plan file + events** writes from **`write_todos`** (`run_log_save_plan` / `run_log_append_plan_event`). Set **`debug=False`** to skip those **log files**. **HITL `approvals.json`** is **not** tied to `debug`.
+- **Do not** pass **`mcp_servers=`** on **`Agent`**. Wrap MCP as **`FunctionTool`** (e.g. FastMCP **`Client`**) and pass **`tools=`** so **eviction + HITL** apply.
+
+### `DeepAgentRunner`
+
+Returned by **`create_deep_agent`**. Holds configuration and the raw SDK **`Agent`**. Per-conversation state lives in **`DeepRunBinding`** from **`bind()`**.
+
+```python
+runner.bind(
+    session_id: str,
+    *,
+    resume: bool = False,
+    hooks: RunHooksBase | None = None,
+    hitl: Hitl | None = None,
+) -> DeepRunBinding
+
+# Convenience (creates a binding internally):
+async def run(self, task: str, *, session_id: str | None = None, resume: bool = False) -> DeepRunResult: ...
+def run_sync(self, task: str, *, session_id: str | None = None, resume: bool = False) -> DeepRunResult: ...
+async def run_stream(self, task: str, *, session_id: str | None = None, resume: bool = False): ...  # async generator of stream events + final dict
+```
+
+### `DeepRunBinding`
+
+```python
+async def run(self, inp: str | RunState) -> RunResult: ...
+def run_streamed(self, inp: str | RunState) -> RunResultStreaming: ...
+```
+
+Prepared **`Agent`** (pipeline applied), **`create_session(session_id, checkpointer)`**, **`AgentContext`** on **`ctx`**. If **`hitl`** is set, **`hitl.attach_session(runner._backend, session_id)`** runs (loads allow-list from the **bound** runner’s backend).
+
+### `DeepRunResult`
+
+**`output`**, **`session_id`**, **`plan`** (**`Plan`** from **`write_todos`**), optional **`run_result`**.
+
+### `include_general_purpose`
+
+When **`True`** (default) and no subagent named **`general_purpose`**, a child **`DeepAgentRunner`** is appended with the same **`tools`**, **`skills`**, **`memory`**, **`backend`**, **`checkpointer`**, **`debug`**, **`run_hooks`**, **`response_format`**, but **no** nested subagents. Pass **`include_general_purpose=False`** to disable.
+
+---
+
+## `context.py` — `AgentContext`
+
+```python
+@dataclass
+class AgentContext:
+    session_id: str
+    backend: BackendProtocol
+    agent_name: str = ""       # set from agent.name in FilesystemHooks.on_agent_start
+    memory: str = ""           # preloaded memory file text
+    skills: str = ""           # skills catalog snippet for the prompt
+    debug: bool = False
+    resume: bool = False
+    hitl: Hitl | None = None
+    interrupt_on: frozenset[str] = field(default_factory=frozenset)
+    plan: Plan                 # init=False; write_todos state
+```
+
+Tools receive **`RunContextWrapper[AgentContext]`** as **`ctx`**; the LLM never sees this object directly.
+
+---
+
+## `sessions.py` — conversation persistence
+
+- **`SQLiteSession(session_id, db_path)`** (OpenAI Agents SDK) stores conversation items in SQLite.
+- **`OpenAIResponsesCompactionSession`** wraps it: when usage reaches **~90%** of **`model_context_window`**, older turns are compacted with **`gpt-5-nano`** and written back.
+
+**`create_session(session_id, checkpointer)`** is called inside **`DeepRunBinding`**. Nested subagent runs use a **different** `session_id` string: **`f"{parent}:{agent.name}:{tool_call_id}"`** with the **child’s** **`checkpointer`**.
+
+---
+
+## `system_prompt.py` — dynamic prompt assembly
+
+**`build_system_prompt`** is used as **`Agent.instructions`** (dynamic callback), so it runs **before each LLM call**. Sections (see **`system_prompt.py`**): **ROLE** ← `system_prompt`, **CORE BEHAVIOR**, **CONTEXT** (UTC time, session id, project root when known), **PLANNING & DELEGATION** (subagent roster + interrupt list), optional **SKILLS**, optional **MEMORY**, **FILESYSTEM** (and LocalShell extra block when applicable), **CURRENT PLAN** (serialized todos).
+
+---
+
+## `backends/` — storage
+
+### `BackendProtocol`
+
+Abstract methods: **`ls`**, **`read`**, **`grep`**, **`glob`**, **`write`**, **`edit`**, **`execute`**. Implementations return errors in **`ReadResult.error`**, etc., or for **`execute`** a **string** (either output or a fixed “not available” message)—they do **not** generally raise for “no shell”.
+
+**`resolve_path`** — Optional host path for disk backends; **`InMemoryBackend`** returns **`None`**.
+
+**`data_root`** — Present on concrete backends (**property**); not declared on the ABC in **`protocol.py`**.
+
+### Path rules (agent paths)
+
+- **`/…`** — Under **`root_dir`** (after coercion of absolute paths that lie under **`root_dir`**).
+- **`/.deepx/…`** — Metadata; **not** reachable as normal project-relative `.deepx/` paths through workspace file tools (backend enforces).
+- **`/_outputs/…`** — Deliverables; **replace** allowed per backend rules.
+- **`FilesystemBackend.execute`** / **`InMemoryBackend.execute`** — Return a **string** explaining that shell is unavailable; **`LocalShellBackend.execute`** runs **`subprocess.run`**.
+
+### Built-in backends
+
+| Backend | Workspace | `/.deepx` on disk | `execute` |
+|--------|-----------|-------------------|-----------|
+| **FilesystemBackend** | Real files under **`root_dir`** | `<root_dir>/.deepx/` | Returns error **string** (no subprocess) |
+| **LocalShellBackend** | Same | Same | **`subprocess.run(shell=True, cwd=root_dir, timeout≤600)`** |
+| **InMemoryBackend** | In-process **`dict`**: workspace keys **`(session_id, rel_path)`**; **`.deepx`** keys use sentinel session **`__deepx__`** | N/A (no disk) | Returns error **string** |
+
+**`InMemoryBackend`** — Workspace keys **`(session_id, "relative/path")`**; **`/.deepx/...`** maps to **`("__deepx__", ".deepx/...")`**-style keys (see **`memory.py`**). Nothing is persisted to disk unless you use a filesystem backend.
+
+**`FilesystemBackend`** — Reads/writes use **`os.open` / file I/O** (not `aiofiles`). **`grep`** tries **`rg`** via **`_grep_via_ripgrep`**, then falls back to a Python scan (**`MAX_GREP_FILE_BYTES`** cap per file).
+
+### `utils.py`
+
+Shared helpers: **`data_root_for_host`**, **`data_root_as_agent_path`**, **`MAX_READ_FILE_LINES`**, path normalization **`_norm_agent_path`**, **`_coerce_agent_path`**, **`resolve_root_dir`**, **`resolve_data_root`**, **`resolve_backend_paths`**, eviction helpers re-exported from **`protocol`**.
+
+---
+
+## `middleware/` — hooks and wrappers
+
+### Hook composition
+
+Order in **`DeepAgentRunner._make_hooks`**: **`FilesystemHooks`** → **`SessionToolLogHooks`** if **`debug`** → user **`run_hooks`**. **`compose_run_hooks`** forwards **`RunHooksBase`** callbacks in sequence.
+
+### `filesystem.py` — `FilesystemHooks`
+
+**Why:** Keep **`agent_name`** / **`plan.agent_name`** in sync and **reload plan JSON** on **`resume=True`** from **`/.deepx/sessions/<id>/logs/plans/<agent>.json`** (requires those files to have been written with **`debug=True`** previously).
+
+### `logs.py` — `SessionToolLogHooks`
+
+**Why:** Per-tool **audit JSON** under **`logs/tools/<tool>/<n>.json`** for debugging and support. **Only when `debug=True`.**
+
+### `observability.py`
+
+**`setup_observability()`** (called at start of **`create_deep_agent`**) registers **LangSmith** tracing for the Agents SDK when **`LANGSMITH_API_KEY`** is set (see file for env vars and **`OpenAIAgentsTracingProcessor`**).
+
+### `hitl.py` — HITL
+
+**`HitlRequest`** includes **`session_id`**, **`agent_name`**, **`tool_name`**, **`tool_call_id`**, **`arguments_json`**. **`consult(request, *, tool_backend=...)`** merges allow-list from each **backend** once per process, consults **`policy`**, and on **`ALLOW_ALWAYS`** persists the full allow set via **`tool_backend.write`** to **`/.deepx/sessions/<id>/approvals.json`**.
+
+**Why:** Custom flow so **subagent** gates and **sticky** approvals work with **per-agent backends**; see **`removed_features.md`**.
+
+### `tool_pipeline.py`
+
+**`apply_tool_pipeline`** → **`wrap_tools_for_large_tool_results`** then **`wrap_tools_for_hitl`**.
+
+**Reject path:** **`wrap_tools_for_hitl`** returns the string **`DEFAULT_REJECTION_MESSAGE`** to the model (does **not** raise a SDK “tool rejected” exception).
+
+```mermaid
+flowchart LR
+  A[Tool call] --> B{interrupt_on?}
+  B -->|yes| C[Hitl.consult]
+  C --> D{decision}
+  D -->|REJECT| E[Return rejection message string]
+  D -->|ALLOW| F[Inner invoke]
+  B -->|no| F
+  F --> G{output too large?}
+  G -->|yes| H[Write /_outputs/large_tool_results/... + preview]
+  G -->|no| I[Return result]
+```
+
+---
+
+## `tools/` — built-in tools
+
+All built-ins are **`@function_tool`** async functions taking **`RunContextWrapper[AgentContext]`** and delegating to **`ctx.context.backend`** (except planning/memory logic).
+
+| Module | Tools | Notes |
+|--------|-------|--------|
+| **`filesystem.py`** | **`ls`**, **`read_file`**, **`write_file`**, **`edit_file`**, **`grep`**, **`glob`** | **`read_file`**: pagination, **`offset`** / **`limit`**; response size caps. **`glob`**: **`GLOB_TIMEOUT_S`**. |
+| **`planning.py`** | **`write_todos`**, **`think_tool`** | Full **replace** todo list; plan logs **debug-gated**. |
+| **`agent_memory.py`** | **`save_memory`** | Appends **`- [YYYY-MM-DD HH:MM UTC] fact`** to **`/.deepx/AGENTS.md`**. |
+| **`execute.py`** | **`execute`** | **`asyncio.to_thread(backend.execute)`**; timeout capped **600s**. |
+
+---
+
+## Skills
+
+Skill bundle = directory with **`SKILL.md`** + YAML frontmatter (`name`, `description`, …). Roots from **`skills=`** are scanned; catalog only in prompt—agent **`read_file`**s bodies as needed.
+
+---
+
+## Subagents
+
+Each **`DeepAgentRunner`** in **`subagents=`** becomes a **`function_tool`** whose name is derived from **`runner._agent_name`** (non-alphanumeric → `_`). Nested context uses **child** backend/memory/skills/debug; **same** **`session_id`** and **`Hitl`** as parent. Tool objects may carry **`_is_agent_tool`** for roster formatting.
+
+---
+
+## Session persistence and resume
+
+Use the **same** CLI **`session_id`** with **`resume=True`** on later **`bind()`** calls so **`FilesystemHooks`** can reload **plan** files. **Plan files** exist only if **`debug=True`** when todos were saved.
+
+---
+
+## Large-result eviction
+
+Configured in **`protocol`** / **`tool_pipeline`** (~**`TOOL_RESULT_TOKEN_LIMIT`** tokens → char budget). Excluded tool names: **`ls`**, **`glob`**, **`grep`**, **`read_file`**, **`edit_file`**, **`write_file`** (see **`TOOLS_EXCLUDED_FROM_EVICTION`**).
+
+---
+
+## MCP tools
+
+Wrap MCP as **`FunctionTool`** and pass **`tools=`** so **`apply_tool_pipeline`** applies eviction and **`interrupt_on`** consistently.
+
+---
+
+## `.deepx/` on disk (typical)
+
+When **`root_dir`** is the repo and **`debug=True`**, you often see:
+
+```text
+.deepx/
+├── AGENTS.md
+└── sessions/
+    └── <session_id>/
+        ├── approvals.json          # optional; HITL ALLOW_ALWAYS
+        └── logs/                   # only if debug=True
+            ├── plans/
+            │   ├── events.json
+            │   └── <agent_name>.json
+            └── tools/
+                └── <tool_name>/
+                    └── <n>.json
+```
+
+Deliverables use agent path **`/_outputs/`** → e.g. **`<repo>/_outputs/`**; spilled huge tool output → **`_outputs/large_tool_results/`**.

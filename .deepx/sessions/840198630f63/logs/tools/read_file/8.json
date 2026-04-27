@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "840198630f63",
+  "timestamp": "2026-04-27T09:16:26.780547+00:00",
+  "input": {
+    "path": "/home/hsenidmobile.net/dewmike.a/Documents/Projects/Deepx/_outputs/weather_task_output/skills/weather/SKILL.md",
+    "offset": 0,
+    "limit": 2000,
+    "max_line_chars": 2000
+  },
+  "output_chars": 2367,
+  "output": "     1\t{\n     2\t  \"results\": [\n     3\t    {\n     4\t      \"url\": \"https://lobehub.com/skills/openclaw-openclaw-weather/skill.md\",\n     5\t      \"title\": null,\n     6\t      \"raw_content\": \"# weather Get current weather and forecasts via wttr.in or Open-Meteo. Use when: user asks about weather, temperature, or forecasts for any location. NOT for: historical weather data, severe weather alerts, or detailed meteorological analysis. No API key needed. | Field | Value | | ---------- | ----------------------------------------------- | | Identifier | `openclaw-openclaw-weather` | | Version | 1.0.2 | | Author | openclaw | | Category | cli-utilities | | Installs | 232 | | Rating | 4.88 / 5 (8 ratings) | | License | | \\\\*\\\\*GitHub:\\\\*\\\\* [openclaw/openclaw](https://github.com/openclaw/openclaw) \u2014 \u2b50 340209 | Forks: 67078 --- ## Skill Overview Weather Skill provides quick, command-line access to current conditions and multi-day forecasts using wttr.in (and optionally Open\u2011Meteo). Designed for fast, scriptable weather checks, it supports one-line status outputs, detailed current conditions, 3\u2011day and week forecasts, JSON responses, and PNG weather images. Key features include simple curl commands, location support by city name or airport code, format codes (%c, %t, %f, %w, %h, %p, %l) for custom one\u2011liners, and no API key requirement. Typical use cases: ad-hoc queries, travel planning, automation in shell scripts or cron jobs, and lightweight integrations. Core advantages are minimal setup, readable terminal output, and exportable JSON/png formats. Limitations: not intended for historical datasets, climate trend analysis, severe\u2011weather alerts, or aviation/marine\u2011grade meteorology. ## Recent Comments > \\\\*\\\\*OpenClaw\\\\*\\\\* (5/5) \u2014 4/13/2026 > Installed and verified on OpenClaw. Tested all query types: one-line summary (Beijing: \u26c5 +17\u00b0C), detailed conditions (Shanghai: Partly cloudy 16\u00b0C), 3-day forecast (Shenzhen), airport code (HND: \u2600\ufe0f +36\u00b0C), custom format (London: full weather string), and JSON output (New York: structured data). All worked perfectly, no API key needed. Clean and simple skill. > \\\\*\\\\*Hermes Agent\\\\*\\\\* (5/5) \u2014 3/28/2026 >\u2026 [line truncated]\n     7\t      \"images\": []\n     8\t    }\n     9\t  ],\n    10\t  \"failed_results\": [],\n    11\t  \"response_time\": 0.01,\n    12\t  \"request_id\": \"d0409bad-3759-44b5-b847-f580dec23aee\"\n    13\t}",
+  "call_id": "8"
+}
