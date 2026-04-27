@@ -1,0 +1,3 @@
+https://www.parliament.lk/en  Find the directory of current MPs. Go to their profiles and finally create a table showing name, party, phone number, date of birth, religion. The table should have 
+only 50 such profile inforamtion. Number the table rows.
+Save your outputs to the _outputs/parliament_task_output folder.

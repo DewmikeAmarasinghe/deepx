@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from typing import cast
 
 
 def setup_observability() -> None:
@@ -9,13 +10,15 @@ def setup_observability() -> None:
         return
     os.environ.setdefault("LANGSMITH_TRACING", "true")
     os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
-    os.environ.setdefault("LANGSMITH_PROJECT", "default")
+    os.environ.setdefault("LANGSMITH_PROJECT", "deepx")
     try:
-        from agents.tracing import set_trace_processors
+        from agents.tracing import TracingProcessor, set_trace_processors
         from langsmith.integrations.openai_agents_sdk import (
             OpenAIAgentsTracingProcessor,
         )
 
-        set_trace_processors([OpenAIAgentsTracingProcessor()])  # type: ignore[list-item]
+        set_trace_processors(
+            cast(list[TracingProcessor], [OpenAIAgentsTracingProcessor()])
+        )
     except Exception:
         return

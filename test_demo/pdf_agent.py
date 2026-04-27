@@ -16,9 +16,7 @@ if str(_REPO_ROOT) not in sys.path:
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.factory import create_deep_agent  # noqa: E402
 
-DEMO_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _REPO_ROOT
-PDF_SKILLS_DIR = DEMO_DIR / "skills" / "pdf"
 
 _DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
 _AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
@@ -28,6 +26,7 @@ _PDF_DB = str(_AGENT_DBS / "pdf_agent.db")
 
 pdf_agent_runner = create_deep_agent(
     name="pdf_agent",
+    memory=[".deepx/AGENTS.md"],
     description=(
         "PDF related tasks specialist"
         "extract text/tables, metadata, and forms workflows per **pdf** skills under "
@@ -35,7 +34,7 @@ pdf_agent_runner = create_deep_agent(
         "For scanned PDFs, OCR needs host tools (e.g. Tesseract)—state limits plainly."
     ),
     tools=[],
-    skills=[str(PDF_SKILLS_DIR)],
+    skills=["./test_demo/skills/pdf"],
     system_prompt=(
         "You specialise in PDF and forms. **`read_file`** skill `SKILL.md` entries first; use **`execute`** to run "
         "companion scripts under the skill tree (e.g. `python /test_demo/skills/pdf/.../script.py ...`) when documented.\n\n"

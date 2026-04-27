@@ -8,7 +8,7 @@ from typing import NotRequired, TypedDict
 import yaml
 from agents import Agent, RunContextWrapper
 
-from deepx.backends.filesystem import resolve_data_root, resolve_host_root
+from deepx.backends.utils import resolve_backend_paths
 from deepx.backends.local_shell import LocalShellBackend
 from deepx.context import AgentContext
 
@@ -22,8 +22,9 @@ FILESYSTEM_TOOLS_PROMPT = """\
 ### Paths (file tools)
 
 Paths start with **`/`** and are **under the project root** (`root_dir`): `/README.md` →
-`<root_dir>/README.md`, `/test_demo/foo.py` → `<root_dir>/test_demo/foo.py`. You cannot read or
-write the runtime `.deepx` tree via file tools; use **`save_memory`** for durable facts.
+`<root_dir>/README.md`. The same backends also accept **`/.deepx/…`** agent paths (the metadata
+tree; on disk that is `<root_dir>/.deepx/…`). Put normal work in the project tree; use
+**`save_memory`** for durable cross-session facts instead of editing `/.deepx/` by hand.
 
 Project root for this run: `{host_root}`.
 
@@ -119,30 +120,6 @@ terminal path references, no `@`-style file pointers to local tooling, and no me
 your own process unless the user asked for a post-mortem.\
 """
 
-SUBAGENT_ROLE_PROMPT = """\
-You are working as a **specialist subagent**. Your audience is an **orchestrator**, not the end user.
-
-**What you do:** own the specialist work end-to-end — plan with `write_todos`, use skills and
-tools, and write **complete, final artifacts** under the project tree (especially `/_outputs/`).
-
-**What you return to the parent:** only
-- **Absolute-style paths** to every deliverable you created or updated, and
-- a **very short** summary (what you did, what to open, blockers if any).
-
-**Hard limits for the parent message:** do **not** paste full reports, long markdown, raw CLI
-dumps, or huge JSON. The orchestrator shows files to the user with **`render_files`** and only
-needs your paths plus a brief recap. If a tool result was evicted to `/_outputs/large_tool_results/`,
-use **`read_file`** and read them.
-
-Finish the work, then return to the parent only **paths** and a **short summary** as above.
-
-**Quality:** when the user will see output via `render_files`, files must be **complete** (no “see
-other file” stubs). Delete scratch files when done; keep final outputs only.
-
-**Planning:** same `write_todos` / `think_tool` rules as the main agent — multi-step work requires
-an up-to-date todo list after each major step.\
-"""
-
 PLANNING_PROMPT = """\
 ## Step 1 — Capability Assessment (before writing any plan)
 
@@ -226,6 +203,8 @@ SKILLS_PROMPT = """\
 You have access to a skills library. Each skill provides domain knowledge, quality standards,
 and proven workflows for a specialised task.
 
+Remember: Skills make you more capable and consistent. When in doubt, check if a skill exists for the task!
+
 **Progressive disclosure:** each skill row points at one `SKILL.md` path under the host tree
 (for example `/skills/pdf/SKILL.md`). Read that file first. Deeper material (`reference.md`,
 `scripts/`, etc. next to it) is **on demand** — use `read_file` or `glob` from that directory when
@@ -236,8 +215,6 @@ Skills may contain Python scripts or other executable files. Always use absolute
 
 **Before writing your plan**, check every skill below. If any matches the task, call
 `read_file` on its path now — this may fundamentally change your approach.
-
-Remember: Skills make you more capable and consistent. When in doubt, check if a skill exists for the task!
 
 **Available skills:**
 
@@ -464,6 +441,13 @@ def build_system_prompt(
     custom_prompt: str = "",
     checkpointer: str = ":memory:",
 ) -> str:
+    """Assemble the runtime system prompt (order is stable; ``memory=`` / ``skills=`` list order is preserved).
+
+    Section order: **ROLE** (``system_prompt``) → **CORE BEHAVIOR** → **CONTEXT** → **PLANNING & DELEGATION**
+    → **SKILLS** (from ``skills=`` roots, catalog order) → **MEMORY** (concatenated memory files, each file
+    from ``memory=`` joined with ``\\n\\n``) → **FILESYSTEM** → **CURRENT PLAN** (if any). Separators between
+    major sections are ``\\n\\n========...========\\n\\n``.
+    """
     sections: list[str] = []
 
     if custom_prompt:
@@ -472,8 +456,7 @@ def build_system_prompt(
     sections.append(_section("CORE BEHAVIOR", BASE_AGENT_PROMPT))
 
     utc_now = datetime.now(timezone.utc)
-    host_p = resolve_host_root(ctx.context.backend)
-    data_p = resolve_data_root(ctx.context.backend)
+    host_p, data_p = resolve_backend_paths(ctx.context.backend)
     ctx_lines = [
         f"Current date and time (UTC): {utc_now.strftime('%Y-%m-%d %H:%M:%S')} ({utc_now.date().isoformat()}).",
         f"Session id: `{ctx.context.session_id}`.",
@@ -481,9 +464,6 @@ def build_system_prompt(
     if host_p is not None:
         ctx_lines.append(f"Project root (`root_dir`): `{host_p}`")
     sections.append(_section("CONTEXT", "\n".join(ctx_lines)))
-
-    if ctx.context.is_subagent:
-        sections.append(_section("YOUR ROLE", SUBAGENT_ROLE_PROMPT))
 
     roster = _subagent_roster_markdown(agent)
     interrupt_body = _interrupt_planning_body(ctx.context.interrupt_on)

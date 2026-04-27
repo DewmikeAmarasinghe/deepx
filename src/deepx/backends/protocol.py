@@ -4,6 +4,37 @@ import abc
 from dataclasses import dataclass, field
 from typing import Any
 
+from deepx.backends.utils import (
+    NUM_CHARS_PER_TOKEN,
+    OUTPUTS_LARGE_TOOL_RESULTS_PREFIX,
+    OUTPUTS_PREFIX,
+    TOOLS_EXCLUDED_FROM_EVICTION,
+    TOOL_RESULT_TOKEN_LIMIT,
+    TOO_LARGE_TOOL_MSG,
+    create_large_tool_result_preview,
+    tool_result_char_budget,
+)
+
+__all__ = [
+    "NUM_CHARS_PER_TOKEN",
+    "OUTPUTS_LARGE_TOOL_RESULTS_PREFIX",
+    "OUTPUTS_PREFIX",
+    "TOOLS_EXCLUDED_FROM_EVICTION",
+    "TOOL_RESULT_TOKEN_LIMIT",
+    "TOO_LARGE_TOOL_MSG",
+    "BackendProtocol",
+    "EditResult",
+    "FileInfo",
+    "GlobResult",
+    "GrepMatch",
+    "GrepResult",
+    "LsResult",
+    "ReadResult",
+    "WriteResult",
+    "create_large_tool_result_preview",
+    "tool_result_char_budget",
+]
+
 
 @dataclass
 class FileInfo:
@@ -60,6 +91,10 @@ class EditResult:
 
 
 class BackendProtocol(abc.ABC):
+    def resolve_path(self, session_id: str, agent_path: str) -> str | None:
+        """Host filesystem path for ``agent_path`` when backed by disk; else ``None``."""
+        return None
+
     @abc.abstractmethod
     def ls(self, session_id: str, path: str) -> LsResult:
         """List entries in a directory (agent path starting with /)."""
@@ -90,7 +125,7 @@ class BackendProtocol(abc.ABC):
 
     @abc.abstractmethod
     def write(self, session_id: str, file_path: str, content: str) -> WriteResult:
-        """Create a new file only; error if it already exists."""
+        """Create or replace files. Implementations typically forbid replace except under ``/_outputs/``."""
 
     @abc.abstractmethod
     def edit(

@@ -1,7 +1,7 @@
 ORCHESTRATOR_TASKS: list[str] = [
     """\
 You are a capable agent like openclaw. I want you to register a new skill for yourself. Fetch https://lobehub.com/skills/openclaw-openclaw-weather/skill.md and save it in 
-test_demo/skills/weather/SKILL.md.
+_outputs/weather_task_output/skills/weather/SKILL.md.
 Then edit your agent definition in test_demo/orchestrator.py file to include the new skill.
 Then use that new skill to find the current weather of colombo, Sri Lanka.
 Save your outputs to the _outputs/weather_task_output folder.
@@ -64,10 +64,29 @@ Save your output to the _outputs/northwind_task_output folder.
 
 PDF_AGENT_TASKS: list[str] = [
     """\
-I have two research PDFs under /test_demo/pdfs/ (attention.pdf and gpt4.pdf). Summarize each
-in a structured way (ideas, architectures, limitations), compare how themes evolved, extract any
-key tables or numbers you can, then produce one combined workspace report and a merged PDF—
-return paths and render the report.
+Perform a deep analysis of each document and produce a structured output for both.
+ 
+For each paper, provide a detailed breakdown of:
+- Core ideas and contributions
+- Architecture and design choices (with emphasis on technical structure)
+- Training methodology and data usage (if present)
+- Evaluation setup, benchmarks, and performance metrics
+- Key numerical results and tables
+- Limitations, weaknesses, and assumptions
+ 
+Then perform a comparative analysis focusing on:
+- How core ideas and model paradigms evolve from attention-based models to GPT-4 level systems
+- Architectural and methodological changes across the two papers
+- Differences in scaling strategies, performance improvements, and design philosophy
+- Key innovations introduced and what was replaced or improved over time
+
+- You must not convert each page to an image.
+- You should convert the entire pdfs to singe text files and read them.
+ 
+Finally, produce:
+- A combined detailed research report synthesizing both papers
+- A merged PDF containing both documents in a unified format for reference
+ 
 Save your output to the _outputs/pdf_task_output folder.
 """,
 ]

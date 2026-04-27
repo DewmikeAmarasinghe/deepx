@@ -1,0 +1,12 @@
+{
+  "tool_name": "save_memory",
+  "agent_name": "orchestrator",
+  "session_id": "544929752ac9",
+  "timestamp": "2026-04-27T08:06:58.489561+00:00",
+  "input": {
+    "fact": "User name: dewmike."
+  },
+  "output_chars": 27,
+  "output": "Saved to persistent memory.",
+  "call_id": "1"
+}

@@ -1,0 +1,2 @@
+Go to the blog site https://thamalu.blogspot.com/ and find the 5 most top read articles go to each link and then create a summary of each article.. Finally create create a report showing the articles and their summaries.. Then create an overall summary of the blog.
+Save your outputs to the _outputs/blog_task_output folder.

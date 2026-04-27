@@ -1,0 +1,12 @@
+{
+  "tool_name": "sql_db_list_tables",
+  "agent_name": "sql_agent",
+  "session_id": "139507939ba6",
+  "timestamp": "2026-04-27T05:55:34.662518+00:00",
+  "input": {
+    "db_name": "chinook.db"
+  },
+  "output_chars": 105,
+  "output": "Album, Artist, Customer, Employee, Genre, Invoice, InvoiceLine, MediaType, Playlist, PlaylistTrack, Track",
+  "call_id": "1"
+}

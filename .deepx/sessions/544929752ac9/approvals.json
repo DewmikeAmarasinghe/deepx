@@ -1,0 +1,8 @@
+{
+  "allow_always": [
+    {
+      "agent_name": "pdf_agent",
+      "tool_name": "execute"
+    }
+  ]
+}

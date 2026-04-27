@@ -1,0 +1,4 @@
+I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electric vehicles—
+energy density limits, materials and geopolitics, manufacturing scale-up, then write a single strong markdown report in the workspace
+I can open, and show me that report in the terminal when it is ready.
+Save your outputs to the _outputs/sodium_ion_task_output folder.

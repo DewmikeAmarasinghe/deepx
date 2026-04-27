@@ -21,7 +21,7 @@ class LocalShellBackend(FilesystemBackend):
         cmd = (command or "").strip()
         if not cmd:
             return "No command provided."
-        cwd = str(self._host_root)
+        cwd = str(self._root_dir)
         cap = min(float(timeout), 600.0)
         try:
             proc = subprocess.run(

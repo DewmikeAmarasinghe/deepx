@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import time
-from collections.abc import Iterable
+import asyncio
+from collections.abc import Iterable, Sequence
 from typing import Literal
 
 from agents import RunContextWrapper, function_tool
@@ -31,7 +31,7 @@ def _cap_message(text: str, max_chars: int) -> str:
 
 
 def _format_numbered_lines(
-    lines: list[str],
+    lines: Sequence[str],
     *,
     offset: int,
     max_line_chars: int = READ_MAX_LINE_CHARS,
@@ -137,10 +137,16 @@ async def read_file(
         return "File exists but has empty contents."
     mlc = max(200, min(int(max_line_chars), 50_000))
     lines = content.splitlines()
-    total = rr.total_lines if rr.total_lines is not None else offset + len(lines)
     numbered = _format_numbered_lines(lines, offset=offset, max_line_chars=mlc)
-    if total > offset + len(lines):
-        numbered += f"\n\n[{total - offset - len(lines)} more lines — use offset={offset + len(lines)} to continue]"
+    if rr.total_lines is not None:
+        remaining = rr.total_lines - offset - len(lines)
+        if remaining > 0:
+            numbered += f"\n\n[{remaining} more lines — use offset={offset + len(lines)} to continue]"
+    elif len(lines) >= limit:
+        numbered += (
+            f"\n\n[Read {len(lines)} line(s) in this chunk; if the file may be longer, "
+            f"use offset={offset + len(lines)} to continue]"
+        )
     return _cap_message(numbered, READ_RESPONSE_MAX_CHARS)
 
 
@@ -153,8 +159,8 @@ async def write_file(
     Usage:
     - The write_file tool will create a new file.
     - Prefer to edit existing files (with the edit_file tool) over creating new ones when possible.
-    - Replacing an existing path is only allowed under ``/_outputs/large_tool_results/`` (large
-      evicted tool payloads)."""
+    - Replacing an existing path is allowed under ``/_outputs/`` (including large evicted tool
+      payloads under ``/_outputs/large_tool_results/``)."""
     wr = ctx.context.backend.write(ctx.context.session_id, path, content)
     if wr.error:
         return wr.error
@@ -197,8 +203,8 @@ async def grep(
     - **path:** directory or file to search (agent path, default session workspace root).
     - **glob_pattern:** optional filter so only paths matching this glob are scanned (supports
       ``*``, ``**``, brace expansion—same family as ``glob``).
-    - **output_mode:** ``content`` (default) returns ``path:line:`` hits; ``count`` returns match
-      counts; ``files_with_matches`` lists paths that contain at least one hit.
+    - **output_mode:** ``content`` (default) returns ``path:line:`` hits; ``count`` returns per-file
+      match counts plus a total; ``files_with_matches`` lists paths that contain at least one hit.
     - Skips binary/unreadable files; text is read as UTF-8 with replacement for invalid bytes.
     """
     gr = ctx.context.backend.grep(
@@ -209,7 +215,13 @@ async def grep(
     if not gr.matches:
         return "No matches."
     if output_mode == "count":
-        return f"{len(gr.matches)} matches."
+        counts: dict[str, int] = {}
+        for m in gr.matches:
+            counts[m.path] = counts.get(m.path, 0) + 1
+        lines = [f"{p}: {c}" for p, c in sorted(counts.items())]
+        total = sum(counts.values())
+        body = "\n".join(lines) + f"\n---\nTotal matches: {total}"
+        return _cap_message(body, GREP_OUTPUT_MAX_CHARS)
     if output_mode == "files_with_matches":
         return _grep_matches_as_files(gr.matches)
     return _grep_matches_as_content(gr.matches, max_lines=GREP_DISPLAY_MAX_MATCHES)
@@ -230,9 +242,12 @@ async def glob(
     - Aborts with a clear error if the scan exceeds an internal time limit.
     """
     sid = ctx.context.session_id
-    start = time.monotonic()
-    gr = ctx.context.backend.glob(sid, pattern, path)
-    if time.monotonic() - start > GLOB_TIMEOUT_S:
+    try:
+        gr = await asyncio.wait_for(
+            asyncio.to_thread(ctx.context.backend.glob, sid, pattern, path),
+            timeout=GLOB_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
         return (
             f"Error: glob exceeded {GLOB_TIMEOUT_S:.0f}s (narrow the pattern or path)."
         )

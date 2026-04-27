@@ -1,4 +1,4 @@
-"""Run hooks tied to the filesystem-backed workspace (plan load, AGENTS.md)."""
+"""Run hooks tied to the filesystem-backed workspace (e.g. plan load from run logs)."""
 
 from __future__ import annotations
 
@@ -29,19 +29,6 @@ class FilesystemHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
             )
             if saved:
                 context.context.plan = Plan.model_validate_json(saved)
-        if not context.context.memory:
-            from deepx.backends.filesystem import resolve_data_root
-
-            dr = resolve_data_root(self._backend)
-            if dr is not None:
-                p = dr / "AGENTS.md"
-                if p.is_file():
-                    try:
-                        context.context.memory = p.read_text(
-                            encoding="utf-8", errors="replace"
-                        )
-                    except OSError:
-                        pass
 
 
 __all__ = ["FilesystemHooks"]

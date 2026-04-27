@@ -12,15 +12,15 @@ from urllib.parse import urlparse
 
 from agents.tool import FunctionTool, Tool
 
-from deepx.backends.filesystem import (
-    OUTPUTS_LARGE_TOOL_RESULTS_PREFIX,
-    TOO_LARGE_TOOL_MSG,
+from deepx.backends.protocol import (
     TOOL_RESULT_TOKEN_LIMIT,
     TOOLS_EXCLUDED_FROM_EVICTION,
+    TOO_LARGE_TOOL_MSG,
+    BackendProtocol,
+    OUTPUTS_LARGE_TOOL_RESULTS_PREFIX,
     create_large_tool_result_preview,
     tool_result_char_budget,
 )
-from deepx.backends.protocol import BackendProtocol
 from deepx.middleware.hitl import wrap_tools_for_hitl
 
 
@@ -72,9 +72,7 @@ def _hints_from_args_json(args_json: str) -> str:
     return joined[:32] if joined else ""
 
 
-def _readable_large_tool_agent_path(
-    tool_name: str, _tool_call_id: str, args_json: str = ""
-) -> str:
+def _readable_large_tool_agent_path(tool_name: str, args_json: str = "") -> str:
     base = (
         re.sub(r"[^a-zA-Z0-9_-]+", "_", (tool_name or "tool").strip()).strip("_")[:40]
         or "tool"
@@ -106,7 +104,7 @@ def _make_large_tool_results_invoke(
             return result
 
         call_id = _tool_call_id(ctx)
-        agent_path = _readable_large_tool_agent_path(tool_name, call_id, args_json)
+        agent_path = _readable_large_tool_agent_path(tool_name, args_json)
         session_id = ctx.context.session_id
         wr = backend.write(session_id, agent_path, text)
         if wr.error:

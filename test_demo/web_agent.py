@@ -16,9 +16,7 @@ from deepx.factory import create_deep_agent  # noqa: E402
 
 load_dotenv()
 
-DEMO_DIR = Path(__file__).resolve().parent
 REPO_ROOT = _REPO_ROOT
-SKILLS_DIR = DEMO_DIR / "skills"
 
 _DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
 _AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
@@ -27,6 +25,7 @@ _WEB_DB = str(_AGENT_DBS / "web_agent.db")
 
 web_agent_runner = create_deep_agent(
     name="web_agent",
+    memory=[".deepx/AGENTS.md"],
     description=(
         "Open-web research and reporting specialist: runs the **Tavily CLI (`tvly`)** under "
         "`test_demo/skills/tavily` and follows **`write-report`** for final written deliverables "
@@ -35,8 +34,8 @@ web_agent_runner = create_deep_agent(
     ),
     tools=None,
     skills=[
-        str(SKILLS_DIR / "tavily"),
-        str(SKILLS_DIR / "write-report"),
+        "./test_demo/skills/tavily",
+        "./test_demo/skills/write-report",
     ],
     system_prompt=(
         "You are the **web_agent** internal service. **Assume the Tavily CLI (`tvly`) is installed** "

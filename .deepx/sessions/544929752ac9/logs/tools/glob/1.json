@@ -1,0 +1,13 @@
+{
+  "tool_name": "glob",
+  "agent_name": "orchestrator",
+  "session_id": "544929752ac9",
+  "timestamp": "2026-04-27T08:00:12.395849+00:00",
+  "input": {
+    "pattern": "**/*.pdf",
+    "path": "/home/hsenidmobile.net/dewmike.a/Documents/Projects/Deepx"
+  },
+  "output_chars": 54,
+  "output": "/test_demo/pdfs/attention.pdf\n/test_demo/pdfs/gpt4.pdf",
+  "call_id": "1"
+}

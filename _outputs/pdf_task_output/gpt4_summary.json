@@ -1,0 +1,14 @@
+{
+  "core_ideas": "Documents GPT-4: a large multimodal Transformer-based system demonstrating human-level performance on many professional and academic benchmarks and describing scalable training/infrastructure and safety pipelines.",
+  "architecture_and_design": "Transformer-style autoregressive model; multimodal (image+text) inputs; system-level emphasis on predictable scaling, distributed training, and post-training RLHF and rule-based reward models. Precise architecture and size are intentionally withheld.",
+  "training_and_data": "Pre-trained on a mixture of public and licensed data; small admixtures of benchmark data for certain capabilities (e.g., GSM-8K); post-training with RLHF and safety-focused datasets; contamination checks described.",
+  "evaluation_and_metrics": "Evaluated on MMLU, HumanEval, GSM-8K, professional and academic exams, and internal adversarial/factuality evaluations; metrics include accuracy, pass rates, percentiles, and F1 where applicable.",
+  "key_results": "Representative: MMLU ~86.4% (3-shot); HumanEval ~67% pass; strong exam percentiles (e.g., Bar ~90th). See extracted CSVs under /_outputs/pdf_task_output/tables/.",
+  "limitations": "Withheld architecture/hyperparameters reduce reproducibility; remaining hallucination and calibration issues; safety mitigations helpful but not a full solution; contamination filtering has limitations.",
+  "tables_csv_paths": [
+    "_outputs/pdf_task_output/tables/gpt4_table1.csv",
+    "_outputs/pdf_task_output/tables/gpt4_table5.csv",
+    "_outputs/pdf_task_output/tables/gpt4_table7.csv",
+    "_outputs/pdf_task_output/tables/gpt4_table68.csv"
+  ]
+}

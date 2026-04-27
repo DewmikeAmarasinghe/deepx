@@ -1,0 +1,16 @@
+{
+  "session_id": "88d0b63b7d2c",
+  "agent_name": "orchestrator",
+  "tasks": [],
+  "todos": [
+    {
+      "content": "Call hf_agent to search Hugging Face Hub for three recent diffusion-model papers or model cards (prefer 2025–2026). Save digest to /_outputs/diffusion_models_summary.md and /_outputs/hf_task_output/diffusion_models_summary.md and return only paths + short summary.",
+      "status": "completed"
+    },
+    {
+      "content": "Render the saved digest files for the user to view.",
+      "status": "completed"
+    }
+  ],
+  "updated_at": "2026-04-27T06:04:24.197871+00:00"
+}

@@ -21,8 +21,6 @@ from test_demo.sql_tools import create_sql_tools  # noqa: E402
 DEMO_DIR = _DEMO_DIR
 REPO_ROOT = _REPO_ROOT
 TEST_DBS = DEMO_DIR / "dbs" / "test_dbs"
-SQL_SKILLS_DIR = DEMO_DIR / "skills" / "sql"
-
 demo_backend = FilesystemBackend(REPO_ROOT)
 agent_dbs_dir = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
 agent_dbs_dir.mkdir(parents=True, exist_ok=True)
@@ -48,6 +46,7 @@ When the orchestrator asks for a saved report or digest, write it under **`/_out
 
 sql_agent_runner: DeepAgentRunner = create_deep_agent(
     name="sql_agent",
+    memory=[".deepx/AGENTS.md"],
     description=(
         "SQLite analyst for **demo databases** under `test_demo/dbs/test_dbs`. "
         "chinook.db and northwind.db are configured there."
@@ -58,7 +57,7 @@ sql_agent_runner: DeepAgentRunner = create_deep_agent(
         "Writes outputs to agreed paths (typically **/_outputs/**). and returns paths plus a short summary."
     ),
     tools=sql_tools,
-    skills=[str(SQL_SKILLS_DIR)],
+    skills=["./test_demo/skills/sql"],
     system_prompt=_sql_prompt,
     backend=demo_backend,
     checkpointer=sql_session_db,

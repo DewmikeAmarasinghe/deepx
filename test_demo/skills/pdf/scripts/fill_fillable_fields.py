@@ -88,7 +88,7 @@ def monkeypatch_pydpf_method():
                 result = [r[0] for r in result]
         return result
 
-    DictionaryObject.get_inherited = patched_get_inherited
+    setattr(DictionaryObject, "get_inherited", patched_get_inherited)
 
 
 if __name__ == "__main__":

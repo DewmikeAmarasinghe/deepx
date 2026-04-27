@@ -1,0 +1,12 @@
+{
+  "tool_name": "ls",
+  "agent_name": "orchestrator",
+  "session_id": "9d453840d01e",
+  "timestamp": "2026-04-27T05:28:31.842365+00:00",
+  "input": {
+    "path": "/home/hsenidmobile.net/dewmike.a/Documents/Projects/Deepx/test_demo/skills/tavily"
+  },
+  "output_chars": 215,
+  "output": "tavily-best-practices/ DIR\ntavily-cli/            DIR\ntavily-crawl/          DIR\ntavily-dynamic-search/ DIR\ntavily-extract/        DIR\ntavily-map/            DIR\ntavily-research/       DIR\ntavily-search/         DIR",
+  "call_id": "1"
+}

@@ -1,0 +1,8 @@
+{
+  "allow_always": [
+    {
+      "agent_name": "hf_agent",
+      "tool_name": "hub_repo_search"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+The Chinook database contains information about customers, invoices,
+invoice line items, tracks, albums, artists, genres, and employees.
+
+A stakeholder reports that sales from high-value customers may be
+concentrated in only a few music genres.
+
+Investigate customer spending patterns by month, broken down by genre
+and customer country. Identify the top five revenue-generating genres,
+the customers contributing most to each, and any months with unusual
+spending spikes or declines.
+
+Return SQL, result tables, and a short business analysis explaining
+possible drivers behind the trends.
+
+Save your outputs to the _outputs/chinook_task_output folder.

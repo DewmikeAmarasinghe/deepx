@@ -1,0 +1,22 @@
+You have a huggingface sub agent with Hugging Face Hub tools (when HF_TOKEN is set).
+
+Search the Hugging Face Hub for three recent diffusion-model papers or official model cards.
+Choose items that are practically useful for ML engineers and preferably from 2025–2026.
+
+For each item, provide:
+- title
+- link
+- one-line explanation of why it is relevant
+
+Then compare the three options in a short summary focusing on:
+- quality
+- inference speed
+- compute requirements
+- best use case
+
+Finally, save a short digest to:
+_outputs/diffusion_models_summary.md
+
+Return the final shortlist, the saved workspace path, and a brief recommendation on which model a practitioner should evaluate first.
+
+Save your output to the _outputs/hf_task_output folder.

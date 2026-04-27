@@ -1,0 +1,17 @@
+{
+  "tool_name": "render_files",
+  "agent_name": "orchestrator",
+  "session_id": "9d453840d01e",
+  "timestamp": "2026-04-27T05:34:02.295447+00:00",
+  "input": {
+    "paths": [
+      "/_outputs/parliament_task_output/parliament_mps.csv",
+      "/_outputs/parliament_task_output/parliament_mps.md",
+      "/_outputs/parliament_task_output/parliament_mps.json",
+      "/_outputs/parliament_task_output/sources.txt"
+    ]
+  },
+  "output_chars": 213,
+  "output": "Rendered: /_outputs/parliament_task_output/parliament_mps.csv; /_outputs/parliament_task_output/parliament_mps.md; /_outputs/parliament_task_output/parliament_mps.json; /_outputs/parliament_task_output/sources.txt",
+  "call_id": "1"
+}

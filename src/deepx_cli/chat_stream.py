@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from agents.result import RunResultStreaming
 from agents.run_state import RunState
+from agents.stream_events import (
+    AgentUpdatedStreamEvent,
+    RawResponsesStreamEvent,
+    RunItemStreamEvent,
+)
+from openai.types.responses.response_text_delta_event import ResponseTextDeltaEvent
 from rich.console import Console
 
-from deepx.factory import DeepRunBinding
+from deepx.factory import DeepAgentRunner, DeepRunBinding
+from deepx_cli.session import parse_cli_session_arg, run_interactive_repl
 
 
 async def drain_stream(
@@ -16,11 +24,6 @@ async def drain_stream(
     stream_text: bool = False,
 ) -> None:
     """Consume ``stream.stream_events()``; with ``stream_text=True`` print ``ResponseTextDeltaEvent`` text."""
-    try:
-        from openai.types.responses import ResponseTextDeltaEvent
-    except ImportError:
-        ResponseTextDeltaEvent = None  # type: ignore[assignment,misc]
-
     stream_line_open = False
 
     def _end_stream_line_if_needed() -> None:
@@ -30,16 +33,12 @@ async def drain_stream(
             stream_line_open = False
 
     async for event in stream.stream_events():
-        if event.type != "raw_response_event":
-            continue
-        data = event.data
-        if (
-            stream_text
-            and ResponseTextDeltaEvent is not None
-            and isinstance(data, ResponseTextDeltaEvent)
-        ):
-            console.print(data.delta, end="", highlight=False)
-            stream_line_open = True
+        if isinstance(event, RawResponsesStreamEvent):
+            if stream_text and isinstance(event.data, ResponseTextDeltaEvent):
+                console.print(event.data.delta, end="", highlight=False)
+                stream_line_open = True
+        elif isinstance(event, (RunItemStreamEvent, AgentUpdatedStreamEvent)):
+            pass
 
     _end_stream_line_if_needed()
 
@@ -51,14 +50,36 @@ async def run_stream_until_settled(
     *,
     stream_text: bool = False,
 ) -> RunResultStreaming:
-    """Run one streamed turn. Gated tools pause inside tool invoke (Deepx HITL), not SDK interruptions.
-    """
+    """Run one streamed turn. Gated tools pause inside tool invoke (Deepx HITL), not SDK interruptions."""
     stream = binding.run_streamed(inp)
     await drain_stream(stream, console, stream_text=stream_text)
     return stream
 
 
+async def _stream_turn(
+    binding: DeepRunBinding, user_input: str, console: Console
+) -> None:
+    await run_stream_until_settled(binding, user_input, console, stream_text=True)
+
+
+def run_chat_stream(
+    runner: DeepAgentRunner,
+    *,
+    session_id: str | None = None,
+) -> None:
+    """Interactive loop with token streaming. Uses ``--session`` from argv when ``session_id`` is omitted."""
+    sid = parse_cli_session_arg() if session_id is None else session_id
+    asyncio.run(
+        run_interactive_repl(
+            runner,
+            session_id=sid,
+            run_turn=_stream_turn,
+        )
+    )
+
+
 __all__ = [
     "drain_stream",
+    "run_chat_stream",
     "run_stream_until_settled",
 ]

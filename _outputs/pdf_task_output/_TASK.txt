@@ -1,0 +1,24 @@
+Perform a deep analysis of each document and produce a structured output for both.
+ 
+For each paper, provide a detailed breakdown of:
+- Core ideas and contributions
+- Architecture and design choices (with emphasis on technical structure)
+- Training methodology and data usage (if present)
+- Evaluation setup, benchmarks, and performance metrics
+- Key numerical results and tables
+- Limitations, weaknesses, and assumptions
+ 
+Then perform a comparative analysis focusing on:
+- How core ideas and model paradigms evolve from attention-based models to GPT-4 level systems
+- Architectural and methodological changes across the two papers
+- Differences in scaling strategies, performance improvements, and design philosophy
+- Key innovations introduced and what was replaced or improved over time
+
+- You must not convert each page to an image.
+- You should convert the entire pdfs to singe text files and read them.
+ 
+Finally, produce:
+- A combined detailed research report synthesizing both papers
+- A merged PDF containing both documents in a unified format for reference
+ 
+Save your output to the _outputs/pdf_task_output folder.

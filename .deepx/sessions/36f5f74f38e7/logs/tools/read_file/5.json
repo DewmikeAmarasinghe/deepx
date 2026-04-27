@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "36f5f74f38e7",
+  "timestamp": "2026-04-27T05:35:52.068129+00:00",
+  "input": {
+    "path": "/_outputs/large_tool_results/execute_tvly_extract_https_thamalu_b_20260427T053545Z_6d4b24.txt",
+    "offset": 200,
+    "limit": 200,
+    "max_line_chars": 2000
+  },
+  "output_chars": 84,
+  "output": "   201\tNo lines to read at offset 200: file has 14 line(s) (valid offsets are 0\u201313).",
+  "call_id": "5"
+}

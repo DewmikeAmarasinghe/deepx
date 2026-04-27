@@ -1,0 +1,12 @@
+{
+  "tool_name": "ls",
+  "agent_name": "orchestrator",
+  "session_id": "36f5f74f38e7",
+  "timestamp": "2026-04-27T05:34:52.564717+00:00",
+  "input": {
+    "path": "test_demo/skills/tavily/tavily-research"
+  },
+  "output_chars": 44,
+  "output": "SKILL.md          3.5 KB    2026-04-22 05:41",
+  "call_id": "2"
+}

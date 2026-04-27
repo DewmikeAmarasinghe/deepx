@@ -13,7 +13,7 @@ import re
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from agents import Agent, RunContextWrapper, Runner, function_tool
 from agents.agent import Agent as AgentType
@@ -24,7 +24,8 @@ from agents.run_state import RunState
 from agents.tool import Tool
 from agents.tool_context import ToolContext
 
-from deepx.backends.filesystem import FilesystemBackend, resolve_host_root
+from deepx.backends.filesystem import FilesystemBackend
+from deepx.backends.utils import resolve_root_dir
 from deepx.backends.protocol import BackendProtocol
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks
@@ -97,7 +98,7 @@ def _normalize_subagents(
 
 
 def _skills_prompt_for_backend(backend: BackendProtocol, skill_roots: list[str]) -> str:
-    host = resolve_host_root(backend)
+    host = resolve_root_dir(backend)
     if host is None:
         return ""
     meta = skills_catalog_for_host(host, skill_roots)
@@ -116,13 +117,30 @@ def _collect_skill_roots(main: list[str] | None) -> list[str]:
 
     for raw in main or []:
         add(str(raw))
-    dx = Path.cwd() / ".deepx" / "skills"
-    if dx.is_dir():
-        add(str(dx.resolve()))
-    u = Path.home() / ".deepx" / "skills"
-    if u.is_dir():
-        add(str(u.resolve()))
     return out
+
+
+def _tool_names_from_tools(tools: Sequence[Tool]) -> set[str]:
+    names: set[str] = set()
+    for t in tools:
+        n = getattr(t, "name", None)
+        if isinstance(n, str) and n:
+            names.add(n)
+    return names
+
+
+def _validate_interrupt_on_names(
+    gated: frozenset[str], tools: Sequence[Tool]
+) -> None:
+    if not gated:
+        return
+    known = _tool_names_from_tools(tools)
+    unknown = sorted(gated - known)
+    if unknown:
+        raise ValueError(
+            "interrupt_on references unknown tool name(s): "
+            + ", ".join(repr(n) for n in unknown)
+        )
 
 
 def _merge_optional_agent_fields(
@@ -180,7 +198,6 @@ def _subagent_tool_from_runner(
             skills=skills_sub,
             debug=sub_debug,
             resume=False,
-            is_subagent=True,
             hitl=ac.hitl,
             interrupt_on=runner._interrupt_on,
         )
@@ -248,6 +265,11 @@ def create_deep_agent(
     ``system_prompt`` is only the **role / task** section. The rest (skills index, memory, plan
     snapshot, sandbox rules) comes from :func:`deepx.system_prompt.build_system_prompt`.
 
+    ``memory`` is a list of **file paths** only (not inline prose). Files load in list order; body
+    text is joined with ``\\n\\n`` before insertion into the **MEMORY** section. Relative paths
+    resolve against the backend **host_root** first, then the process **cwd**. ``skills`` roots
+    keep their list order in the catalog.
+
     **Sessions**
 
     ``checkpointer`` is a SQLite path (including ``\":memory:\"``) passed to
@@ -270,9 +292,11 @@ def create_deep_agent(
 
     **Human-in-the-loop**
 
-    ``interrupt_on`` lists tool names that require host approval before execution. Pass a
-    :class:`~deepx.middleware.hitl.Hitl` when calling :meth:`~DeepAgentRunner.bind`;
-    nested specialist runs inherit the same coordinator from the parent context.
+    ``interrupt_on`` lists tool names that require host approval before execution. Each non-empty
+    string must match a tool on this agent (built-ins + ``tools=`` + subagent tools) or construction
+    raises :class:`ValueError`. Pass a :class:`~deepx.middleware.hitl.Hitl` when calling
+    :meth:`~DeepAgentRunner.bind`; nested specialist runs inherit the same coordinator from the
+    parent context.
 
     **Remote MCP / Hub tools**
 
@@ -284,7 +308,7 @@ def create_deep_agent(
     **Defaults**
 
     ``model`` is :data:`DEFAULT_MODEL`. ``debug=True`` enables :class:`~deepx.middleware.logs.SessionToolLogHooks`,
-    writing tool JSON under ``.deepx/sessions/<id>/logs/tools`` when the backend exposes a workspace root.
+    writing tool JSON under ``<data_root>/sessions/<id>/logs/tools`` via the backend runtime API.
 
     **Returns**
 
@@ -352,11 +376,13 @@ def create_deep_agent(
         reset_tool_choice=reset_tool_choice,
         prompt=prompt,
     )
+    assembled_tools: list[Tool] = base_tools + user_tools + subagent_tools
+    _validate_interrupt_on_names(gated, assembled_tools)
     main_agent = Agent(
         name=name,
         instructions=instructions,
         model=model,
-        tools=base_tools + user_tools + subagent_tools,
+        tools=assembled_tools,
         output_type=response_format,
         **merged,
     )
@@ -427,6 +453,8 @@ class DeepRunBinding:
         self.session_id = session_id
         self.ctx = runner._make_ctx(session_id, resume)
         self.ctx.hitl = hitl
+        if hitl is not None:
+            hitl.attach_session(runner._backend, session_id)
         self.session = create_session(session_id, runner._checkpointer)
         self.agent = runner._prepare_agent()
         self.hooks = hooks if hooks is not None else runner._make_hooks()
@@ -575,11 +603,11 @@ class DeepAgentRunner:
         try:
             asyncio.get_running_loop()
         except RuntimeError:
-            return asyncio.run(coro)  # type: ignore[return-value]
+            return asyncio.run(coro)
         import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor() as pool:
-            return pool.submit(asyncio.run, coro).result()  # type: ignore[return-value]
+            return cast("DeepRunResult", pool.submit(asyncio.run, coro).result())
 
     async def run_stream(
         self,
@@ -626,14 +654,44 @@ class DeepRunResult:
 
 
 def _load_memory(memory: list[str] | None, backend: BackendProtocol) -> str:
-    _ = backend
+    """Load memory files in list order; concatenate with ``\\n\\n`` between files.
+
+    Relative paths try **host_root** first (when the backend has one), then **cwd**.
+    ``memory=`` is a ``list[str]`` of file paths only (not inline prose).
+    """
     if not memory:
         return ""
+    host = resolve_root_dir(backend)
     parts: list[str] = []
-    for path in memory:
-        p = Path(path).expanduser()
-        if p.is_file():
-            parts.append(p.read_text(encoding="utf-8", errors="replace"))
+    for raw in memory:
+        s = (raw or "").strip()
+        if not s:
+            continue
+        p = Path(s).expanduser()
+        found: Path | None = None
+        if p.is_absolute():
+            try:
+                rp = p.resolve()
+                if rp.is_file():
+                    found = rp
+            except OSError:
+                pass
+        else:
+            rel = s.lstrip("./")
+            candidates: list[Path] = []
+            if host is not None:
+                candidates.append(host / rel)
+            candidates.append(Path.cwd() / s)
+            for cand in candidates:
+                try:
+                    rc = cand.resolve()
+                    if rc.is_file():
+                        found = rc
+                        break
+                except OSError:
+                    continue
+        if found is not None:
+            parts.append(found.read_text(encoding="utf-8", errors="replace"))
     return "\n\n".join(parts)
 
 

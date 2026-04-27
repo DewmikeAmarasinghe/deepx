@@ -1,0 +1,20 @@
+{
+  "session_id": "9d453840d01e",
+  "agent_name": "orchestrator",
+  "tasks": [],
+  "todos": [
+    {
+      "content": "Read relevant tavily skill files to confirm web_agent use (completed)",
+      "status": "completed"
+    },
+    {
+      "content": "Call web_agent to scrape Parliament of Sri Lanka current MPs directory and extract name, party, phone number, date of birth, religion for first 50 profiles; save deliverables under /_outputs/parliament_task_output/ (completed)",
+      "status": "completed"
+    },
+    {
+      "content": "Render the specialist output files for the user to view (completed)",
+      "status": "completed"
+    }
+  ],
+  "updated_at": "2026-04-27T05:34:04.968759+00:00"
+}

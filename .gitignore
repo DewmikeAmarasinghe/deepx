@@ -54,10 +54,6 @@ keys/
 .ipynb_checkpoints
 *.log
 
-
-.deepx/
-*.db
-deepagents/
-deepagents_cli/
+.env
+# .deepx/
 .cursor/
-_outputs/

@@ -1,138 +1,114 @@
+"""Shared interactive REPL for ``deepx_cli``.
+
+Requires the ``demo`` extra (``rich``, ``prompt_toolkit``) — the core ``deepx`` package does not
+depend on them.
+"""
+
 from __future__ import annotations
 
-import asyncio
-import os
+import argparse
 import uuid
+from collections.abc import Awaitable, Callable
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
 from rich.console import Console
 
-from deepx.factory import DeepAgentRunner
-from deepx_cli.chat_stream import run_stream_until_settled
+from deepx.factory import DeepAgentRunner, DeepRunBinding
 from deepx_cli.hitl import create_terminal_hitl
-from deepx_cli.input_multiline import read_user_turn
 
+_INPUT_HELP = (
+    "[dim]Press Enter to send. /bye to quit. "
+    "(Paste can include newlines; for a long draft, paste as one message.)[/dim]"
+)
+
+_RESUME_SESSION = "python -m test_demo.orchestrator --chat/--chat_sync --session"
+
+
+def _print_resume_hint(console: Console, sid: str) -> None:
+    console.print(
+        f"[dim]To resume next time run:[/dim] {_RESUME_SESSION} {sid}  "
+    )
 
 def _display_agent_name(agent_name: str) -> str:
     return agent_name.replace("_", " ").title()
 
 
-async def _chat_loop_stream_async(
+def _resolve_session(cli_session: str | None) -> tuple[str, bool]:
+    """New id unless ``cli_session`` is set (resume). No environment fallback."""
+    if cli_session:
+        return cli_session.strip(), True
+    return uuid.uuid4().hex[:12], False
+
+
+def _user_prompt_session() -> PromptSession:
+    """Single-line primary mode: Enter accepts (see prompt_toolkit \"Multiline input\" docs)."""
+    return PromptSession(history=InMemoryHistory(), multiline=False)
+
+
+async def _read_turn(session: PromptSession) -> str:
+    return (await session.prompt_async("  ", default="")).strip()
+
+
+def parse_cli_session_arg() -> str | None:
+    """Read ``--session`` from argv (``parse_known_args``)."""
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--session", default=None)
+    args, _ = parser.parse_known_args()
+    return args.session
+
+
+async def run_interactive_repl(
     runner: DeepAgentRunner,
     *,
-    user_name: str,
-    resume_hint: str | None,
+    session_id: str | None,
+    run_turn: Callable[[DeepRunBinding, str, Console], Awaitable[None]],
 ) -> None:
     console = Console(highlight=False)
-    sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
+    sid, resuming = _resolve_session(session_id)
     hitl = create_terminal_hitl(console)
+    pt_session = _user_prompt_session()
 
-    if resume_hint:
-        console.print(f"\n[dim]Session:[/dim] {sid}  — resume: `{resume_hint} {sid}`\n")
+    if resuming:
+        console.print(f"\n[dim]Resuming session:[/dim] {sid}\n")
     else:
-        console.print(f"\n[dim]Session:[/dim] {sid}\n")
-    console.print(
-        '[dim]Multi-line: first line exactly """ then paste; end with """ and Enter.[/dim]\n'
-    )
+        console.print(f"\n[dim]Session:[/dim] {sid}")
+        _print_resume_hint(console, sid)
+        console.print()
+
+    console.print(_INPUT_HELP)
+    console.print()
 
     turn = 0
     while True:
         try:
             console.print("[bold]You:[/bold]")
-            user_input = read_user_turn()
+            user_input = await _read_turn(pt_session)
         except (EOFError, KeyboardInterrupt):
-            console.print("\nExiting.")
+            console.print("\n\n[dim]Exiting.[/dim]")
             break
 
         if not user_input:
             continue
-        if user_input == "/bye":
-            console.print("Goodbye.")
+        if user_input.strip() == "/bye":
+            console.print()
+            console.print("[dim]Goodbye.[/dim]")
+            console.print()
+            _print_resume_hint(console, sid)
+            console.print()
             break
 
-        binding = runner.bind(sid, resume=(turn > 0), hitl=hitl)
-        console.print(f"\n[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
-        await run_stream_until_settled(
-            binding,
-            user_input,
-            console,
-            stream_text=True,
-        )
-        console.print("\n\n")
+        binding = runner.bind(sid, resume=(resuming or turn > 0), hitl=hitl)
+        console.print()
+        console.print()
+        console.print(f"[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
+        await run_turn(binding, user_input, console)
+        console.print()
+        console.print()
         turn += 1
-
-
-def run_chat_stream(
-    runner: DeepAgentRunner,
-    *,
-    user_name: str = "You",
-    resume_hint: str | None = None,
-) -> None:
-    """Interactive multi-turn chat with streaming and Deepx HITL."""
-    _ = user_name
-    asyncio.run(
-        _chat_loop_stream_async(
-            runner,
-            user_name=user_name,
-            resume_hint=resume_hint,
-        )
-    )
-
-
-async def _chat_loop_sync_async(
-    runner: DeepAgentRunner,
-    *,
-    user_name: str,
-    resume_hint: str | None,
-) -> None:
-    console = Console(highlight=False)
-    sid = os.environ.get("SESSION_ID") or uuid.uuid4().hex[:12]
-    hitl = create_terminal_hitl(console)
-
-    if resume_hint:
-        console.print(f"\n[dim]Session:[/dim] {sid}  — resume: `{resume_hint} {sid}`\n")
-    else:
-        console.print(f"\n[dim]Session:[/dim] {sid}\n")
-    console.print(
-        '[dim]Multi-line: first line exactly """ then paste; end with """ and Enter.[/dim]\n'
-    )
-
-    turn = 0
-    while True:
-        try:
-            console.print("[bold]You:[/bold]")
-            user_input = read_user_turn()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\nExiting.")
-            break
-
-        if not user_input:
-            continue
-        if user_input == "/bye":
-            console.print("Goodbye.")
-            break
-
-        binding = runner.bind(sid, resume=(turn > 0), hitl=hitl)
-        console.print(f"\n[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
-        result = await binding.run(user_input)
-        console.print(str(result.final_output or ""))
-        console.print("\n\n")
-        turn += 1
-
-
-def run_chat_sync(
-    runner: DeepAgentRunner,
-    *,
-    user_name: str = "You",
-    resume_hint: str | None = None,
-) -> None:
-    """Interactive multi-turn chat without token streaming (one ``Runner.run`` per message)."""
-    _ = user_name
-    asyncio.run(
-        _chat_loop_sync_async(runner, user_name=user_name, resume_hint=resume_hint)
-    )
 
 
 __all__ = [
-    "run_chat_stream",
-    "run_chat_sync",
+    "parse_cli_session_arg",
+    "run_interactive_repl",
 ]

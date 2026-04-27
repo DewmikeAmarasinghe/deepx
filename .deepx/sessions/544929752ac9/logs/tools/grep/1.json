@@ -1,0 +1,15 @@
+{
+  "tool_name": "grep",
+  "agent_name": "pdf_agent",
+  "session_id": "544929752ac9",
+  "timestamp": "2026-04-27T08:00:51.078147+00:00",
+  "input": {
+    "pattern": "extract_tables",
+    "path": "/test_demo",
+    "glob_pattern": null,
+    "output_mode": "files_with_matches"
+  },
+  "output_chars": 65,
+  "output": "/test_demo/skills/pdf/SKILL.md\n/test_demo/skills/pdf/REFERENCE.md",
+  "call_id": "1"
+}

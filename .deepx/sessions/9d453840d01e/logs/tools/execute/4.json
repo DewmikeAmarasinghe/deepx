@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "9d453840d01e",
+  "timestamp": "2026-04-27T05:29:42.452771+00:00",
+  "input": {
+    "command": "tvly map \"https://www.parliament.lk/en/members-of-parliament/\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 183,
+  "output": "exit_code=0\n{\n  \"base_url\": \"https://www.parliament.lk/en/members-of-parliament/\",\n  \"results\": [],\n  \"response_time\": 15.27,\n  \"request_id\": \"4afb1738-0fe4-46d7-ab3e-2c287b7ad994\"\n}\n",
+  "call_id": "4"
+}

@@ -1,0 +1,12 @@
+{
+  "tool_name": "ls",
+  "agent_name": "pdf_agent",
+  "session_id": "544929752ac9",
+  "timestamp": "2026-04-27T08:00:48.109720+00:00",
+  "input": {
+    "path": "/test_demo/pdfs"
+  },
+  "output_chars": 89,
+  "output": "attention.pdf     1.4 MB    2026-04-13 09:59\ngpt4.pdf          5.0 MB    2026-04-13 09:59",
+  "call_id": "1"
+}

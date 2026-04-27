@@ -19,7 +19,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import mcp.types as mt
 from agents.tool import FunctionTool
@@ -116,7 +116,10 @@ def _make_hf_function_tool(
                 raise_on_error=False,
             )
         if result.is_error:
-            return _format_hub_tool_result(result) or f"Tool {tool_name!r} returned an error."
+            return (
+                _format_hub_tool_result(result)
+                or f"Tool {tool_name!r} returned an error."
+            )
         return _format_hub_tool_result(result)
 
     desc = (description or "").strip() or f"Hugging Face Hub MCP tool `{tool_name}`."
@@ -153,7 +156,7 @@ def _load_hf_tools_sync() -> list[FunctionTool]:
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         fut = pool.submit(asyncio.run, _fetch_hf_tools_async())
-        return fut.result()
+        return cast(list[FunctionTool], fut.result())
 
 
 hf_agent_runner: DeepAgentRunner | None
@@ -163,6 +166,7 @@ else:
     _hf_tools = _load_hf_tools_sync()
     hf_agent_runner = create_deep_agent(
         name="hf_agent",
+        memory=[".deepx/AGENTS.md"],
         description=(
             "Hugging Face Hub specialist: model/dataset/space search, docs, and Hub tools exposed "
             "as normal function tools. Use for anything on hf.co / the Hub API surface. "

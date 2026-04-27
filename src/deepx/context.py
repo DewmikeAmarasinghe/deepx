@@ -20,7 +20,6 @@ class AgentContext:
     skills: str = ""
     debug: bool = False
     resume: bool = False
-    is_subagent: bool = False
     hitl: Hitl | None = None
     interrupt_on: frozenset[str] = field(default_factory=frozenset)
 
