@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:10:47.001117+00:00",
+  "input": {
+    "command": "tvly extract \"https://developers.openai.com/api/docs/api-reference/responses/create\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 955,
+  "output": "Tool result too large, the result of this tool call call_cOKnmR5qdA4Zpl9fmzdsC4lk was saved in the filesystem at this path: /_outputs/large_tool_results/execute_tvly_extract_https_developer_20260429T081046Z_a299c7.txt\n\nYou can read the result from the filesystem by using the read_file tool, but make sure to only read part of the result at a time.\n\nYou can do this by specifying an offset and limit in the read_file tool call. For example, to read the first 100 lines, you can use the read_file tool with offset=0 and limit=100.\n\nHere is a preview showing the head and tail of the result (lines of the form `... [N lines truncated] ...` indicate omitted lines in the middle of the content):\n\nexit_code=0\n{\n  \"results\": [\n    {\n      \"url\": \"https://developers.openai.com/api/docs/api-reference/responses/create\",\n\n... [4 lines truncated] ...\n\n  ],\n  \"failed_results\": [],\n  \"response_time\": 0.02,\n  \"request_id\": \"3c49cf9d-633b-4be1-86c1-9250ea6cbb2e\"\n}\n",
+  "call_id": "11"
+}

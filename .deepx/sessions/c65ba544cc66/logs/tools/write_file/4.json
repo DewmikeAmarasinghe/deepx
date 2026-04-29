@@ -1,0 +1,13 @@
+{
+  "tool_name": "write_file",
+  "agent_name": "orchestrator",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:42:21.286240+00:00",
+  "input": {
+    "path": "/_outputs/sqlite_file/theories.sql",
+    "content": "-- SQLite schema illustrating simple SQL theory (3 tables: authors, books, reviews) with constraints and sample data\n\nCREATE TABLE authors (\n  author_id INTEGER PRIMARY KEY,\n  name TEXT NOT NULL\n);\n\nCREATE TABLE books (\n  book_id INTEGER PRIMARY KEY,\n  title TEXT NOT NULL,\n  author_id INTEGER NOT NULL,\n  year_published INTEGER,\n  FOREIGN KEY (author_id) REFERENCES authors(author_id)\n);\n\nCREATE TABLE reviews (\n  review_id INTEGER PRIMARY KEY,\n  book_id INTEGER NOT NULL,\n  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),\n  comment TEXT,\n  FOREIGN KEY (book_id) REFERENCES books(book_id)\n);\n\n-- Sample data\nINSERT INTO authors (author_id, name) VALUES (1, 'Jane Austen'), (2, 'George Orwell');\nINSERT INTO books (book_id, title, author_id, year_published) VALUES (1, 'Pride and Prejudice', 1, 1813), (2, '1984', 2, 1949);\nINSERT INTO reviews (review_id, book_id, rating, comment) VALUES (1, 1, 5, 'Classic romance satire'), (2, 2, 5, 'Dystopian classic');\n\n-- Index to optimize join between books and authors\nCREATE INDEX idx_books_author ON books(author_id);\n"
+  },
+  "output_chars": 47,
+  "output": "Updated file /_outputs/sqlite_file/theories.sql",
+  "call_id": "4"
+}

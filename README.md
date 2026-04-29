@@ -54,15 +54,16 @@ Use **`runner.bind(session_id, resume=..., hitl=...)`** with **`binding.run`** /
 
 ### Interactive chat (demo)
 
-The **maintained** entrypoint with **`--chat`** / **`--session`** is the orchestrator:
+From the **repository root** (the directory that contains **`test_demo/`**), each demo runner accepts the same flags: **`--chat`** (streaming; default when **`--chat_sync`** is not set), **`--chat_sync`**, and **`--session`** to resume.
 
 ```bash
-python -m test_demo.orchestrator --chat
-python -m test_demo.orchestrator --chat_sync
-python -m test_demo.orchestrator --chat --session <session_id>
+python test_demo/orchestrator.py --chat
+python test_demo/sql_agent.py --chat
+python test_demo/web_agent.py --chat_sync
+python test_demo/pdf_agent.py --chat --session <session_id>
 ```
 
-Individual specialist modules (**`web_agent.py`**, etc.) are imported as libraries by the orchestrator; they do not all define the same CLI flags—check each file if you run it directly.
+If you **`cd`** into another directory first, use paths relative to that cwd (or pass absolute paths to the scripts). **`hf_agent`** uses the same CLI when **`HF_TOKEN`** is set; otherwise **`main`** exits with an error. See [`test_demo/README.md`](test_demo/README.md).
 
 ---
 

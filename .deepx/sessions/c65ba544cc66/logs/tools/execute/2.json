@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T07:46:39.296227+00:00",
+  "input": {
+    "command": "tvly search \"President of Uganda\" --json --limit 5",
+    "timeout_seconds": 120
+  },
+  "output_chars": 116,
+  "output": "exit_code=2\nUsage: tvly search [OPTIONS] [QUERY]\nTry 'tvly search --help' for help.\n\nError: No such option: --limit\n",
+  "call_id": "2"
+}

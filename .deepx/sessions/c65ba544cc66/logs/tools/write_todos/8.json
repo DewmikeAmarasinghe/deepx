@@ -1,0 +1,17 @@
+{
+  "tool_name": "write_todos",
+  "agent_name": "orchestrator",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:12:38.401114+00:00",
+  "input": {
+    "todos": [
+      {
+        "content": "Find how to show reasoning tokens in the UI for the OpenAI Agents SDK and produce a concise how-to saved to /_outputs/openai_agents_reasoning_ui.md",
+        "status": "completed"
+      }
+    ]
+  },
+  "output_chars": 171,
+  "output": "Plan saved:\n(completed) Find how to show reasoning tokens in the UI for the OpenAI Agents SDK and produce a concise how-to saved to /_outputs/openai_agents_reasoning_ui.md",
+  "call_id": "8"
+}

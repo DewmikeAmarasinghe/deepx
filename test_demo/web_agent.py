@@ -29,8 +29,8 @@ web_agent_runner = create_deep_agent(
     description=(
         "Open-web research and reporting specialist: runs the **Tavily CLI (`tvly`)** under "
         "`test_demo/skills/tavily` and follows **`write-report`** for final written deliverables "
-        "(structure, tone, sections). Use for live pages, news, docs, and long-form markdown under "
-        "**/_outputs/**. Requires a logged-in **`tvly`** (see `tavily-cli` skill)."
+        "(structure, tone, sections). Use for live pages, news, docs, and long-form markdown. "
+        "Requires a logged-in **`tvly`** (see `tavily-cli` skill)."
     ),
     tools=None,
     skills=[
@@ -64,3 +64,16 @@ web_agent_runner = create_deep_agent(
     subagents=None,
     interrupt_on=["execute"],
 )
+
+
+def main() -> None:
+    from deepx_cli.cli import run_interactive_cli
+
+    run_interactive_cli(
+        web_agent_runner,
+        description="Deepx web / Tavily specialist demo (terminal).",
+    )
+
+
+if __name__ == "__main__":
+    main()

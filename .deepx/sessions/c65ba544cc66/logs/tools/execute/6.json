@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:10:17.563026+00:00",
+  "input": {
+    "command": "tvly extract \"https://openai.github.io/openai-agents-js/openai/agents/type-aliases/modelsettings/\" --json -o /tmp/modelsettings.json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 52,
+  "output": "exit_code=0\nOutput saved to /tmp/modelsettings.json\n",
+  "call_id": "6"
+}

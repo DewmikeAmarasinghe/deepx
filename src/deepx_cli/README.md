@@ -15,7 +15,7 @@ uv sync --extra demo
 ## Public API
 
 ```python
-from deepx_cli import run_chat_stream, run_chat_sync
+from deepx_cli import run_chat_stream, run_chat_sync, run_interactive_cli
 ```
 
 **`session.py`** and **`hitl.py`** are importable but **semi-internal** (API may change).
@@ -26,12 +26,25 @@ from deepx_cli import run_chat_stream, run_chat_sync
 
 ```text
 src/deepx_cli/
-├── __init__.py       # run_chat_stream, run_chat_sync
-├── chat_stream.py    # streaming REPL
-├── chat_sync.py      # non-streaming REPL
-├── hitl.py           # create_terminal_hitl
-└── session.py        # run_interactive_repl, parse_cli_session_arg
+├── __init__.py          # run_chat_stream, run_chat_sync, run_interactive_cli
+├── utils.py             # agent_label, tool_name_and_arguments
+├── cli.py               # run_interactive_cli (argparse for demo scripts)
+├── chat_stream.py       # streaming REPL + Live terminal renderer
+├── chat_sync.py         # non-streaming REPL
+├── hitl.py              # create_terminal_hitl
+├── session.py           # run_interactive_repl, parse_cli_session_arg
+└── widgets/
+    ├── __init__.py
+    ├── components.py    # ThinkingStream, AssistantStream, ToolInvocation, HitlPanel
+    ├── hitl.py          # HitlPanel (approval widget surface)
+    └── terminal_renderer.py
 ```
+
+---
+
+## `cli.py` — `run_interactive_cli`
+
+Thin **`argparse`** wrapper (**`--chat`**, **`--chat_sync`**, **`--session`**) used by **`test_demo/*.py`** scripts. Import **`run_interactive_cli`** from **`deepx_cli`** or **`deepx_cli.cli`**.
 
 ---
 
@@ -42,8 +55,8 @@ def run_chat_stream(runner: DeepAgentRunner, *, session_id: str | None = None) -
 ```
 
 - Binds **`runner`**, runs **`binding.run_streamed(user_input)`**, drains **`stream.stream_events()`**.
-- With **`stream_text=True`**, **`drain_stream`** prints **`ResponseTextDeltaEvent`** deltas as they arrive.
-- **`session_id`**: if **`None`**, uses **`parse_cli_session_arg()`** (`--session` from **`sys.argv`**); else generates a **12-char hex** id.
+- With **`stream_text=True`**, **`run_stream_until_settled`** drives a single **Rich `Live`** session (`TerminalRenderer`) so thinking, tool invocations, and assistant markdown update in one layout.
+- **`session_id`**: if **`None`**, **`run_interactive_repl`** generates a **12-char hex** id unless **`run_chat_stream(..., session_id=...)`** passes an explicit value. **`parse_cli_session_arg()`** reads **`--session`** from **`sys.argv`** when callers omit **`session_id`**.
 
 HITL pauses **inside** the tool wrapper (`on_invoke_tool`), not via a separate SDK “interruption” stream.
 

@@ -1,0 +1,12 @@
+{
+  "tool_name": "ls",
+  "agent_name": "sql_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T09:27:03.765110+00:00",
+  "input": {
+    "path": "/test_demo/dbs/test_dbs"
+  },
+  "output_chars": 92,
+  "output": "chinook.db        984.0 KB    2026-04-08 10:45\nnorthwind.db      23.6 MB    2026-04-13 07:50",
+  "call_id": "2"
+}

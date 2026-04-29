@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "sql_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T09:33:33.369126+00:00",
+  "input": {
+    "path": "/test_demo/skills/sql/query-writing/SKILL.md",
+    "offset": 0,
+    "limit": 2000,
+    "max_line_chars": 2000
+  },
+  "output_chars": 2272,
+  "output": "     1\t---\n     2\tname: query-writing\n     3\tdescription: For writing and executing SQL queries - from simple single-table queries to complex multi-table JOINs and aggregations\n     4\t---\n     5\t\n     6\t# Query Writing Skill\n     7\t\n     8\t## When to Use This Skill\n     9\t\n    10\tUse this skill when you need to answer a question by writing and executing a SQL query.\n    11\t\n    12\t## Workflow for Simple Queries\n    13\t\n    14\tFor straightforward questions about a single table:\n    15\t\n    16\t1. **Identify the table** - Which table has the data?\n    17\t2. **Get the schema** - Use `sql_db_schema` to see columns\n    18\t3. **Write the query** - SELECT relevant columns with WHERE/LIMIT/ORDER BY\n    19\t4. **Execute** - Run with `sql_db_query`\n    20\t5. **Format answer** - Present results clearly\n    21\t\n    22\t## Workflow for Complex Queries\n    23\t\n    24\tFor questions requiring multiple tables:\n    25\t\n    26\t### 1. Plan Your Approach\n    27\t**Use `write_todos` to break down the task:**\n    28\t- Identify all tables needed\n    29\t- Map relationships (foreign keys)\n    30\t- Plan JOIN structure\n    31\t- Determine aggregations\n    32\t\n    33\t### 2. Examine Schemas\n    34\tUse `sql_db_schema` for EACH table to find join columns and needed fields.\n    35\t\n    36\t### 3. Construct Query\n    37\t- SELECT - Columns and aggregates\n    38\t- FROM/JOIN - Connect tables on FK = PK\n    39\t- WHERE - Filters before aggregation\n    40\t- GROUP BY - All non-aggregate columns\n    41\t- ORDER BY - Sort meaningfully\n    42\t- LIMIT - Default 5 rows\n    43\t\n    44\t### 4. Validate and Execute\n    45\tCheck all JOINs have conditions, GROUP BY is correct, then run query.\n    46\t\n    47\t## Example: Revenue by Country\n    48\t```sql\n    49\tSELECT\n    50\t    c.Country,\n    51\t    ROUND(SUM(i.Total), 2) as TotalRevenue\n    52\tFROM Invoice i\n    53\tINNER JOIN Customer c ON i.CustomerId = c.CustomerId\n    54\tGROUP BY c.Country\n    55\tORDER BY TotalRevenue DESC\n    56\tLIMIT 5;\n    57\t```\n    58\t\n    59\t## Quality Guidelines\n    60\t\n    61\t- Query only relevant columns (not SELECT *)\n    62\t- Always apply LIMIT (5 default)\n    63\t- Use table aliases for clarity\n    64\t- For complex queries: use write_todos to plan\n    65\t- Never use DML statements (INSERT, UPDATE, DELETE, DROP)",
+  "call_id": "8"
+}

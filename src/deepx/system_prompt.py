@@ -8,8 +8,8 @@ from typing import NotRequired, TypedDict
 import yaml
 from agents import Agent, RunContextWrapper
 
-from deepx.backends.utils import resolve_backend_paths
 from deepx.backends.local_shell import LocalShellBackend
+from deepx.backends.utils import resolve_backend_paths
 from deepx.context import AgentContext
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,9 @@ lines in the numbered view.
 
 ### Deliverables (project tree)
 
-Create/Put artifacts under **`/_outputs/`** (for example `/_outputs/report.md`).
+Create/Put/Edit/Delete artifacts under place user specifiles to you.
+If no such path is given, create them under **`/_outputs/`** as your default workspace.
+(for example `/_outputs/report.md`).
 Keep the tree tidy: remove scratch files when done.
 
 ### Large tool results
@@ -173,6 +175,14 @@ THEN:
 - **Pass file paths between agents** — do not read large file bodies only to paste them back
   into the next prompt. Subagents share the same project tree.
 - Parallelise subagent calls only when there is **zero data dependency** between them.
+
+### Action Protocol: Approvals & Re-Delegation
+
+- Internal Approvals: If a specialist asks for permission for an action you are authorized to grant, give the approval and immediately call that specialist again with the updated instructions. Do not just reply with text, as this stops the process.
+
+- External Approvals: If the specialist's request involves a decision only the user can make (e.g., destructive actions or budget changes), reply with the question directed to the user and stop.
+
+- The "Proceed" Rule: Never simply say "Proceed" or "Yes" as a text response. If the path is clear, you must trigger the next step by calling the relevant specialist tool.
 
 {subagents}
 
@@ -333,7 +343,7 @@ def discover_skills(paths: list[str]) -> list[SkillMetadata]:
     - If `path/SKILL.md` exists, load that skill.
     - Else if `path` is a directory, load `path/<child>/SKILL.md` for each immediate child.
     - Else if `path/<child>` is a directory without SKILL.md, load `path/<child>/<sub>/SKILL.md`
-      for each immediate subfolder (one extra level, e.g. sql/query-writing).
+      for each immediate subfolder (one extra level, e.g. ``sql/sql-assistant``).
 
     Paths in metadata point at resolved filesystem locations. For agent prompts under a host
     root, use `skills_catalog_for_host` so paths match `read_file` on the FilesystemBackend.
@@ -459,8 +469,8 @@ def build_system_prompt(
 
     Section order: **ROLE** (``system_prompt``) → **CORE BEHAVIOR** → **CONTEXT** → **PLANNING & DELEGATION**
     → **SKILLS** (from ``skills=`` roots, catalog order) → **MEMORY** (concatenated memory files, each file
-    from ``memory=`` joined with ``\\n\\n``) → **FILESYSTEM** → **CURRENT PLAN** (if any). Separators between
-    major sections are ``\\n\\n========...========\\n\\n``.
+    from ``memory=`` joined with ``\\n\\n``) → **FILESYSTEM**. Separators between major sections are
+    ``\\n\\n========...========\\n\\n``.
     """
     sections: list[str] = []
 
@@ -504,9 +514,5 @@ def build_system_prompt(
     if isinstance(ctx.context.backend, LocalShellBackend):
         fs_blocks = f"{fs_blocks}\n{LOCALSHELL_TOOLS_PROMPT}"
     sections.append(_section("FILESYSTEM", fs_blocks))
-
-    if ctx.context.plan.todos:
-        lines = [f"({t.status.value}) {t.content}" for t in ctx.context.plan.todos]
-        sections.append(_section("CURRENT PLAN", "\n".join(lines)))
 
     return _SEP.join(sections)

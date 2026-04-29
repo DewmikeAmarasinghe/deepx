@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:10:19.760429+00:00",
+  "input": {
+    "path": "/tmp/modelsettings.json",
+    "offset": 0,
+    "limit": 2000,
+    "max_line_chars": 2000
+  },
+  "output_chars": 43,
+  "output": "Error: '/tmp/modelsettings.json' not found.",
+  "call_id": "5"
+}

@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "b6922bcabbbf",
+  "timestamp": "2026-04-29T11:29:59.125183+00:00",
+  "input": {
+    "command": "tvly extract \"https://www.facebook.com/teajarlounge/\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 244,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://www.facebook.com/teajarlounge/\",\n      \"error\": \"Failed to fetch url\"\n    }\n  ],\n  \"response_time\": 5.89,\n  \"request_id\": \"e11fd233-8678-4471-9bb6-ee1013d9fd8c\"\n}\n",
+  "call_id": "10"
+}

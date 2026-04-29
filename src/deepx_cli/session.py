@@ -22,16 +22,11 @@ _INPUT_HELP = (
     "(Paste can include newlines; for a long draft, paste as one message.)[/dim]"
 )
 
-_RESUME_SESSION = "python -m test_demo.orchestrator --chat/--chat_sync --session"
+_RESUME_SESSION = "--chat or --chat_sync --session (same module you launched)"
 
 
 def _print_resume_hint(console: Console, sid: str) -> None:
-    console.print(
-        f"[dim]To resume next time run:[/dim] {_RESUME_SESSION} {sid}  "
-    )
-
-def _display_agent_name(agent_name: str) -> str:
-    return agent_name.replace("_", " ").title()
+    console.print(f"[dim]To resume next time run:[/dim] {_RESUME_SESSION} {sid}  ")
 
 
 def _resolve_session(cli_session: str | None) -> tuple[str, bool]:
@@ -82,7 +77,7 @@ async def run_interactive_repl(
     turn = 0
     while True:
         try:
-            console.print("[bold]You:[/bold]")
+            console.print("you:")
             user_input = await _read_turn(pt_session)
         except (EOFError, KeyboardInterrupt):
             console.print("\n\n[dim]Exiting.[/dim]")
@@ -101,7 +96,6 @@ async def run_interactive_repl(
         binding = runner.bind(sid, resume=(resuming or turn > 0), hitl=hitl)
         console.print()
         console.print()
-        console.print(f"[bold]{_display_agent_name(runner._agent_name)}:[/bold]")
         await run_turn(binding, user_input, console)
         console.print()
         console.print()

@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:10:53.195659+00:00",
+  "input": {
+    "path": "/_outputs/large_tool_results/execute_tvly_extract_https_developer_20260429T081046Z_a299c7.txt",
+    "offset": 400,
+    "limit": 800,
+    "max_line_chars": 2000
+  },
+  "output_chars": 84,
+  "output": "   401\tNo lines to read at offset 400: file has 14 line(s) (valid offsets are 0\u201313).",
+  "call_id": "7"
+}

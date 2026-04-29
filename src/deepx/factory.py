@@ -11,7 +11,8 @@ import asyncio
 import dataclasses
 import re
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -23,6 +24,8 @@ from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
 from agents.tool import Tool
 from agents.tool_context import ToolContext
+
+from openai.types.shared import Reasoning
 
 from deepx.backends.filesystem import FilesystemBackend
 from deepx.backends.utils import resolve_root_dir
@@ -42,7 +45,35 @@ from deepx.system_prompt import (
 )
 from deepx.tools import builtin_tools_for_backend
 
-DEFAULT_MODEL = "gpt-5-mini"
+DEFAULT_MODEL = "gpt-5-nano"
+
+
+StreamEventConsumer = Callable[[Any], None]
+"""CLI hook: receive each SDK stream event from the active (possibly nested) ``run_streamed``."""
+
+interactive_stream_consumer: ContextVar[StreamEventConsumer | None] = ContextVar(
+    "interactive_stream_consumer",
+    default=None,
+)
+
+def _effective_model_settings(override: ModelSettings | None) -> ModelSettings:
+    """Merge caller settings with Deepx defaults.
+
+    Reasoning models omit visible **summary** deltas unless ``reasoning.summary`` is set; default
+    ``summary=\"auto\"`` so terminals (and log consumers) can stream
+    ``response.reasoning_summary_text.delta`` events. Caller :class:`ModelSettings` overrides
+    non-``None`` fields; if the merged ``reasoning`` object has no ``summary`` or
+    ``generate_summary``, ``summary=\"auto\"`` is filled in while preserving ``effort`` etc.
+    """
+    base = ModelSettings(reasoning=Reasoning(summary="auto"))
+    merged = base.resolve(override) if override is not None else base
+    r = merged.reasoning
+    if r is None:
+        return dataclasses.replace(merged, reasoning=Reasoning(summary="auto"))
+    if r.summary is None and r.generate_summary is None:
+        patched = r.model_copy(update={"summary": "auto"})
+        return dataclasses.replace(merged, reasoning=patched)
+    return merged
 
 
 if TYPE_CHECKING:
@@ -200,6 +231,19 @@ def _subagent_tool_from_runner(
         session = create_session(sub_sid, ckpt)
         agent_wrapped = runner._prepare_agent()
         hooks = runner._make_hooks()
+        stream_sink = interactive_stream_consumer.get()
+        if stream_sink is not None:
+            nested = Runner.run_streamed(
+                agent_wrapped,
+                input,
+                context=sub_ctx,
+                session=session,
+                hooks=hooks,
+                max_turns=max_turns,
+            )
+            async for ev in nested.stream_events():
+                stream_sink(ev)
+            return _format_subagent_output(nested)
         run_result = await Runner.run(
             agent_wrapped,
             input,
@@ -238,7 +282,7 @@ def create_deep_agent(
     interrupt_on: list[str] | None = None,
     max_turns: int = 1000,
     run_hooks: Sequence[RunHooksBase[AgentContext, AgentType[AgentContext]]] = (),
-    include_general_purpose: bool = True,
+    include_general_purpose: bool = False,
     model_settings: ModelSettings | None = None,
     input_guardrails: list[Any] | None = None,
     output_guardrails: list[Any] | None = None,
@@ -257,8 +301,8 @@ def create_deep_agent(
 
     **Prompting**
 
-    ``system_prompt`` is only the **role / task** section. The rest (skills index, memory, plan
-    snapshot, sandbox rules) comes from :func:`deepx.system_prompt.build_system_prompt`.
+    ``system_prompt`` is only the **role / task** section. The rest (skills index, memory,
+    sandbox rules) comes from :func:`deepx.system_prompt.build_system_prompt`.
 
     ``memory`` is a list of **file paths** only (not inline prose). Files load in list order; body
     text is joined with ``\\n\\n`` before insertion into the **MEMORY** section. Relative paths
@@ -306,7 +350,13 @@ def create_deep_agent(
 
     **Defaults**
 
-    ``model`` is :data:`DEFAULT_MODEL`. ``debug=True`` enables :class:`~deepx.middleware.logs.SessionToolLogHooks`,
+    ``model`` is :data:`DEFAULT_MODEL`. Unless overridden, :class:`~agents.model_settings.ModelSettings`
+    sent to the ``Agent`` use ``reasoning`` with ``summary="auto"`` so clients can stream
+    ``response.reasoning_summary_text.delta`` when the model supports it. Your ``model_settings`` are
+    merged in; if you pass ``reasoning`` without ``summary`` or ``generate_summary``, Deepx still
+    sets ``summary="auto"`` while preserving fields such as ``effort``.
+
+    ``debug=True`` enables :class:`~deepx.middleware.logs.SessionToolLogHooks`,
     writing tool JSON under ``<data_root>/sessions/<id>/logs/tools`` via the backend runtime API.
 
     **Returns**
@@ -367,7 +417,7 @@ def create_deep_agent(
         )
 
     merged = _merge_optional_agent_fields(
-        model_settings=model_settings,
+        model_settings=_effective_model_settings(model_settings),
         input_guardrails=input_guardrails,
         output_guardrails=output_guardrails,
         tool_use_behavior=tool_use_behavior,
@@ -701,5 +751,7 @@ __all__ = [
     "DeepRunBinding",
     "DeepRunResult",
     "Hitl",
+    "StreamEventConsumer",
     "create_deep_agent",
+    "interactive_stream_consumer",
 ]

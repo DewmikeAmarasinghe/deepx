@@ -8,6 +8,7 @@ import json
 from rich.console import Console
 
 from deepx.middleware.hitl import Hitl, HitlDecision, HitlRequest
+from deepx_cli.components import HitlPanel
 
 
 def create_terminal_hitl(console: Console) -> Hitl:
@@ -15,18 +16,23 @@ def create_terminal_hitl(console: Console) -> Hitl:
 
     async def policy(req: HitlRequest) -> HitlDecision:
         def sync_prompt() -> HitlDecision:
-            console.print("\n")
-            console.print(
-                f"[bold]{req.agent_name}:[/bold] "
-                f"[yellow]approval required[/yellow] · tool [cyan]{req.tool_name}[/cyan]"
-            )
             raw = req.arguments_json or ""
             if raw.strip():
                 try:
                     parsed = json.loads(raw)
-                    console.print("[dim]" + json.dumps(parsed, indent=2) + "[/dim]")
+                    body = json.dumps(parsed, indent=3, ensure_ascii=False)
                 except json.JSONDecodeError:
-                    console.print(f"[dim]{raw}[/dim]")
+                    body = raw
+            else:
+                body = "(no arguments)"
+
+            console.print(
+                HitlPanel(
+                    agent_name=req.agent_name,
+                    tool_name=req.tool_name,
+                    body=body,
+                ).render()
+            )
             console.print("  [1] Reject")
             console.print("  [2] Allow once")
             console.print("  [3] Allow for rest of this session (this tool name)")

@@ -68,7 +68,7 @@ src/deepx/
 
 1. **Backend** — All file I/O goes through **`BackendProtocol`**. Agent paths start with **`/`** under **`root_dir`**; metadata uses **`/.deepx/...`** (on disk: usually `<root_dir>/.deepx/...`).
 2. **Tools** — Built-ins + your **`tools=`** + **subagent** `function_tool`s; **`apply_tool_pipeline`** adds **large-result eviction** and **HITL** for **`interrupt_on`** names.
-3. **Prompt** — **`system_prompt`** is only the **ROLE** slice; **`build_system_prompt`** fills CORE BEHAVIOR, CONTEXT, planning roster, skills, memory, filesystem rules, current plan—on **every** LLM call via **`Agent.instructions`**.
+3. **Prompt** — **`system_prompt`** is only the **ROLE** slice; **`build_system_prompt`** fills CORE BEHAVIOR, CONTEXT, planning roster, skills, memory, filesystem rules—on **every** LLM call via **`Agent.instructions`**.
 4. **Sessions** — **`checkpointer`** is a SQLite path (or `":memory:"`); **`create_session`** wraps **`SQLiteSession`** in **`OpenAIResponsesCompactionSession`** (compaction near **90%** of context window using **`gpt-5-nano`** in `sessions.py`).
 5. **Subagents** — Each **`DeepAgentRunner`** in **`subagents=`** becomes a **`function_tool`** running nested **`Runner.run`** with the **child’s** backend/memory/debug and the **parent’s** `session_id` + **`Hitl`**.
 
@@ -185,7 +185,7 @@ Tools receive **`RunContextWrapper[AgentContext]`** as **`ctx`**; the LLM never 
 
 ## `system_prompt.py` — dynamic prompt assembly
 
-**`build_system_prompt`** is used as **`Agent.instructions`** (dynamic callback), so it runs **before each LLM call**. Sections (see **`system_prompt.py`**): **ROLE** ← `system_prompt`, **CORE BEHAVIOR**, **CONTEXT** (UTC time, session id, project root when known), **PLANNING & DELEGATION** (subagent roster + interrupt list), optional **SKILLS**, optional **MEMORY**, **FILESYSTEM** (and LocalShell extra block when applicable), **CURRENT PLAN** (serialized todos).
+**`build_system_prompt`** is used as **`Agent.instructions`** (dynamic callback), so it runs **before each LLM call**. Sections (see **`system_prompt.py`**): **ROLE** ← `system_prompt`, **CORE BEHAVIOR**, **CONTEXT** (UTC time, project root when known), **PLANNING & DELEGATION** (subagent roster + interrupt list), optional **SKILLS**, optional **MEMORY**, **FILESYSTEM** (and LocalShell extra block when applicable).
 
 ---
 

@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:28:41.362883+00:00",
+  "input": {
+    "command": "tvly search \"Current President of Sri Lanka\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2117,
+  "output": "exit_code=0\n{\n  \"query\": \"Current President of Sri Lanka\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://en.wikipedia.org/wiki/President_of_Sri_Lanka\",\n      \"title\": \"President of Sri Lanka - Wikipedia\",\n      \"content\": \"Anura Kumara Dissanayake is the 10th and current president, having assumed office on 23 September 2024, after being declared the winner of the 2024 presidential\",\n      \"score\": 0.94174546,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.parliament.lk/en/learn/handbook-of-parliament/heads-of-state\",\n      \"title\": \"Heads of State - The Parliament of Sri Lanka\",\n      \"content\": \"Current Head of State - Executive President. His Excellency Anura Kumara Dissanayake (22 September 2024 * ). *Gaz. 2403/03 of 23.09.2024. View Profile\",\n      \"score\": 0.83932644,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.bbc.com/news/articles/c206l7pz5v1o\",\n      \"title\": \"Who is Sri Lanka's new president Anura Kumara Dissanayake? - BBC\",\n      \"content\": \"Left-leaning politician Anura Kumara Dissanayake has been elected as Sri Lanka's next president after he won the debt-ridden country's first\",\n      \"score\": 0.8088086,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.president.gov.lk/\",\n      \"title\": \"President of Sri Lanka\",\n      \"content\": \"President Anura Kumara Dissanayake has instructed officials to ensure that the Government-approved compensation of Rs. 500,000 for houses partially damaged\",\n      \"score\": 0.79845446,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.pbs.org/newshour/world/sri-lankas-new-president-with-marxist-leanings-wins-two-thirds-majority-in-parliament\",\n      \"title\": \"Sri Lanka's new president with Marxist-leanings wins two-thirds ...\",\n      \"content\": \"The party of Sri Lanka's new Marxist-leaning President Anura Kumara Dissanayake has won a two-thirds majority in parliament.\",\n      \"score\": 0.7451949,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.88,\n  \"request_id\": \"5c15b295-28bb-47e5-9f74-3f3fa63bd994\"\n}\n",
+  "call_id": "25"
+}

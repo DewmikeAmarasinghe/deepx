@@ -1,0 +1,12 @@
+{
+  "tool_name": "web_agent",
+  "agent_name": "orchestrator",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:12:36.087086+00:00",
+  "input": {
+    "input": "Search official OpenAI Agents SDK docs (and authoritative GitHub repo or changelogs) to find how to show \"reasoning tokens\" (token-level chain-of-thought / internal reasoning) in a UI when using the OpenAI Agents SDK. Produce a concise how-to (<=200 words) saved to /_outputs/openai_agents_reasoning_ui.md. Include: 1) the exact flag/parameter(s) or method to enable token-level reasoning output (or trace) in the SDK, 2) a minimal client-side code snippet (JavaScript or Python) that shows how to stream or capture the reasoning tokens and forward them to a UI, and 3) one reliable source URL (official docs or repo). Keep it short and actionable \u2014 do not include extra commentary. Return only the output path(s) and a one-line summary in your tool response."
+  },
+  "output_chars": 217,
+  "output": "/_outputs/openai_agents_reasoning_ui.md\n\nConcise how-to saved (shows ModelSettings.reasoning, include=[\"reasoning.encrypted_content\"], streaming events response.reasoning_text.delta; minimal Python streaming snippet).",
+  "call_id": "2"
+}

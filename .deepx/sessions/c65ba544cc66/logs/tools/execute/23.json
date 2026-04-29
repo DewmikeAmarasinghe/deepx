@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:28:33.764770+00:00",
+  "input": {
+    "command": "tvly --status --json=false",
+    "timeout_seconds": 120
+  },
+  "output_chars": 58,
+  "output": "exit_code=2\nError: Option '--json' does not take a value.\n",
+  "call_id": "23"
+}

@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:11:44.908434+00:00",
+  "input": {
+    "command": "tvly extract \"https://platform.openai.com/api/docs/api-reference/resources/responses/streaming-events\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 293,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://platform.openai.com/api/docs/api-reference/resources/responses/streaming-events\",\n      \"error\": \"Failed to fetch url\"\n    }\n  ],\n  \"response_time\": 0.66,\n  \"request_id\": \"a1b8f585-75a9-4ced-b8eb-1a5d0e3cd1e4\"\n}\n",
+  "call_id": "20"
+}

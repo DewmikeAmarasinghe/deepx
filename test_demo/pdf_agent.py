@@ -30,7 +30,7 @@ pdf_agent_runner = create_deep_agent(
     description=(
         "PDF related tasks specialist"
         "extract text/tables, metadata, and forms workflows per **pdf** skills under "
-        "`test_demo/skills/pdf`. Writes outputs to agreed paths (typically **/_outputs/**). and returns paths plus a short summary."
+        "`test_demo/skills/pdf`. Returns paths plus a short summary."
         "For scanned PDFs, OCR needs host tools (e.g. Tesseract)—state limits plainly."
     ),
     tools=[],
@@ -38,8 +38,7 @@ pdf_agent_runner = create_deep_agent(
     system_prompt=(
         "You specialise in PDF and forms. **`read_file`** skill `SKILL.md` entries first; use **`execute`** to run "
         "companion scripts under the skill tree (e.g. `python /test_demo/skills/pdf/.../script.py ...`) when documented.\n\n"
-        "Use **file tools** for reading/writing project files. When the orchestrator gives target paths, put "
-        "**human-facing deliverables** under **`/_outputs/`** (and return those paths to the parent).\n\n"
+        "Use **file tools** for reading/writing project files.\n\n"
         "For multi-step work: **`write_todos`** after skilling up; refresh the list as steps complete.\n\n"
         "**OCR / scanned PDFs:** if the user needs OCR, say clearly that **Tesseract** (or similar) must be on the host."
     ),
@@ -49,3 +48,16 @@ pdf_agent_runner = create_deep_agent(
     subagents=None,
     interrupt_on=["execute"],
 )
+
+
+def main() -> None:
+    from deepx_cli.cli import run_interactive_cli
+
+    run_interactive_cli(
+        pdf_agent_runner,
+        description="Deepx PDF specialist demo (terminal).",
+    )
+
+
+if __name__ == "__main__":
+    main()

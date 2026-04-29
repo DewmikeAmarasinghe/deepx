@@ -55,7 +55,6 @@ _CLIENT_TIMEOUT_S = 300.0
 
 _HF_SYSTEM = """\
 You use Hugging Face Hub tools to search the Hub and fetch docs. \
-When the orchestrator specifies paths, write substantive results under **/_outputs/** (markdown or JSON). \
 Keep the chat reply short: **file paths** and a brief summary — do not paste long tool dumps in the reply.
 """
 
@@ -169,8 +168,7 @@ else:
         memory=[".deepx/AGENTS.md"],
         description=(
             "Hugging Face Hub specialist: model/dataset/space search, docs, and Hub tools exposed "
-            "as normal function tools. Use for anything on hf.co / the Hub API surface. "
-            "Ask it to write digests under **/_outputs/** and return paths plus a short summary."
+            "as normal function tools. Use for anything on hf.co / the Hub API surface."
         ),
         tools=_hf_tools,
         interrupt_on=["hub_repo_search"],
@@ -180,3 +178,17 @@ else:
         debug=True,
         subagents=None,
     )
+
+
+def main() -> None:
+    from deepx_cli.cli import run_interactive_cli
+
+    run_interactive_cli(
+        hf_agent_runner,
+        description="Deepx Hugging Face Hub specialist demo (terminal).",
+        unavailable="HF_TOKEN is not set — add it to `.env` or the environment to run hf_agent.",
+    )
+
+
+if __name__ == "__main__":
+    main()

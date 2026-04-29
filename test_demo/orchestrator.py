@@ -1,14 +1,15 @@
 """Multi-agent orchestrator demo.
 
-Run from the **repository root** so paths like ``./test_demo/skills/...`` resolve correctly.
+Run from the **repository root** (the directory that contains ``test_demo/``) so paths resolve.
 
 Setup::
     uv sync --extra demo
 
-    python -m test_demo.orchestrator                    # streaming chat (default)
-    python -m test_demo.orchestrator --chat             # same: stream assistant tokens
-    python -m test_demo.orchestrator --chat_sync        # chat without token streaming
-    python -m test_demo.orchestrator --chat --session <id>     # resume (``--chat_sync`` also ok)
+    python test_demo/orchestrator.py                    # streaming chat (default)
+    python test_demo/orchestrator.py --chat             # same: stream assistant tokens
+    python test_demo/orchestrator.py --chat_sync        # chat without token streaming
+    python test_demo/orchestrator.py --chat --session <id>     # resume (``--chat_sync`` also ok)
+    python test_demo/sql_agent.py --chat
 
 **Resume:** pass **``--session <id>``** together with **``--chat``** or **``--chat_sync``**.
 
@@ -20,7 +21,6 @@ lives under ``test_demo`` for deepx demonstration purposes only.
 
 from __future__ import annotations
 
-import argparse
 import mimetypes
 import sys
 from pathlib import Path
@@ -223,7 +223,7 @@ extra questions on top.
 | Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly`, tavily skills, and **write-report** for deliverables. |
 | Authoring, auditing, or extending **SKILL.md** bundles (structure, frontmatter, discovery) | Use bundled **skill-creator** skill — write skills under **`test_demo/skills/...`** unless the user specifies otherwise; you may draft content with file tools without delegating. |
 | **Cron** expressions, **`crontab`** snippets, scheduling explanations, timezone pitfalls | Use bundled **cron-scheduling** skill — save drafts under **`/_outputs/...`** when the user wants a saved artifact. |
-| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
+| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; specialist uses host **`sqlite3`** via **`execute`**. |
 | PDF workflows | **`pdf_agent` tool**. |
 | Hugging Face Hub | **`hf_agent` tool** when configured (**HF_TOKEN**); keep delegation brief. |
 | Show finished text to the user | **`render_files`** once, with every relevant path — not for mid-task browsing. |
@@ -245,7 +245,7 @@ orchestrator_runner = create_deep_agent(
     name="orchestrator",
     description=(
         "Coordinates **web_agent** (Tavily CLI + report standards), **sql_agent**, **pdf_agent**, and "
-        "optional **hf_agent**. Delegates with self-contained briefs; specialists write under **/_outputs/**. "
+        "optional **hf_agent**. Delegates with self-contained briefs; specialists return paths and summaries. "
         "You plan, route, and use **render_files**—you do not replace specialists for their domains."
     ),
     subagents=_ORCH_SUBAGENTS,
@@ -263,35 +263,12 @@ orchestrator_runner = create_deep_agent(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Deepx orchestrator demo (terminal).")
-    parser.add_argument(
-        "--session",
-        default=None,
-        metavar="ID",
-        help="Resume this session id (must be used with --chat or --chat_sync).",
-    )
-    parser.add_argument(
-        "--chat",
-        action="store_true",
-        help="Interactive multi-turn session with streaming (default if --chat_sync not set).",
-    )
-    parser.add_argument(
-        "--chat_sync",
-        action="store_true",
-        help="Interactive multi-turn session without token streaming.",
-    )
-    args, _rest = parser.parse_known_args()
+    from deepx_cli.cli import run_interactive_cli
 
-    if args.session is not None and not args.chat and not args.chat_sync:
-        parser.error("--session requires --chat or --chat_sync")
-
-    from deepx_cli.chat_stream import run_chat_stream
-    from deepx_cli.chat_sync import run_chat_sync
-
-    if not args.chat_sync:
-        run_chat_stream(orchestrator_runner)
-    else:
-        run_chat_sync(orchestrator_runner)
+    run_interactive_cli(
+        orchestrator_runner,
+        description="Deepx orchestrator demo (terminal).",
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+{
+  "tool_name": "write_file",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:12:28.929618+00:00",
+  "input": {
+    "path": "/_outputs/openai_agents_reasoning_ui.md",
+    "content": "How to surface reasoning tokens (Agents SDK, <=200 words)\n\n1) Enable/request reasoning in the Agents SDK / Responses API\n- Agents SDK (Python/TS): set ModelSettings.reasoning = Reasoning(effort=\"medium\", summary=\"detailed\") when constructing your Agent or Runner.\n- Responses API: include reasoning artifacts with include=[\"reasoning.encrypted_content\"] to receive the encrypted chain-of-thought item (or default reasoning item id).\n- Streaming events: listen for response.reasoning_text.delta and response.reasoning_summary_text.delta (Responses streaming) to get reasoning deltas.\n\n2) Minimal Python client-side streaming snippet (forward deltas to a WebSocket UI)\n\nfrom openai import OpenAI\nclient = OpenAI()\nfor event in client.responses.stream(model=\"o4-mini\", input=\"Explain...\", include=[\"reasoning.encrypted_content\"]):\n    if event.type == \"response.reasoning_text.delta\":\n        ws.send(json.dumps({\"type\":\"reasoning.delta\",\"delta\":event.delta}))\n    if event.type == \"response.done\":\n        ws.send(json.dumps({\"type\":\"response.done\"}))\n\n3) Reliable source\nhttps://developers.openai.com/cookbook/examples/responses_api/reasoning_items\n"
+  },
+  "output_chars": 52,
+  "output": "Updated file /_outputs/openai_agents_reasoning_ui.md",
+  "call_id": "2"
+}

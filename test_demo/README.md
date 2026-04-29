@@ -15,12 +15,11 @@ This directory contains an **example multi-agent setup** for the Deepx repositor
 
 ```text
 test_demo/
-├── orchestrator.py        # CLI: --chat, --chat_sync, --session (main demo entry)
+├── orchestrator.py        # multi-agent REPL entry (same flags as other agents)
 ├── web_agent.py
 ├── sql_agent.py
 ├── pdf_agent.py
 ├── hf_agent.py
-├── sql_tools.py
 ├── sample_tasks.py
 ├── __init__.py
 ├── dbs/
@@ -35,27 +34,28 @@ test_demo/
 
 ## Deliverable outputs: `/_outputs/`
 
-In agent path terms, specialists are instructed to write **human-facing artifacts** under **`/_outputs/`** (see orchestrator system prompt in **`orchestrator.py`**). On a **`FilesystemBackend`** whose **`root_dir`** is the **repository root**, that corresponds to:
+The **built-in system prompt** (`deepx.system_prompt`) tells agents to use **`/_outputs/`** as the **default workspace** when no other path is specified. On a backend rooted at the repo, that is **`<repo>/_outputs/`**.
 
-**`<repo>/_outputs/`**
-
-Use that tree for **demo deliverables** (reports, extracts, etc.). Large or incidental blobs may also appear under **`/_outputs/large_tool_results/`** when the tool pipeline evicts an oversized tool result (see **`src/deepx/README.md`**).
+Large tool returns may also be spilled under **`/_outputs/large_tool_results/`** (see **`src/deepx/README.md`**).
 
 Session metadata (logs, HITL approvals, `AGENTS.md`, etc.) lives under **`/.deepx/...`** → **`<repo>/.deepx/...`** when the backend’s data root is the repo.
 
 ---
 
-## Entrypoint: `orchestrator.py`
+## Interactive CLI (all demo agents)
 
-- **`REPO_ROOT`** — `Path(__file__).resolve().parents[1]`; used for `sys.path`, DB paths, and **`DEMO_BACKEND = FilesystemBackend(REPO_ROOT)`** (see **`orchestrator.py`**) so agent paths map to real files under the repo.
-- **`create_deep_agent`** — Builds the **`orchestrator`** runner with **`subagents`** (web, sql, pdf, optional hf), **`tools`** (e.g. **`render_files`**), **`memory`**, **`checkpointer`** SQLite paths under **`test_demo/dbs/agent_dbs/`**, **`interrupt_on`** as configured per agent, and **`debug`** as set in code.
-- **CLI** — **`--chat`** / **`--chat_sync`**, **`--session`** for resume; uses **`deepx_cli`** streaming or sync REPL.
+**`deepx_cli.cli.run_interactive_cli`** wires **`--chat`** (streaming; default), **`--chat_sync`**, and **`--session`**. **`orchestrator.py`**, **`sql_agent.py`**, **`web_agent.py`**, **`pdf_agent.py`**, and **`hf_agent.py`** call it from their **`main()`**.
 
-Run examples (from repo root):
+- **`REPO_ROOT`** — `Path(__file__).resolve().parents[1]`; used for `sys.path`, DB paths, and backends so agent paths map to real files under the repo.
+- The **orchestrator** is built with **`subagents`**, **`render_files`**, and its own checkpointer; specialists are separate **`create_deep_agent`** runners with their own SQLite session files under **`test_demo/dbs/agent_dbs/`**.
+
+Run examples **from the repository root**:
 
 ```bash
-python -m test_demo.orchestrator --chat
-python -m test_demo.orchestrator --chat --session <id>
+python test_demo/orchestrator.py --chat
+python test_demo/sql_agent.py --chat
+python test_demo/web_agent.py --chat --session <id>
+python test_demo/hf_agent.py --chat   # requires HF_TOKEN
 ```
 
 ---
@@ -65,11 +65,11 @@ python -m test_demo.orchestrator --chat --session <id>
 | Module | Role |
 |--------|------|
 | **`web_agent.py`** | Web / Tavily-oriented runner; often paired with **`LocalShellBackend`** for **`execute`**. |
-| **`sql_agent.py`** | Read-only SQL over sample DBs under **`test_demo/dbs/test_dbs/`**. |
+| **`sql_agent.py`** | **Host `sqlite3`** via **`execute`** over **`test_demo/dbs/test_dbs/`**, guided by **`sql-assistant`** / **`sql-query-generator`** / **`sql-toolkit`**. |
 | **`pdf_agent.py`** | PDF workflows + skills under **`test_demo/skills/pdf/`**. |
 | **`hf_agent.py`** | Optional HF Hub runner when **`HF_TOKEN`** / config allows. |
 
-Each file constructs a **`DeepAgentRunner`** via **`create_deep_agent`** with its own **`checkpointer`** path, **`backend`**, **`tools`**, and **`interrupt_on`** list.
+Each file constructs a **`DeepAgentRunner`** via **`create_deep_agent`** and exposes **`main()`** for the same interactive CLI as the orchestrator.
 
 ---
 
@@ -78,7 +78,6 @@ Each file constructs a **`DeepAgentRunner`** via **`create_deep_agent`** with it
 | Path | Role |
 |------|------|
 | **`sample_tasks.py`** | Example programmatic tasks / smoke flows against the demo agents. |
-| **`sql_tools.py`** | SQL-related tools used by the SQL agent. |
 | **`scripts/extract_and_analyze_pdfs.py`** | Standalone script (PDF pipeline helper), not the main agent entrypoint. |
 | **`skills/pdf/scripts/*.py`** | Skill-bundled utilities referenced from **`test_demo/skills/pdf`**. |
 | **`dbs/agent_dbs/*.db`** | Per-agent SQLite **conversation** stores (OpenAI Agents session checkpointers). |

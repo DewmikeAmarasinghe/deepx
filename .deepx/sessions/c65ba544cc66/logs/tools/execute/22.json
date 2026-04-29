@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:12:00.532613+00:00",
+  "input": {
+    "command": "tvly extract \"https://openai.github.io/openai-agents-python/ref/reasoning/\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 265,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://openai.github.io/openai-agents-python/ref/reasoning/\",\n      \"error\": \"404 page not found\"\n    }\n  ],\n  \"response_time\": 0.52,\n  \"request_id\": \"96bf99da-4d55-4514-a9e6-f6e34df9ea66\"\n}\n",
+  "call_id": "22"
+}

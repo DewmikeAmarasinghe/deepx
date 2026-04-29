@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "b6922bcabbbf",
+  "timestamp": "2026-04-29T11:29:48.737451+00:00",
+  "input": {
+    "command": "tvly search \"Tea Jar Lounge Ratnapura\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2218,
+  "output": "exit_code=0\n{\n  \"query\": \"Tea Jar Lounge Ratnapura\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://www.instagram.com/tea_jar_lounge/reels/\",\n      \"title\": \"Tea Jar Lounge (@tea_jar_lounge) \u00b7 Ratnapura - Instagram\",\n      \"content\": \"1.5K+ followers \u00b7 173 posts \u00b7 The real experience of factory fresh, exceptional tea and coffee. Caf\u00e9 \u2022 Boutique \u2022 Museum @tea_jar_ #teajarlounge.\",\n      \"score\": 0.9999989,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tiktok.com/discover/tea-jar-lounge-ratnapura\",\n      \"title\": \"Tea Jar Lounge Ratnapura | TikTok\",\n      \"content\": \"Discover the cozy Tea Jar Lounge in Ratnapura, Sri Lanka, featuring delicious cheesecake and a perfect ambiance for relaxation! Tea Jar Lounge Ratnapura\",\n      \"score\": 0.9999964,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.facebook.com/teajarlounge/\",\n      \"title\": \"Tea Jar Lounge | Ratnapura - Facebook\",\n      \"content\": \"Enjoy our All-Day Saturday High Tea, featuring fine Ceylon Tea, savory bites, fresh pastries, and sweet treats\u2014served in a warm, elegant setting at Tea Jar\",\n      \"score\": 0.999995,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tripadvisor.com/Restaurant_Review-g2467853-d15184319-Reviews-Tea_Jar_Lounge-Ratnapura_Sabaragamuwa_Province.html\",\n      \"title\": \"Tea Jar Lounge - Ratnapura Restaurants - Tripadvisor\",\n      \"content\": \"This venture is a whole new concept from KDU Group.This includes a tea boutique, providing modern caf\u00e9 experience with high quality products, gem and jewellery.\",\n      \"score\": 0.99999285,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tripadvisor.com/LocationPhotoDirectLink-g2467853-d15184319-i351484147-Tea_Jar_Lounge-Ratnapura_Sabaragamuwa_Province.html\",\n      \"title\": \"Photo: Exterior of Tea Jar Lounge - Ratnapura - Tripadvisor\",\n      \"content\": \"Tea Jar Lounge, Ratnapura Picture: Exterior of Tea Jar Lounge - Check out Tripadvisor members' 49 candid photos and videos of Tea Jar Lounge.\",\n      \"score\": 0.99999166,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.79,\n  \"request_id\": \"10f601b8-bb70-4d38-9f35-6cb213ffb1f3\"\n}\n",
+  "call_id": "9"
+}

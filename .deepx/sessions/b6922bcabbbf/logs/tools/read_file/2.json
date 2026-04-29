@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "b6922bcabbbf",
+  "timestamp": "2026-04-29T11:28:04.826879+00:00",
+  "input": {
+    "path": "/test_demo/skills/tavily-tavily-dynamic-search-SKILL.md",
+    "offset": 0,
+    "limit": 2000,
+    "max_line_chars": 4000
+  },
+  "output_chars": 75,
+  "output": "Error: '/test_demo/skills/tavily-tavily-dynamic-search-SKILL.md' not found.",
+  "call_id": "2"
+}

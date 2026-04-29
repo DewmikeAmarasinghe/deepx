@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "b6922bcabbbf",
+  "timestamp": "2026-04-29T11:29:36.401317+00:00",
+  "input": {
+    "command": "tvly extract \"https://www.tripadvisor.com/Restaurant_Review-g2467853-d11500568-Reviews-Real_Restaurant-Ratnapura_Sabaragamuwa_Province.html\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 331,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://www.tripadvisor.com/Restaurant_Review-g2467853-d11500568-Reviews-Real_Restaurant-Ratnapura_Sabaragamuwa_Province.html\",\n      \"error\": \"Failed to fetch url\"\n    }\n  ],\n  \"response_time\": 0.65,\n  \"request_id\": \"69f1bd19-3349-4949-83dd-df293b84a760\"\n}\n",
+  "call_id": "7"
+}

@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:10:50.006848+00:00",
+  "input": {
+    "path": "/_outputs/large_tool_results/execute_tvly_extract_https_developer_20260429T081046Z_a299c7.txt",
+    "offset": 0,
+    "limit": 400,
+    "max_line_chars": 2000
+  },
+  "output_chars": 2438,
+  "output": "     1\texit_code=0\n     2\t{\n     3\t  \"results\": [\n     4\t    {\n     5\t      \"url\": \"https://developers.openai.com/api/docs/api-reference/responses/create\",\n     6\t      \"title\": \"Create a model response | OpenAI API Reference\",\n     7\t      \"raw_content\": \"![OpenAI Developers](/OpenAI_Developers.svg)\\n\\n## Search the API docs\\n\\n### Suggested\\n\\n### Suggested\\n\\n### Get started\\n\\n### Core concepts\\n\\n### Agents SDK\\n\\n### Tools\\n\\n### Run and scale\\n\\n### Evaluation\\n\\n### Realtime API\\n\\n### Model optimization\\n\\n### Specialized models\\n\\n### Going live\\n\\n### Legacy APIs\\n\\n### Resources\\n\\n### Getting Started\\n\\n### Using Codex\\n\\n### Configuration\\n\\n### Administration\\n\\n### Automation\\n\\n### Learn\\n\\n### Releases\\n\\n### Core Concepts\\n\\n### Plan\\n\\n### Build\\n\\n### Deploy\\n\\n### Guides\\n\\n### Resources\\n\\n### Guides\\n\\n### File Upload\\n\\n### API\\n\\n### Recent\\n\\n### Topics\\n\\n### Topics\\n\\n### Contribute\\n\\n### Categories\\n\\n### Topics\\n\\n### Programs\\n\\n### Events\\n\\n# Create a model response\\n\\nCreates a model response. Provide [text](/docs/guides/text) or\\n[image](/docs/guides/images) inputs to generate [text](/docs/guides/text)\\nor [JSON](/docs/guides/structured-outputs) outputs. Have the model call\\nyour own [custom code](/docs/guides/function-calling) or use built-in\\n[tools](/docs/guides/tools) like [web search](/docs/guides/tools-web-search)\\nor [file search](/docs/guides/tools-file-search) to use your own data\\nas input for the model\u2019s response.\\n\\n##### Body ParametersJSONExpand Collapse\\n\\nWhether to run the model response in the background.\\n[Learn more](/docs/guides/background).\\n\\nContext management configuration for this request.\\n\\nThe context management entry type. Currently only \u2018compaction\u2019 is supported.\\n\\nToken threshold at which compaction should be triggered for this entry.\\n\\nThe conversation that this response belongs to. Items from this conversation are prepended to `input_items` for this response request.\\nInput items and output items from this response are automatically added to this conversation after this response completes.\\n\\n`input_items`\\n\\nThe unique ID of the conversation.\\n\\nThe conversation that this response belongs to.\\n\\nThe unique ID of the convers\u2026 [line truncated]\n     8\t      \"images\": []\n     9\t    }\n    10\t  ],\n    11\t  \"failed_results\": [],\n    12\t  \"response_time\": 0.02,\n    13\t  \"request_id\": \"3c49cf9d-633b-4be1-86c1-9250ea6cbb2e\"\n    14\t}",
+  "call_id": "6"
+}

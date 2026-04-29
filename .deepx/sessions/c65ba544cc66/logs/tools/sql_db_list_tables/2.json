@@ -1,0 +1,12 @@
+{
+  "tool_name": "sql_db_list_tables",
+  "agent_name": "sql_agent",
+  "session_id": "c65ba544cc66",
+  "timestamp": "2026-04-29T08:45:53.442511+00:00",
+  "input": {
+    "db_name": "northwind.db"
+  },
+  "output_chars": 190,
+  "output": "Categories, CustomerCustomerDemo, CustomerDemographics, Customers, EmployeeTerritories, Employees, Order Details, Orders, Products, Regions, Shippers, Suppliers, Territories, sqlite_sequence",
+  "call_id": "2"
+}

@@ -5,14 +5,15 @@ import asyncio
 from rich.console import Console
 
 from deepx.factory import DeepAgentRunner, DeepRunBinding
+from deepx_cli.chat_stream import run_stream_until_settled
 from deepx_cli.session import parse_cli_session_arg, run_interactive_repl
 
 
 async def _sync_turn(
     binding: DeepRunBinding, user_input: str, console: Console
 ) -> None:
-    result = await binding.run(user_input)
-    console.print(str(result.final_output or ""))
+    """Same nested tool visibility as streaming, but no token-by-token model deltas."""
+    await run_stream_until_settled(binding, user_input, console, stream_text=False)
 
 
 def run_chat_sync(
