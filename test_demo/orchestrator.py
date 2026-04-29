@@ -221,6 +221,8 @@ extra questions on top.
 | Goal | Use |
 |------|-----|
 | Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly`, tavily skills, and **write-report** for deliverables. |
+| Authoring, auditing, or extending **SKILL.md** bundles (structure, frontmatter, discovery) | Use bundled **skill-creator** skill — write skills under **`test_demo/skills/...`** unless the user specifies otherwise; you may draft content with file tools without delegating. |
+| **Cron** expressions, **`crontab`** snippets, scheduling explanations, timezone pitfalls | Use bundled **cron-scheduling** skill — save drafts under **`/_outputs/...`** when the user wants a saved artifact. |
 | Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
 | PDF workflows | **`pdf_agent` tool**. |
 | Hugging Face Hub | **`hf_agent` tool** when configured (**HF_TOKEN**); keep delegation brief. |
@@ -249,7 +251,10 @@ orchestrator_runner = create_deep_agent(
     subagents=_ORCH_SUBAGENTS,
     memory=[".deepx/AGENTS.md"],
     tools=orch_tools,
-    skills=[str(REPO_ROOT / "_outputs" / "weather_task_output" / "skills")],
+    skills=[
+        "./test_demo/skills/skill-creator",
+        "./test_demo/skills/cron-scheduling",
+    ],
     system_prompt=DEMO_ORCHESTRATOR_SYS,
     checkpointer=ORCH_DB,
     debug=True,

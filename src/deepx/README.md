@@ -101,7 +101,6 @@ runner = create_deep_agent(
     model_settings=None,
     input_guardrails=None,
     output_guardrails=None,
-    agent_hooks=None,
     tool_use_behavior=None,
     reset_tool_choice=None,
     prompt=None,
@@ -190,7 +189,7 @@ Tools receive **`RunContextWrapper[AgentContext]`** as **`ctx`**; the LLM never 
 
 ---
 
-## `backends/` — storage
+## `backends/` — scope of the agent
 
 ### `BackendProtocol`
 
@@ -214,7 +213,7 @@ Abstract methods: **`ls`**, **`read`**, **`grep`**, **`glob`**, **`write`**, **`
 | **FilesystemBackend** | Real files under **`root_dir`** | `<root_dir>/.deepx/` | Returns error **string** (no subprocess) |
 | **LocalShellBackend** | Same | Same | **`subprocess.run(shell=True, cwd=root_dir, timeout≤600)`** |
 | **InMemoryBackend** | In-process **`dict`**: workspace keys **`(session_id, rel_path)`**; **`.deepx`** keys use sentinel session **`__deepx__`** | N/A (no disk) | Returns error **string** |
-
+---
 **`InMemoryBackend`** — Workspace keys **`(session_id, "relative/path")`**; **`/.deepx/...`** maps to **`("__deepx__", ".deepx/...")`**-style keys (see **`memory.py`**). Nothing is persisted to disk unless you use a filesystem backend.
 
 **`FilesystemBackend`** — Reads/writes use **`os.open` / file I/O** (not `aiofiles`). **`grep`** tries **`rg`** via **`_grep_via_ripgrep`**, then falls back to a Python scan (**`MAX_GREP_FILE_BYTES`** cap per file).
@@ -230,6 +229,8 @@ Shared helpers: **`data_root_for_host`**, **`data_root_as_agent_path`**, **`MAX_
 ### Hook composition
 
 Order in **`DeepAgentRunner._make_hooks`**: **`FilesystemHooks`** → **`SessionToolLogHooks`** if **`debug`** → user **`run_hooks`**. **`compose_run_hooks`** forwards **`RunHooksBase`** callbacks in sequence.
+
+Use **`run_hooks`** for run-level middleware behavior. These are composed and forwarded to **`Runner.run` / `run_streamed`** as **`hooks=`**.
 
 ### `filesystem.py` — `FilesystemHooks`
 

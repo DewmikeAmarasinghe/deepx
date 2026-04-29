@@ -46,7 +46,6 @@ DEFAULT_MODEL = "gpt-5-mini"
 
 
 if TYPE_CHECKING:
-    from agents.lifecycle import AgentHooks
     from agents.prompts import DynamicPromptFunction, Prompt
 
     from deepx.tools.planning import Plan
@@ -148,7 +147,6 @@ def _merge_optional_agent_fields(
     model_settings: ModelSettings | None,
     input_guardrails: list[Any] | None,
     output_guardrails: list[Any] | None,
-    agent_hooks: "AgentHooks | None",
     tool_use_behavior: Any | None,
     reset_tool_choice: bool | None,
     prompt: "Prompt | DynamicPromptFunction | None",
@@ -160,8 +158,6 @@ def _merge_optional_agent_fields(
         opts["input_guardrails"] = input_guardrails
     if output_guardrails is not None:
         opts["output_guardrails"] = output_guardrails
-    if agent_hooks is not None:
-        opts["hooks"] = agent_hooks
     if tool_use_behavior is not None:
         opts["tool_use_behavior"] = tool_use_behavior
     if reset_tool_choice is not None:
@@ -239,17 +235,16 @@ def create_deep_agent(
     backend: BackendProtocol | None = None,
     checkpointer: str = ":memory:",
     debug: bool = True,
+    interrupt_on: list[str] | None = None,
     max_turns: int = 1000,
     run_hooks: Sequence[RunHooksBase[AgentContext, AgentType[AgentContext]]] = (),
     include_general_purpose: bool = True,
     model_settings: ModelSettings | None = None,
     input_guardrails: list[Any] | None = None,
     output_guardrails: list[Any] | None = None,
-    agent_hooks: "AgentHooks | None" = None,
     tool_use_behavior: Any | None = None,
     reset_tool_choice: bool | None = None,
     prompt: "Prompt | DynamicPromptFunction | None" = None,
-    interrupt_on: list[str] | None = None,
 ) -> "DeepAgentRunner":
     """Build a :class:`DeepAgentRunner`: one OpenAI Agents ``Agent`` plus Deepx filesystem, skills, and sessions.
 
@@ -287,8 +282,12 @@ def create_deep_agent(
 
     **Hooks**
 
-    ``run_hooks`` are composed **after** :class:`deepx.middleware.filesystem.FilesystemHooks`.
-    ``agent_hooks`` map to ``Agent.hooks`` (per-turn agent callbacks), not run-level hooks.
+    - ``run_hooks`` — instances of :class:`agents.lifecycle.RunHooksBase` (same family as
+      :class:`deepx.middleware.filesystem.FilesystemHooks`). Composed via
+      :func:`deepx.middleware.run_hooks.compose_run_hooks` and passed to ``Runner.run`` /
+      ``Runner.run_streamed`` as ``hooks=``. Use this for run-level events (LLM start/end,
+      tool start/end, agent start/end). Deepx always prepends ``FilesystemHooks`` and optional
+      ``SessionToolLogHooks`` before your ``run_hooks``.
 
     **Human-in-the-loop**
 
@@ -371,7 +370,6 @@ def create_deep_agent(
         model_settings=model_settings,
         input_guardrails=input_guardrails,
         output_guardrails=output_guardrails,
-        agent_hooks=agent_hooks,
         tool_use_behavior=tool_use_behavior,
         reset_tool_choice=reset_tool_choice,
         prompt=prompt,

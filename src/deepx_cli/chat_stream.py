@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 from typing import Any
 
+from agents.items import ToolCallItem, ToolCallOutputItem
 from agents.result import RunResultStreaming
 from agents.run_state import RunState
 from agents.stream_events import (
@@ -15,6 +17,39 @@ from rich.console import Console
 
 from deepx.factory import DeepAgentRunner, DeepRunBinding
 from deepx_cli.session import parse_cli_session_arg, run_interactive_repl
+
+
+def _write_stream_status(msg: str) -> None:
+    if len(msg) > 120:
+        msg = msg[:117] + "..."
+    sys.stderr.write(f"\r{msg}\033[K")
+    sys.stderr.flush()
+
+
+def _finish_stream_status() -> None:
+    sys.stderr.write("\n")
+    sys.stderr.flush()
+
+
+def _format_run_item_status(event: RunItemStreamEvent) -> str:
+    item = event.item
+    if isinstance(item, ToolCallItem):
+        if item.title:
+            return f"Tool: {item.title}"
+        if item.description:
+            return f"Tool: {item.description}"
+        ri = item.raw_item
+        if isinstance(ri, dict):
+            n = ri.get("name")
+            if isinstance(n, str) and n:
+                return f"Tool: {n}"
+        n = getattr(ri, "name", None)
+        if isinstance(n, str) and n:
+            return f"Tool: {n}"
+        return "Tool call"
+    if isinstance(item, ToolCallOutputItem):
+        return "Tool output"
+    return event.name.replace("_", " ")
 
 
 async def drain_stream(
@@ -37,9 +72,14 @@ async def drain_stream(
             if stream_text and isinstance(event.data, ResponseTextDeltaEvent):
                 console.print(event.data.delta, end="", highlight=False)
                 stream_line_open = True
-        elif isinstance(event, (RunItemStreamEvent, AgentUpdatedStreamEvent)):
-            pass
+        elif isinstance(event, AgentUpdatedStreamEvent):
+            agent = event.new_agent
+            name = getattr(agent, "name", None) or type(agent).__name__
+            _write_stream_status(f"Agent: {name}")
+        elif isinstance(event, RunItemStreamEvent):
+            _write_stream_status(_format_run_item_status(event))
 
+    _finish_stream_status()
     _end_stream_line_if_needed()
 
 

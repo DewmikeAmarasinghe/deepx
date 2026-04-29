@@ -65,15 +65,6 @@ class ChainedRunHooks(RunHooksBase[AgentContext, Agent[AgentContext]]):
         for h in self._hooks:
             await h.on_agent_end(context, agent, output)
 
-    async def on_handoff(
-        self,
-        context: RunContextWrapper[AgentContext],
-        from_agent: Agent[AgentContext],
-        to_agent: Agent[AgentContext],
-    ) -> None:
-        for h in self._hooks:
-            await h.on_handoff(context, from_agent, to_agent)
-
     async def on_tool_start(
         self,
         context: RunContextWrapper[AgentContext],

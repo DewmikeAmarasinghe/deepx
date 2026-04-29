@@ -2,9 +2,21 @@ ORCHESTRATOR_TASKS: list[str] = [
     """\
 You are a capable agent like openclaw. I want you to register a new skill for yourself. Fetch https://lobehub.com/skills/openclaw-openclaw-weather/skill.md and save it in 
 _outputs/weather_task_output/skills/weather/SKILL.md.
-Then edit your agent definition in test_demo/orchestrator.py file to include the new skill.
+Then edit your web agent definition in test_demo/web_agent.py file to include the new skill.
 Then use that new skill to find the current weather of colombo, Sri Lanka.
 Save your outputs to the _outputs/weather_task_output folder.
+""",
+    """\
+Using the **skill-creator** guidance, add a minimal new skill bundle at **test_demo/skills/sample-rerun/SKILL.md** with frontmatter `name` and `description` and a short "When to use" section.
+Do not modify unrelated agents. Return the path you created and one sentence on when to use it.
+""",
+    """\
+Using the **cron-scheduling** skill, draft a crontab entry that runs daily at 02:30 (explain timezone assumptions). Save the snippet and a short explanation to **/_outputs/cron_sample.txt**.
+Return that path and a one-line summary.
+""",
+    """\
+Combine **cron-scheduling** and **skill-creator**: document a daily housekeeping job (what it runs, log path idea) in **/_outputs/daily_job_notes.md**, then create **test_demo/skills/daily-housekeeping/SKILL.md** that points to those notes and summarizes the schedule.
+Return both paths.
 """,
 ]
 
@@ -23,6 +35,10 @@ I want a clear, well-sourced picture of sodium-ion versus lithium-ion for electr
 energy density limits, materials and geopolitics, manufacturing scale-up, then write a single strong markdown report in the workspace
 I can open, and show me that report in the terminal when it is ready.
 Save your outputs to the _outputs/sodium_ion_task_output folder.
+""",
+    """\
+I want to get a table of ENTC department academic staff of university of Moratuwa. In the table show Name, Highest Degree, The institution that offered the highest degree, residential telephone number.
+Save your outputs to the _outputs/entc_staff_task_output folder.
 """,
 ]
 
@@ -60,10 +76,18 @@ Return SQL, result tables, and a short root-cause analysis.
 
 Save your output to the _outputs/northwind_task_output folder.
 """,
+    """\
+The Chinook database (**chinook.db**) is available under **test_demo/dbs/test_dbs**.
+
+Answer: Which **genre** has the highest total invoice line **quantity** sold, and what is that total quantity? Return the SQL, a small result table, and one sentence of interpretation.
+
+Save your outputs to **/_outputs/chinook_genre_quantity_task/** (SQL and brief notes as needed).
+""",
 ]
 
 PDF_AGENT_TASKS: list[str] = [
     """\
+I have two pdf files in the test_demo/pdfs folder. They are attention.pdf and gpt4.pdf.
 Perform a deep analysis of each document and produce a structured output for both.
  
 For each paper, provide a detailed breakdown of:

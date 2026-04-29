@@ -186,18 +186,32 @@ THEN:
 """
 
 
-MEMORY_PROMPT = """\
+MEMORY_PROMPT = """
+# AGENT LONG-TERM MEMORY
 <agent_memory>
 {agent_memory}
 </agent_memory>
 
-Loaded from persistent memory for this agent. Treat it as prior knowledge.
+The content above is your persistent knowledge base regarding this user. Use it to provide personalized, context-aware responses without asking repetitive questions.
 
-**When to call `save_memory`:** user asks you to remember something; stable conventions worth
-keeping across sessions. **Never** store secrets.
+### GUIDELINES FOR UPDATING MEMORY (`save_memory`)
 
-**When not to:** one-off task state, transient chat.\
+**1. What to Store:**
+* **Explicit Preferences:** Specific tools, coding styles, languages, or communication tones the user requests.
+* **Workflow Conventions:** Reusable patterns, project structures, or "rules of thumb" established during sessions.
+* **Fact-Based Corrections:** If a user corrects a recurring mistake or provides specific technical constraints (e.g., "Always use Python 3.12 syntax").
+* **Identity/Context:** High-level professional roles or long-term goals that influence output style.
+
+**2. What to Ignore:**
+* **Transient State:** One-off bug fixes, temporary variables, or session-specific troubleshooting steps.
+* **Conversation History:** Do not summarize the chat; only extract "durable" facts.
+* **Secrets/PII:** Never store passwords, API keys, or sensitive personal data.
+
+**3. Operational Logic:**
+* **Deduplication:** Before saving, check if the information already exists or contradicts current memory. Update existing entries rather than creating duplicates.
+* **Atomicity:** Store information in concise, independent snippets for better retrieval.
 """
+
 
 SKILLS_PROMPT = """\
 You have access to a skills library. Each skill provides domain knowledge, quality standards,
@@ -459,7 +473,6 @@ def build_system_prompt(
     host_p, data_p = resolve_backend_paths(ctx.context.backend)
     ctx_lines = [
         f"Current date and time (UTC): {utc_now.strftime('%Y-%m-%d %H:%M:%S')} ({utc_now.date().isoformat()}).",
-        f"Session id: `{ctx.context.session_id}`.",
     ]
     if host_p is not None:
         ctx_lines.append(f"Project root (`root_dir`): `{host_p}`")
