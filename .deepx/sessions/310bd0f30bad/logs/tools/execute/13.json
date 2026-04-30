@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:36:19.805444+00:00",
+  "input": {
+    "command": "tvly search \"Garland Cafe Ratnapura owner\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2210,
+  "output": "exit_code=0\n{\n  \"query\": \"Garland Cafe Ratnapura owner\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://www.facebook.com/garlandcaffe/posts/%EF%B8%8F-garland-cafe-the-perfect-dining-spot-in-ratnapura-looking-for-a-cozy-place-to-/1278992040694228/\",\n      \"title\": \"\ufe0f GARLAND Cafe \u2013 The Perfect Dining Spot in Ratnapura! Looking ...\",\n      \"content\": \"Location: Newtown, Ratnapura Call us: 045 222 8300 Whether it's a casual hangout, a family gathering, or a romantic dinner \u2013 Garland Cafe\",\n      \"score\": 0.99988043,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.facebook.com/garlandcaffe/\",\n      \"title\": \"Garland Caf'e | Ratnapura - Facebook\",\n      \"content\": \"Garland Caf\u00e9, Newtown, Ratnapura 045 - 2228300 | 076 - 9104449 ... Come spend an hour of happiness with your favorite coffee at Garland Cafe!\",\n      \"score\": 0.9998029,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://mapcarta.com/N8315634302\",\n      \"title\": \"Garland Cafe Map - New Town, Ratnapura, Sabaragamuwa, Sri Lanka\",\n      \"content\": \"Established in 1991, Keells has grown to operate 135 outlets across the country, positioning itself as one of the leading retail chains in Sri Lanka alongside\",\n      \"score\": 0.99942076,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.facebook.com/garlandcaffe/posts/-adventure-awaits-for-the-kids-while-you-enjoy-that-perfect-cup-of-coffee-the-li/1335589741701124/\",\n      \"title\": \"Garland Caf'e - Facebook\",\n      \"content\": \"The best of both worlds? That's Garland Caf\u00e9. Contact us: 045 222 8300 Location: Newtown, Ratnapura #GarlandCafe #KidsApproved\",\n      \"score\": 0.9978173,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tiktok.com/@tamigirl2/video/7594175693571902727\",\n      \"title\": \"Happy birthday dad\u2764\ufe0f\u2764\ufe0fbirthday surprise city of dreams hotel ...\",\n      \"content\": \"Mom birthday celebration\u2764\ufe0fgarland cafe ratnapura\u2764\ufe0f. Mata Denna Lobai - Gajindu Fonseka & Pranirsha Thiyagaraja. 22Likes. 0Comments. 0Shares.\",\n      \"score\": 0.992597,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.77,\n  \"request_id\": \"af36c89c-5d40-4301-9375-121e91f5ff37\"\n}\n",
+  "call_id": "13"
+}

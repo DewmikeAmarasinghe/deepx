@@ -1,0 +1,240 @@
+ID: 994
+Title: #994 Counting Triangles - Project Euler
+Statement:
+### Problem 994
+
+Given positive integers $m$ and $n$, for every $1\leq i \leq m$ and $1\leq j \leq n$ a line segment is drawn between points $(i,1)$ and $(j,2)$ in the plane. Then define $T(m,n)$ to be the number of triangles in the resulting picture, including those which are cut by other line segments.
+
+Shown above is the example $m=2$, $n=3$, where eight triangles can be seen: four "smaller" triangles that are internally empty, and four "larger" triangles that are cut by another line segment. Thus $T(2,3)=8$.
+
+You are also given $T(3,5)=146$ and $T(12,23)=756716$.
+
+Find $T(1234\times 10^8,2345\times 10^8)$. Give your answer modulo $10^9+7$.
+Answer: NOT_COMPUTED (time: 0.000002s)
+Note: solver not implemented fully. Approach: combinatorial counting, derive closed-form using gcd and modular arithmetic.
+---
+
+ID: 993
+Title: #993 Banana Beaver - Project Euler
+Statement:
+### Problem 993
+
+A beaver plays a game on an infinitely long number line.  
+When the game starts, the beaver is at position $0$, carrying $N$ bananas, and there are no other bananas on the number line.  
+At each step, the beaver will do the following according to the bananas it sees at positions $x$ and $x + 1$, where $x$ is the beaver's current position:
+
+For example, if $N \ge 3$, then the last rule applies to the starting position, so after $1$ step, there are $3$ bananas on the number line, at positions $-1, 0, 1$, with the beaver at position $-2$.  
+Similarly, if $N \ge 5$, then after $5$ steps, there are $5$ bananas on the number line, at positions $-2,-1,0,1,2$, with the beaver at position $-1$.
+
+Let $\operatorname{BB}(N)$ be the position of the beaver when the game ends (which can be proved to always happen).  
+You are given $\operatorname{BB}(1000) = 1499$.
+
+Find $\operatorname{BB}(10^{18})$.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000002s)
+Note: requires analytic derivation for N=1e18; only small-N simulation possible.
+---
+
+ID: 992
+Title: #992 Another Frog Jumping - Project Euler
+Statement:
+### Problem 992
+
+There are $n+1$ stones in a pond, numbered $0$ to $n$.
+
+A frog starts by jumping onto stone $0$. It then jumps between the stones, only ever jumping to adjacent ones. For fixed $k$, it makes exactly $k+i$ visits to each stone $i$ for $0 \le i \lt n$; however, there are no restrictions on the number of times stone $n$ is visited. The frog can finish on any stone.
+
+If $n=3$ and $k=2$ it would visit stone $0$ two times, stone $1$ three times and stone $2$ four times.  
+One way of achieving this is:  
+$0 \to 1 \to 0 \to 1 \to 2 \to 3 \to 2 \to 1 \to 2 \to 3 \to 2$.
+
+Let $J(n,k)$ be the number of ways the frog can make such a journey.
+For example, $J(3,2) = 17$, $J(6,1) = 1320$ and $J(6,5) = 16793280$.
+
+Find $\displaystyle \sum\_{s=0}^4 J(500,10^s)$. Give your answer modulo $987898789$.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000002s)
+Note: full computation for n=500,k=10^s requires advanced combinatorics and efficient matrix exponentiation modulo 987898789.
+---
+
+ID: 991
+Title: #991 Fruit Salad - Project Euler
+Statement:
+### Problem 991
+
+Find the sum of $\unicode{x1F34E} + \unicode{x1F34C} + \unicode{x1F34D}$ for all triples of positive integers $\unicode{x1F34E}, \unicode{x1F34C}, \unicode{x1F34D}$ which satisfy
+
+and $\unicode{x1F34E} + \unicode{x1F34C} + \unicode{x1F34D} \le 10^7$.
+
+In case your device cannot display emoji properly, [here](resources/images/0991_fruits.png) is a rendered image of the problem statement.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000002s)
+Note: problem uses emoji placeholders; see problem image for full condition. Requires optimized number-theory enumeration up to 1e7.
+---
+
+ID: 990
+Title: #990 Addition Equations - Project Euler
+Statement:
+### Problem 990
+
+A string forms an *addition equation* if it consists of
+
+Most importantly, the equality must hold.
+
+Example of strings of length 7 forming addition equations:
+  
+1+1+1=3
+  
+100=100
+  
+77=7+70
+  
+1+2=2+1
+
+Note that strings are considered different even if they form equivalent equations, so for example here are three unique strings:
+  
+1+2=3
+  
+2+1=3
+  
+3=1+2
+
+The following strings do not form valid addition equations:
+  
+1+1=3
+  
+1+1=02
+  
+0+1=1
+  
++1=1
+  
+2-1=1
+
+Let $A(n)$ be the number of strings of length not larger than $n$ forming addition equations.
+
+You are given $A(3) = 9$, $A(5)=171$ and $A(7)=4878$.
+
+Find $A(50)$. Give your answer modulo $10^9 + 7$.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000002s)
+Note: full DP for A(50) not implemented; requires careful state-space DP with modulo arithmetic.
+---
+
+ID: 989
+Title: #989 Fibonacci Sum - Project Euler
+Statement:
+### Problem 989
+
+Write $F\_n$ for the $n$-th **Fibonacci number**, with $F\_1 = F\_2 = 1$ and $F\_{n+1} = F\_n + F\_{n-1}$.
+
+It is known that $F\_n$ is very well approximated by $\varphi^n / \sqrt 5$, where $\varphi$, the golden ratio, is the positive root of the equation $x^2 = x+1$.
+
+Let $G(n)$ be the number of distinct integers $0 \leq x < n$ such that $x^2 \equiv x+1 \pmod n$.
+
+You are given $\displaystyle\sum\_{n=1}^{10^3}F\_nG(n)\equiv 190950976\bmod(10^9+9)$.
+
+Find $\displaystyle\sum\_{n=1}^{10^{14}}F\_nG(n)$, giving your answer modulo $10^9+9$.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000002s)
+Note: full solution requires deep number-theory and efficient summation to 1e14.
+---
+
+ID: 988
+Title: #988 Non-attacking Frogs - Project Euler
+Statement:
+### Problem 988
+
+Frogs can be placed on the real number line at integer locations. Given coprime positive integers $(a,b)$, each frog has the ability to make jumps of distances $a$ or $b$ in the positive direction.
+
+Two frogs placed at $m$ and $n$, $m<n$, are *attacking* if the frog at $m$ can hop to $n$ with some series of jumps. For example if $(a,b)=(3,5)$, frogs placed at $0$ and $11$ are attacking as the former can make two jumps of $3$ and one jump of $5$ to reach $11$. However, frogs placed at $4$ and $11$ are non-attacking.
+
+A *non-attacking configuration* is a placement of any number of frogs such that:
+
+Define $F(a,b)$ to be sum of the integer locations of every frog, summing over all non-attacking configurations. For example if $(a,b)=(3,5)$ there are seven non-attacking configurations:
+$$\{0\}\quad\quad\{0,1\}\quad\quad\{0,2\}\quad\quad\{0,4\}\quad\quad\{0,7\}\quad\quad\{0,1,2\}\quad\quad\{0,2,4\}
+$$giving $F(3,5)=23$.
+
+You are also given $F(5,13)=16336$.
+
+Find $F(19,53)$.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000003s)
+Note: full evaluation for (19,53) requires combinatorial enumeration/number-theory; placeholder provided.
+---
+
+ID: 987
+Title: #987 Straight Eight - Project Euler
+Statement:
+### Problem 987
+
+In Poker a **straight** is exactly five cards of sequential rank NOT all of the same suit.
+In this problem an ace can rank either high as in A-K-Q-J-10 or low as in 5-4-3-2-A, but cannot simultaneously rank both high and low, so Q-K-A-2-3 is not allowed.
+
+There are $10200$ ways of choosing a straight from a normal $52$ card deck.  
+There are $31832952$ ways of choosing two disjoint straights from a single $52$ card deck.
+
+Find the number of ways of choosing eight disjoint straights from a single $52$ card deck.  
+In this the order of choosing the straights does not matter.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 55.020390s)
+Note: search timed out or not finished within resource limits.
+---
+
+ID: 986
+Title: #986 Another Infinite Game - Project Euler
+Statement:
+### Problem 986
+
+Peter is playing another game on an infinite row of squares, each square of which can hold an unlimited number of tokens.
+
+Initially, every square contains a token.  
+Given positive integers $c$ and $d$, each move of the game consists of the following steps:
+
+Peter's goal is to move as many tokens as possible into one square. For example, with $c = 2$ and $d = 1$, it is possible to move $7$ tokens into one square, following these steps (where red color marks the chosen tokens):
+
+... 1 1 1 1 1 1 1 1 ...  
+... 1 1 1 1 0 1 0 3 ...  
+... 1 1 1 0 0 0 2 3 ...  
+... 0 1 0 2 0 0 2 3 ...  
+... 0 0 0 1 2 0 2 3 ...  
+... 0 0 0 1 1 0 1 5 ...  
+... 0 0 0 1 0 0 0 7 ...
+
+However, it is not possible to move $8$ tokens into one square.
+
+Let $G(c, d)$ be the maximum number of tokens Peter can move into one square. For example, $G(2, 1) = 7$. You are also given that $G(1, 2) = 7$, $G(3, 1) = 11$, $G(2, 2) = 3$ and $G(1, 3) = 15$.
+
+Find the sum of $G(c, d)$ for all pairs of $c, d$ with $1 \leq c, d \leq 160$.
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000001s)
+Note: full enumeration for c,d up to 160 omitted due to complexity.
+---
+
+ID: 985
+Title: #985 Telescoping Triangles - Project Euler
+Statement:
+### Problem 985
+
+Given a triangle $T\_k$, it is sometimes possible to construct a triangle $T\_{k+1}$ inside $T\_k$ such that
+
+![0985_telescoping_triangles.png](resources/images/0985_telescoping_triangles.png?1770589857)
+
+Illustrated above is such a sequence of three triangles starting with $T\_0$ (in blue) having side lengths $(8,9,10)$. Then $T\_1$ is shown in green and $T\_2$ in red. However, no triangle can be drawn inside $T\_2$ that satisfies the requirements. In other words, $T\_3$ does not exist.
+
+Amongst all integer-sided triangles $T\_0$ such that $T\_2$ exists but $T\_3$ does not exist, the smallest possible perimeter is $10$ when $T\_0$ has side lengths $(3, 3, 4)$.
+
+Suppose another triangle $T\_0$ has integer side lengths, and $T\_{20}$ exists, but $T\_{21}$ does not exist. What is the smallest possible perimeter of $T\_0$?
+
+The page has been left unattended for too long and that link/button is no longer active. Please refresh the page.
+Answer: NOT_COMPUTED (time: 0.000001s)
+Note: full integer search omitted; requires specialized geometric recurrence reasoning.
+---

@@ -1,0 +1,6 @@
+Multiples of 3 or 5 — 233168
+Even Fibonacci Numbers — 4613732
+Largest Prime Factor — 6857
+Largest Palindrome Product — 906609
+Smallest Multiple — 232792560
+Sum Square Difference — 25164150

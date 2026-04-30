@@ -1,0 +1,4 @@
+ID: 990
+Answer: NOT_COMPUTED
+Note: full DP for A(50) not implemented; requires careful state-space DP with modulo arithmetic.
+Time: 0.000002s

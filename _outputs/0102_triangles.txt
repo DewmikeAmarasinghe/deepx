@@ -1,0 +1,11 @@
+{
+  "results": [],
+  "failed_results": [
+    {
+      "url": "https://projecteuler.net/project/resources/p0102_triangles.txt",
+      "error": "404 page not found"
+    }
+  ],
+  "response_time": 0.74,
+  "request_id": "f536cc2a-e91b-4a36-b8e3-8c26c895871f"
+}

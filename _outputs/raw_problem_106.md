@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/problem=106",
+      "title": "#106 Special Subset Sums: Meta-testing - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n![projecteuler.net](images/clipart/print_page_logo.png)\n\n## Special Subset Sums: Meta-testing\n\n![](images/icons/file_html.png \"Show HTML problem content\")\n![](images/icons/info.png)\n\n### Problem 106\n\nLet $S(A)$ represent the sum of elements in set $A$ of size $n$. We shall call it a special sum set if for any two non-empty disjoint subsets, $B$ and $C$, the following properties are true:\n\nFor this problem we shall assume that a given set contains $n$ strictly increasing elements and it already satisfies the second rule.\n\nSurprisingly, out of the $25$ possible subset pairs that can be obtained from a set for which $n = 4$, only $1$ of these pairs need to be tested for equality (first rule). Similarly, when $n = 7$, only $70$ out of the $966$ subset pairs need to be tested.\n\nFor $n = 12$, how many of the $261625$ subset pairs that can be obtained need to be tested for equality?\n\nNOTE: This problem is related to [Problem 103](problem=103) and [Problem 105](problem=105).\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.89,
+  "request_id": "b97d1df2-18b2-4dc4-bad0-1a6c8dea3eaf"
+}

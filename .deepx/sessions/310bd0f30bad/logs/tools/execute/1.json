@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:34:46.099129+00:00",
+  "input": {
+    "command": "tvly --status --json || true",
+    "timeout_seconds": 120
+  },
+  "output_chars": 56,
+  "output": "exit_code=0\n{\"version\": \"0.1.0\", \"authenticated\": true}\n",
+  "call_id": "1"
+}

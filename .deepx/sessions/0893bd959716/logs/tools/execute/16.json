@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "0893bd959716",
+  "timestamp": "2026-04-29T12:45:28.808730+00:00",
+  "input": {
+    "command": "tvly search \"\"Blue Marble\" lens serial\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 143,
+  "output": "exit_code=2\nUsage: tvly search [OPTIONS] [QUERY]\nTry 'tvly search --help' for help.\n\nError: Got unexpected extra argument (Marble lens serial)\n",
+  "call_id": "16"
+}

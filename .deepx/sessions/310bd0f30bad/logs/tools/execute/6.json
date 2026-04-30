@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:35:24.279851+00:00",
+  "input": {
+    "command": "tvly search \"Garland Cafe Ratnapura address\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2213,
+  "output": "exit_code=0\n{\n  \"query\": \"Garland Cafe Ratnapura address\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://www.facebook.com/garlandcaffe/\",\n      \"title\": \"Garland Caf'e | Ratnapura - Facebook\",\n      \"content\": \"... Address: 2nd Floor, Garland Caf\u00e9, New Town Road, Ratnapura. Phone: 077 850 6565 / 076 316 56 77 #GarlandEventSpace #Ratnapura #EventVenue #SriLankaEvents\",\n      \"score\": 0.99999416,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.trip.com/restaurant/sri-lanka/ratnapura/detail/garland-caf-e-34556391/\",\n      \"title\": \"Garland Caf\u00e9 (, Ratnapura) - Restaurant Reviews, Menu & Contact | Trip.com\",\n      \"content\": \"# Garland Caf\u00e9. ## Overview. ## Features. ## Attractions near Garland Caf\u00e9. ## Hotels near Garland Caf\u00e9. ### Contact us. ### Other services. Contact Center of the year 2025.\",\n      \"score\": 0.9999925,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.instagram.com/p/DIXvIj3IQCL/\",\n      \"title\": \"We are close - Instagram\",\n      \"content\": \"Address: 2nd Floor, Garland Caf\u00e9, New Town Road, Ratnapura. Phone: 077 850 6565 / 076 316 56 77 #GarlandEventSpace #Ratnapura #EventVenue\",\n      \"score\": 0.9999865,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://evendo.com/locations/sri-lanka/ratnapura/restaurant/garland-cafe\",\n      \"title\": \"Garland Caf\u00e9: A Culinary Gem in Ratnapura - Evendo\",\n      \"content\": \"Discover the delightful flavors of Sri Lanka at Garland Caf\u00e9 in Ratnapura - where local ingredients meet global tastes ... Address. Evendo; 1 Canada Square, 37th\",\n      \"score\": 0.9999846,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tripadvisor.com/Restaurant_Review-g2467853-d11331513-Reviews-Garland_Caf_e-Ratnapura_Sabaragamuwa_Province.html\",\n      \"title\": \"GARLAND CAF'E, Ratnapura - Restaurant Reviews ... - Tripadvisor\",\n      \"content\": \"Garland Caf'e, Ratnapura: See 15 unbiased reviews of Garland Caf ... Location. New Town, Hidallana, Rathnapura, Ratnapura 70000 Sri Lanka. Free off\",\n      \"score\": 0.9999814,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 1.02,\n  \"request_id\": \"550a2246-94b2-4a5f-9e5f-0de0ef538971\"\n}\n",
+  "call_id": "6"
+}

@@ -6,9 +6,9 @@ import asyncio
 import json
 
 from rich.console import Console
+from rich.panel import Panel
 
 from deepx.middleware.hitl import Hitl, HitlDecision, HitlRequest
-from deepx_cli.components import HitlPanel
 
 
 def create_terminal_hitl(console: Console) -> Hitl:
@@ -16,6 +16,7 @@ def create_terminal_hitl(console: Console) -> Hitl:
 
     async def policy(req: HitlRequest) -> HitlDecision:
         def sync_prompt() -> HitlDecision:
+            console.print("\n")
             raw = req.arguments_json or ""
             if raw.strip():
                 try:
@@ -25,13 +26,15 @@ def create_terminal_hitl(console: Console) -> Hitl:
                     body = raw
             else:
                 body = "(no arguments)"
-
+            title = f"{req.agent_name} · approval · {req.tool_name}"
             console.print(
-                HitlPanel(
-                    agent_name=req.agent_name,
-                    tool_name=req.tool_name,
-                    body=body,
-                ).render()
+                Panel(
+                    body,
+                    title=title,
+                    title_align="left",
+                    border_style="yellow",
+                    highlight=False,
+                )
             )
             console.print("  [1] Reject")
             console.print("  [2] Allow once")

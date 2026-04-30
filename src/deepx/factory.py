@@ -24,12 +24,11 @@ from agents.result import RunResult, RunResultStreaming
 from agents.run_state import RunState
 from agents.tool import Tool
 from agents.tool_context import ToolContext
-
 from openai.types.shared import Reasoning
 
 from deepx.backends.filesystem import FilesystemBackend
-from deepx.backends.utils import resolve_root_dir
 from deepx.backends.protocol import BackendProtocol
+from deepx.backends.utils import resolve_root_dir
 from deepx.context import AgentContext
 from deepx.middleware.filesystem import FilesystemHooks
 from deepx.middleware.hitl import Hitl
@@ -45,7 +44,7 @@ from deepx.system_prompt import (
 )
 from deepx.tools import builtin_tools_for_backend
 
-DEFAULT_MODEL = "gpt-5-nano"
+DEFAULT_MODEL = "gpt-5-mini"
 
 
 StreamEventConsumer = Callable[[Any], None]
@@ -55,6 +54,7 @@ interactive_stream_consumer: ContextVar[StreamEventConsumer | None] = ContextVar
     "interactive_stream_consumer",
     default=None,
 )
+
 
 def _effective_model_settings(override: ModelSettings | None) -> ModelSettings:
     """Merge caller settings with Deepx defaults.
@@ -159,9 +159,7 @@ def _tool_names_from_tools(tools: Sequence[Tool]) -> set[str]:
     return names
 
 
-def _validate_interrupt_on_names(
-    gated: frozenset[str], tools: Sequence[Tool]
-) -> None:
+def _validate_interrupt_on_names(gated: frozenset[str], tools: Sequence[Tool]) -> None:
     if not gated:
         return
     known = _tool_names_from_tools(tools)

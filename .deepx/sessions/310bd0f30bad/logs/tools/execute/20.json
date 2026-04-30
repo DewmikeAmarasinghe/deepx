@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:37:29.969992+00:00",
+  "input": {
+    "command": "tvly search \"Dine Out Indian Restaurant Ratnapura\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2094,
+  "output": "exit_code=0\n{\n  \"query\": \"Dine Out Indian Restaurant Ratnapura\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://quickshops.lk/lk/restaurants-in-rathnapura-dine-out-indian-restaurant/\",\n      \"title\": \"Dine Out Indian Restaurant - Quickshops.lk\",\n      \"content\": \"Located in the heart of Ratnapura, Dine Out Indian Restaurant offers an authentic Indian dining experience with a diverse menu catering to all tastes.\",\n      \"score\": 0.99999976,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.instagram.com/dine_out_ratnapura/\",\n      \"title\": \"Dine Out Ratnapura (@dine_out_ratnapura) - Instagram\",\n      \"content\": \"Indian Family Restaurant No:52, Batugedara, Ratnapura \u23f0 Open from 11.00 am - 11.00 pm 0777 90 94 68 @yum_thai_ratnapura.\",\n      \"score\": 0.9999995,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.instagram.com/dine_out_ratnapura/reels/\",\n      \"title\": \"Dine Out Ratnapura (@dine_out_ratnapura) - Instagram\",\n      \"content\": \"1K+ followers \u00b7 235 posts \u00b7 Indian Family Restaurant No:52, Batugedara, Ratnapura \u23f0 Open from 11.00 am - 11.00 pm 0777 90 94 68 @yum_thai_ratnapura.\",\n      \"score\": 0.9999939,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.facebook.com/dineout.ratnapura/\",\n      \"title\": \"Dineout Ratnapura - Facebook\",\n      \"content\": \"Dineout Ratnapura. 4498 likes \u00b7 363 talking about this. one and only indian restaurant at ratnapura city.\",\n      \"score\": 0.99999356,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tripadvisor.com/Restaurant_Review-g2467853-d20611744-Reviews-Dine_Out_Indian_Restaurant-Ratnapura_Sabaragamuwa_Province.html\",\n      \"title\": \"DINE OUT INDIAN RESTAURANT, Ratnapura - Tripadvisor\",\n      \"content\": \"Great food!! Nice place!! Great to hang out!! Variety of delicious food like, kebabs, shawarma, submarine, burger, nasigoreng... and the list goes on.\",\n      \"score\": 0.9999932,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.78,\n  \"request_id\": \"f409454a-f901-4d89-a2e4-fb8766473220\"\n}\n",
+  "call_id": "20"
+}

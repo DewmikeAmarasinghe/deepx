@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:36:14.921619+00:00",
+  "input": {
+    "command": "tvly extract \"https://api.github.com/repos/astral-sh/rye/releases?per_page=100\" -o ./_outputs/rye_releases.json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 57,
+  "output": "exit_code=0\nOutput saved to ./_outputs/rye_releases.json\n",
+  "call_id": "19"
+}

@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:32:53.157194+00:00",
+  "input": {
+    "command": "tvly search \"Aura-1\" probe \"Aura-1\" February 2026 Jovian moon --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 164,
+  "output": "exit_code=2\nUsage: tvly search [OPTIONS] [QUERY]\nTry 'tvly search --help' for help.\n\nError: Got unexpected extra arguments (probe Aura-1 February 2026 Jovian moon)\n",
+  "call_id": "10"
+}

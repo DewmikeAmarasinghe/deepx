@@ -1,0 +1,4 @@
+ID: 992
+Answer: NOT_COMPUTED
+Note: full computation for n=500,k=10^s requires advanced combinatorics and efficient matrix exponentiation modulo 987898789.
+Time: 0.000002s

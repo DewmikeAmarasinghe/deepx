@@ -22,7 +22,7 @@ _INPUT_HELP = (
     "(Paste can include newlines; for a long draft, paste as one message.)[/dim]"
 )
 
-_RESUME_SESSION = "--chat or --chat_sync --session (same module you launched)"
+_RESUME_SESSION = "python -m test_demo.orchestrator --chat/chat_sync --session"
 
 
 def _print_resume_hint(console: Console, sid: str) -> None:

@@ -1,0 +1,5 @@
+Topic: Web Search (Visual/Geography)
+Find the 'Big Nickel' monument in Greater Sudbury, Canada. 
+On the 'tails' side of the monument, there is a stylized animal. 
+Take the year shown on the coin and subtract 1929 from it. 
+The result is your next filename.

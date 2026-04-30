@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:30:36.580420+00:00",
+  "input": {
+    "command": "tvly search \"Ivory Coast beat Nigeria AFCON final 2023 stadium BBC\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2090,
+  "output": "exit_code=0\n{\n  \"query\": \"Ivory Coast beat Nigeria AFCON final 2023 stadium BBC\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://www.bbc.com/sport/av/football/68270648\",\n      \"title\": \"Afcon 2023 final: Nigeria 1-2 Ivory Coast - highlights - BBC Sport\",\n      \"content\": \"Watch highlights as hosts Ivory Coast come from behind to beat Nigeria 2-1 and win the 2023 Africa Cup of Nations.\",\n      \"score\": 0.99991906,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.bbc.com/pidgin/articles/c4ny1g54en7o\",\n      \"title\": \"Ivory Coast vs Nigeria highlight: Victor Osimhen win man of ... - BBC\",\n      \"content\": \"Troost-Ekong goal from di penalty spot help Nigeria defeat hosts Ivory Coast and secure dia first victory for di ongoing 2023 Africa Cup of Nations.\",\n      \"score\": 0.9999031,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.bbc.com/sport/football/67942217\",\n      \"title\": \"Ivory Coast 0-1 Nigeria - Super Eagles down hosts in Abidjan - BBC\",\n      \"content\": \"William Troost-Ekong's penalty gives Nigeria a crucial 1-0 win over 2023 Africa Cup of Nations hosts Ivory Coast in Group A.\",\n      \"score\": 0.999892,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.bbc.com/sport/africa/68253333\",\n      \"title\": \"Kolo Toure hopes Ivory Coast beat Nigeria in final to spark party - BBC\",\n      \"content\": \"Kolo Toure says Ivory Coast will have a massive party if the Elephants beat Nigeria in the 2023 Africa Cup of Nations final.\",\n      \"score\": 0.9998795,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.bbc.com/sport/football/68196261\",\n      \"title\": \"Afcon 2023: Nigeria 1-2 Ivory Coast - Haller wins final for Elephants\",\n      \"content\": \"Sebastien Haller was the hero for Ivory Coast again as the Elephants came from behind to beat Nigeria and win the 2023 Africa Cup of Nations final on home soil.\",\n      \"score\": 0.9997731,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.97,\n  \"request_id\": \"3ff31f16-e4b8-4ad2-9be6-a920820e1e87\"\n}\n",
+  "call_id": "5"
+}

@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:37:33.440221+00:00",
+  "input": {
+    "command": "tvly extract \"https://api.github.com/repos/astral-sh/rye/releases/tags/0.43.1\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 268,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://api.github.com/repos/astral-sh/rye/releases/tags/0.43.1\",\n      \"error\": \"404 page not found\"\n    }\n  ],\n  \"response_time\": 0.58,\n  \"request_id\": \"99b3a768-e346-4533-a295-f56fb522dd7d\"\n}\n",
+  "call_id": "23"
+}

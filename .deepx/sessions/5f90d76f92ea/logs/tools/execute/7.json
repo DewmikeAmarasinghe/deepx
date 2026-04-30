@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:30:51.679079+00:00",
+  "input": {
+    "command": "tvly search \"Alassane Ouattara Stadium capacity 60,012 source CAF\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2218,
+  "output": "exit_code=0\n{\n  \"query\": \"Alassane Ouattara Stadium capacity 60,012 source CAF\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://www.kickalgor.com/venue/alassane-ouattara-stadium/\",\n      \"title\": \"Alassane Ouattara Stadium - the KA the Kick Algorithms\",\n      \"content\": \"... Capacity 60,012. Opened:3 October 2020. Tenant: Ivory Coast national football team. Marker \u00b7 Leaflet | Tiles \u00a9 Esri \u2014 Source: Esri, i-cubed, USDA, USGS, AEX\",\n      \"score\": 0.8719229,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.facebook.com/MOtiAdjei/posts/alassane-alassane-ouattara-olympic-stadium-has-60012-in-stadium-capacity36858-sh/929682275182196/\",\n      \"title\": \"Michael Oti Adjei - Facebook\",\n      \"content\": \"Alassane Alassane Ouattara Olympic Stadium has 60,012 in stadium capacity. 36,858 showed up for tonight's game between Ivory Coast and Guinea\",\n      \"score\": 0.8627572,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.afrik-foot.com/en-ng/afcon-2023-alassane-ouattara-stadium-in-ebimpe\",\n      \"title\": \"AFCON 2024: Alassane Ouattara Stadium in Ebimp\u00e9 - Afrik-Foot\",\n      \"content\": \"It has a capacity of 60,012 seats and includes five levels with a height of 51.4 m. It is totally covered and built on a total area of\",\n      \"score\": 0.85797083,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.instagram.com/p/C2DqH9etUgX/\",\n      \"title\": \"Alassane Alassane Ouattara Olympic Stadium has ... - Instagram\",\n      \"content\": \"Alassane Alassane Ouattara Olympic Stadium has 60,012 in stadium capacity. 36,858 showed up for tonight's game between Ivory Coast and Guinea\",\n      \"score\": 0.8576849,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://football.fandom.com/wiki/Alassane_Ouattara_Stadium\",\n      \"title\": \"Alassane Ouattara Stadium | Football Wiki - Fandom\",\n      \"content\": \"Alassane Ouattara Stadium ; Tenants, Ivory Coast national football team (2020\u2013present) ; Capacity, 60,012 ; Field dimensions, 115 yd \u00d7 74 yd (105 m \u00d7 68 m).\",\n      \"score\": 0.84707206,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.97,\n  \"request_id\": \"afdd12e2-a38f-4553-bb4d-93c54638bd91\"\n}\n",
+  "call_id": "7"
+}

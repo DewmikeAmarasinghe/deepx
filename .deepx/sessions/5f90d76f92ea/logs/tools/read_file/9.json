@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:35:29.591028+00:00",
+  "input": {
+    "path": "/_outputs/large_tool_results/execute_tvly_extract_https_api_githu_20260429T123525Z_865521.txt",
+    "offset": 0,
+    "limit": 200,
+    "max_line_chars": 2000
+  },
+  "output_chars": 2388,
+  "output": "     1\texit_code=0\n     2\t{\n     3\t  \"results\": [\n     4\t    {\n     5\t      \"url\": \"https://api.github.com/repos/astral-sh/rye/releases?per_page=100\",\n     6\t      \"title\": null,\n     7\t      \"raw_content\": \"[ { \\\"url\\\": \\\"https://api.github.com/repos/astral-sh/rye/releases/202678715\\\", \\\"assets\\\\_url\\\": \\\"https://api.github.com/repos/astral-sh/rye/releases/202678715/assets\\\", \\\"upload\\\\_url\\\": \\\"https://uploads.github.com/repos/astral-sh/rye/releases/202678715/assets{?name,label}\\\", \\\"html\\\\_url\\\": \\\"https://github.com/astral-sh/rye/releases/tag/0.44.0\\\", \\\"id\\\": 202678715, \\\"author\\\": { \\\"login\\\": \\\"charliermarsh\\\", \\\"id\\\": 1309177, \\\"node\\\\_id\\\": \\\"MDQ6VXNlcjEzMDkxNzc=\\\", \\\"avatar\\\\_url\\\": \\\"https://avatars.githubusercontent.com/u/1309177?v=4\\\", \\\"gravatar\\\\_id\\\": \\\"\\\", \\\"url\\\": \\\"https://api.github.com/users/charliermarsh\\\", \\\"html\\\\_url\\\": \\\"https://github.com/charliermarsh\\\", \\\"followers\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/followers\\\", \\\"following\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/following{/other\\\\_user}\\\", \\\"gists\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/gists{/gist\\\\_id}\\\", \\\"starred\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/starred{/owner}{/repo}\\\", \\\"subscriptions\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/subscriptions\\\", \\\"organizations\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/orgs\\\", \\\"repos\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/repos\\\", \\\"events\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/events{/privacy}\\\", \\\"received\\\\_events\\\\_url\\\": \\\"https://api.github.com/users/charliermarsh/received\\\\_events\\\", \\\"type\\\": \\\"User\\\", \\\"user\\\\_view\\\\_type\\\": \\\"public\\\", \\\"site\\\\_admin\\\": false }, \\\"node\\\\_id\\\": \\\"RE\\\\_kwDOJaJYQs4MFKG7\\\", \\\"tag\\\\_name\\\": \\\"0.44.0\\\", \\\"target\\\\_commitish\\\": \\\"main\\\", \\\"name\\\": \\\"0.44.0\\\", \\\"draft\\\": false, \\\"immutable\\\": false, \\\"prerelease\\\": false, \\\"created\\\\_at\\\": \\\"2025-02-26T22:53:45Z\\\", \\\"updated\\\\_at\\\": \\\"2025-02-27T00:03:30Z\\\", \\\"published\\\\_at\\\": \\\"2025-02-26T23:56:38Z\\\", \\\"assets\\\": [ { \\\"url\\\": \\\"https://api.github.com/repos/astral-sh/rye/releases/assets/232908792\\\", \\\"id\\\": 232908792, \\\"node\\\u2026 [line truncated]\n     8\t      \"images\": []\n     9\t    }\n    10\t  ],\n    11\t  \"failed_results\": [],\n    12\t  \"response_time\": 1.9,\n    13\t  \"request_id\": \"adfadaf3-284b-4457-aef2-84bcaf97dd47\"\n    14\t}",
+  "call_id": "9"
+}

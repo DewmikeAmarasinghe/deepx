@@ -1,0 +1,8 @@
+Company: Not found — no credible evidence that a private company landed a probe named 'Aura-1' on a Jovian moon in February 2026.
+Probe confirmation: 'Aura-1' — no independent confirmation found.
+Landing-gear legs: 0
+Next filename: 11.txt
+
+Sources:
+https://science.nasa.gov/solar-system/whats-up-february-2026-skywatching-tips-from-nasa/
+https://www.space.com/auroras-jupiter-four-largest-moons

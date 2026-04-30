@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:36:00.459386+00:00",
+  "input": {
+    "command": "tvly extract \"https://github.com/astral-sh/rye/releases/tag/0.43.0\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 1713,
+  "output": "exit_code=0\n{\n  \"results\": [\n    {\n      \"url\": \"https://github.com/astral-sh/rye/releases/tag/0.43.0\",\n      \"title\": \"Release 0.43.0 \u00b7 astral-sh/rye \u00b7 GitHub\",\n      \"raw_content\": \"## Navigation Menu\\n\\n# Search code, repositories, users, issues, pull requests...\\n\\n# Provide feedback\\n\\nWe read every piece of feedback, and take your input very seriously.\\n\\n# Saved searches\\n\\n## Use saved searches to filter your results more quickly\\n\\nTo see all available qualifiers, see our [documentation](https://docs.github.com/search-github/github-code-search/understanding-github-code-search-syntax).\\n\\n### Uh oh!\\n\\nThere was an error while loading. Please reload this page.\\n\\nThere was an error while loading. Please reload this page.\\n\\n# 0.43.0\\n\\n# Choose a tag to compare\\n\\n## Sorry, something went wrong.\\n\\n## Sorry, something went wrong.\\n\\n## Sorry, something went wrong.\\n\\n### Uh oh!\\n\\nThere was an error while loading. Please reload this page.\\n\\nThere was an error while loading. Please reload this page.\\n\\n## No results found\\n\\n![@github-actions](https://avatars.githubusercontent.com/in/15368?s=40&v=4)\\n`f925c41`\\n\\n## What's Changed\\n\\n### Contributors\\n\\n![@Alexis-D](https://avatars.githubusercontent.com/u/471097?s=64&v=4)\\n![@charliermarsh](https://avatars.githubusercontent.com/u/1309177?s=64&v=4)\\n![@PushUpek](https://avatars.githubusercontent.com/u/2186790?s=64&v=4)\\n\\n### Uh oh!\\n\\nThere was an error while loading. Please reload this page.\\n\\nThere was an error while loading. Please reload this page.\\n\\n## Footer\\n\\n### Footer navigation\",\n      \"images\": []\n    }\n  ],\n  \"failed_results\": [],\n  \"response_time\": 1.85,\n  \"request_id\": \"189727b8-3e6a-49c8-acd6-86574a534417\"\n}\n",
+  "call_id": "18"
+}

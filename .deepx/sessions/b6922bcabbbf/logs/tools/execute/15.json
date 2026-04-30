@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "b6922bcabbbf",
+  "timestamp": "2026-04-29T11:30:46.591092+00:00",
+  "input": {
+    "command": "tvly search \"Cartwheel Cafe Ratnapura address\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2232,
+  "output": "exit_code=0\n{\n  \"query\": \"Cartwheel Cafe Ratnapura address\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://www.facebook.com/cartwheelrestaurant/reels/\",\n      \"title\": \"Cartwheel cafe & restaurant | Ratnapura - Facebook\",\n      \"content\": \"Cartwheel cafe & restaurant, Ratnapura. 3426 likes \u00b7 1 talking about this \u00b7 1090 were here. Cartwheel Caf\u00e9 & Restaurant Treat with Love Est. 2019.\",\n      \"score\": 0.9999856,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://menueka.com/restaurants/cartwheel-cafe-and-restaurant-pelmadulla/\",\n      \"title\": \"Cartwheel Cafe and Restaurant \u2013 Pelmadulla\",\n      \"content\": \"Cartwheel Caf\u00e9 & Restaurant. Business Info. 127/J, Sannasgama, Lellopitiya, Ratnapura. +94775744622 \u00b7 Winu1217@gmail.com \u00b7 facebook.com/cartwheelrestaurant/.\",\n      \"score\": 0.9999641,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://m.facebook.com/cartwheelrestaurant/about/\",\n      \"title\": \"Cartwheel cafe & restaurant | Ratnapura - Facebook\",\n      \"content\": \"Cartwheel cafe & restaurant, Ratnapura. 3421 likes \u00b7 8 talking about this \u00b7 1090 were here. Cartwheel Caf\u00e9 & Restaurant Treat with Love Est. 2019.\",\n      \"score\": 0.99995995,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.tripadvisor.com/Restaurant_Review-g2467853-d19767202-Reviews-Cartwheel_Cafe_Restaurant-Ratnapura_Sabaragamuwa_Province.html\",\n      \"title\": \"CARTWHEEL CAFE & RESTAURANT, Ratnapura - Tripadvisor\",\n      \"content\": \"Contact. Call, email. Location. 127/J, Sannasgama, Lellopitiya, Ratnapura 70000 Sri Lanka. Is this primarily a coffee shop? Yes. No. Unsure. Save this\",\n      \"score\": 0.9999521,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://wanderlog.com/place/details/2815737/cartwheel-cafe--restaurant\",\n      \"title\": \"Cartwheel Cafe & Restaurant, Nuwara Eliya, Sri Lanka - Wanderlog\",\n      \"content\": \"5-Day Nuwara Eliya Itinerary \u00b7 Map. Address. Ratnapura 70000, Sri Lanka. Website. https://www.facebook.com/Cartwheel-cafe-restaurant-100396681449838/. Phone. +\",\n      \"score\": 0.9999269,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 1.12,\n  \"request_id\": \"fe040be7-0273-4a2f-bc67-cc5e9edba727\"\n}\n",
+  "call_id": "15"
+}

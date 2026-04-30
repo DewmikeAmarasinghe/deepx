@@ -1,0 +1,20 @@
+[
+  {
+    "timestamp": "2026-04-29T11:38:07.318473+00:00",
+    "agent": "web_agent",
+    "todos": [
+      {
+        "content": "Data gathering: compile Rathnapura casual dining restaurants and collect addresses/owner data with citations (through Tavily results).",
+        "status": "completed"
+      },
+      {
+        "content": "Create CSV deliverable /_outputs/rathnapura_casual_dining.csv with headers: Restaurant Name, Address, Owner Name, Owner's Telephone and one row per restaurant (up to/including Corundum).",
+        "status": "in_progress"
+      },
+      {
+        "content": "Create Markdown summary deliverable /_outputs/rathnapura_casual_dining_summary.md following write-report structure (Executive Summary, Background, Key Findings, Analysis, Next Steps, Sources).",
+        "status": "pending"
+      }
+    ]
+  }
+]

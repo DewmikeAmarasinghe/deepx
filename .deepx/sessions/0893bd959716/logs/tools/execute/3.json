@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "0893bd959716",
+  "timestamp": "2026-04-29T12:43:46.497280+00:00",
+  "input": {
+    "command": "tvly search \"Apollo 17 Hasselblad lens serial\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2238,
+  "output": "exit_code=0\n{\n  \"query\": \"Apollo 17 Hasselblad lens serial\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://apollo.im-ldi.com/SUPPORT_DATA/ap17_data_notes.pdf\",\n      \"title\": \"[PDF] PDF - Apollo Image Archive\",\n      \"content\": \"Summary of Apollo 17 Hasselblad 70-mm Film. Magazines. *. # *. *. \u7565. 2. Summary of ... LENS. SERIAL. NO.(TYP). 1 (TYP.) Figure 3. Stellar Camera Film Format (in\",\n      \"score\": 0.8124067,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://auctions.goldbergcoins.com/m/lot-details/index/catalog/111/lot/186690\",\n      \"title\": \"NASA Apollo Hasselblad 500 EL-HEC Camera, Lens and Film ...\",\n      \"content\": \"The camera body is Hasselblad #TRE 12109 and was designated NASA serial # 1044. The left body plate with \\\"Hasselblad Electric Camera 500 EL\",\n      \"score\": 0.7813477,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.facebook.com/groups/828178678983076/posts/1482704480197156/\",\n      \"title\": \"Apolo 17 (1972) Hasselblad 500EL | 80 mm | f/2.8 - Facebook\",\n      \"content\": \"It was taken by the crew of Apollo 17 on December 7, 1972 as they left earth on their way to the moon. It is a single frame photograph shot with\",\n      \"score\": 0.7474137,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.lpi.usra.edu/resources/apollo/catalog/70mm/mission/?17\",\n      \"title\": \"Apollo 17 - Apollo Image Atlas, 70mm Hasselblad Image Catalog\",\n      \"content\": \"The Apollo 17 mission carried four 70MM cameras, and 23 magazines of film. A total of 3584 images were taken, 1645 in black & white, and 1939 in color.\",\n      \"score\": 0.73846215,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://www.spacecamera.co/articles/2023/3/20/unraveling-the-mystery-of-the-first-hasselblad-in-space-a-tale-of-two-cameras\",\n      \"title\": \"Unraveling the Mystery of the First Hasselblad in Space.\",\n      \"content\": \"On October 3rd, 1962, Wally Schirra used Hasselblad TV 45011 with 2 film magazines, one serial number TV 59386, and an 80mm Carl Ziess lens Nr\",\n      \"score\": 0.72884524,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.91,\n  \"request_id\": \"3bb35351-30a2-4d30-be30-11ba25458bf5\"\n}\n",
+  "call_id": "3"
+}

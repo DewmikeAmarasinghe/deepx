@@ -1,0 +1,1 @@
+ Find the specific serial number of the camera lens used to take the 'Blue Marble' photo in 1972. Take the last two digits.

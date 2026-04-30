@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "0893bd959716",
+  "timestamp": "2026-04-29T12:44:01.700628+00:00",
+  "input": {
+    "command": "tvly extract \"https://apollo.im-ldi.com/SUPPORT_DATA/ap17_data_notes.pdf\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 264,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://apollo.im-ldi.com/SUPPORT_DATA/ap17_data_notes.pdf\",\n      \"error\": \"Failed to fetch url\"\n    }\n  ],\n  \"response_time\": 0.83,\n  \"request_id\": \"297e77f1-6aaf-491d-a899-0da29c2ed8cd\"\n}\n",
+  "call_id": "5"
+}

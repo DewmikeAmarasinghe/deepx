@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "3b9bfc734e69",
+  "timestamp": "2026-04-29T11:57:03.976048+00:00",
+  "input": {
+    "command": "tvly extract \"https://projecteuler.net/problem=3\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 240,
+  "output": "exit_code=0\n{\n  \"results\": [],\n  \"failed_results\": [\n    {\n      \"url\": \"https://projecteuler.net/problem=3\",\n      \"error\": \"Failed to fetch url\"\n    }\n  ],\n  \"response_time\": 1.88,\n  \"request_id\": \"988c1c67-02e0-48c4-90ba-afc3cc0de2ee\"\n}\n",
+  "call_id": "5"
+}

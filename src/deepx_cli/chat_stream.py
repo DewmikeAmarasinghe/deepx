@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import types
 from dataclasses import dataclass
 from typing import Any
 
@@ -29,9 +28,11 @@ from deepx.factory import (
     interactive_stream_consumer,
 )
 from deepx_cli.session import parse_cli_session_arg, run_interactive_repl
-from deepx_cli.utils import agent_label, tool_name_and_arguments
-from deepx_cli.components import AssistantStream, ToolInvocation
-from deepx_cli.terminal_renderer import TerminalRenderer
+from deepx_cli.widgets import (
+    agent_label,
+    print_tool_call_panel,
+    tool_name_and_arguments,
+)
 
 
 def _raw_output_text_delta(data: Any) -> str | None:
@@ -45,6 +46,7 @@ def _raw_output_text_delta(data: Any) -> str | None:
 
 
 def _raw_reasoning_delta(data: Any) -> str | None:
+    """Visible reasoning summary / reasoning stream deltas (GPT-5 family, Responses API)."""
     if isinstance(data, ResponseReasoningSummaryTextDeltaEvent):
         return data.delta or None
     if isinstance(data, ResponseReasoningTextDeltaEvent):
@@ -66,87 +68,75 @@ def _raw_reasoning_delta(data: Any) -> str | None:
 
 
 @dataclass
-class _StreamState:
+class _StreamUIState:
+    assistant_line_open: bool = False
     streamed_assistant_text: bool = False
     message_emitted: bool = False
     current_agent: str = ""
+    last_prefixed_prose_agent: str | None = None
     reasoning_active: bool = False
 
 
-class _StreamLayout:
-    """One assistant turn: Live stack when streaming, plain Rich renderables otherwise."""
+class _StreamEventPrinter:
+    """Rich UI: bordered tool panels, lowercase agent labels before prose segments."""
 
-    def __init__(
-        self,
-        console: Console,
-        *,
-        root_agent_name: str,
-        use_live: bool,
-    ) -> None:
+    def __init__(self, console: Console, *, root_agent_name: str) -> None:
         self._console = console
-        self._use_live = use_live
-        self._live: TerminalRenderer | None = (
-            TerminalRenderer(console) if use_live else None
-        )
-        self._state = _StreamState(current_agent=root_agent_name.strip() or "agent")
+        self._state = _StreamUIState(current_agent=root_agent_name.strip() or "agent")
 
-    def __enter__(self) -> _StreamLayout:
-        if self._live is not None:
-            self._live.__enter__()
-        return self
-
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: types.TracebackType | None,
-    ) -> None:
-        if self._live is not None:
-            self._live.__exit__(exc_type, exc_val, exc_tb)
-
-    def _end_reasoning_block(self) -> None:
-        if self._state.reasoning_active and self._live is None:
+    def _end_assistant_line_if_needed(self) -> None:
+        if self._state.assistant_line_open:
             self._console.print()
-        self._state.reasoning_active = False
+            self._state.assistant_line_open = False
 
-    def _emit_reasoning_from_raw(self, data: Any) -> None:
-        delta = _raw_reasoning_delta(data)
-        if not delta:
+    def _finish_reasoning_block(self) -> None:
+        if self._state.reasoning_active:
+            self._console.print()
+            self._state.reasoning_active = False
+
+    def _ensure_prose_leader(self) -> None:
+        """Print ``agent:`` once before the next assistant prose for this agent."""
+        self._finish_reasoning_block()
+        ca = self._state.current_agent
+        if self._state.last_prefixed_prose_agent == ca:
             return
-        if not self._state.reasoning_active:
-            self._state.reasoning_active = True
-        if self._live is not None:
-            self._live.push_thinking_delta(delta)
-        else:
-            self._console.print(delta, end="", style="dim")
+        self._end_assistant_line_if_needed()
+        self._console.print(f"{ca}:")
+        self._state.last_prefixed_prose_agent = ca
 
     def _emit_raw(self, data: Any) -> None:
         delta = _raw_output_text_delta(data)
         if not delta:
             return
-        self._end_reasoning_block()
-        agent = self._state.current_agent
-        if self._live is not None:
-            self._live.push_assistant_delta(agent, delta)
-        else:
-            self._console.print(delta, end="", highlight=False)
+        self._finish_reasoning_block()
+        self._ensure_prose_leader()
+        self._console.print(delta, end="", highlight=False)
+        self._state.assistant_line_open = True
         self._state.streamed_assistant_text = True
 
+    def _emit_reasoning_from_raw(self, data: Any) -> None:
+        delta = _raw_reasoning_delta(data)
+        if not delta:
+            return
+        self._end_assistant_line_if_needed()
+        if not self._state.reasoning_active:
+            self._console.print("[dim]thinking[/dim]")
+            self._state.reasoning_active = True
+        self._console.print(delta, end="", style="dim")
+
     def _emit_raw_payload(self, data: Any) -> None:
+        """Single Responses ``data`` object: reasoning deltas take precedence, else output text."""
         if _raw_reasoning_delta(data) is not None:
             self._emit_reasoning_from_raw(data)
             return
         self._emit_raw(data)
 
     def _emit_tool_call(self, item: ToolCallItem) -> None:
-        self._end_reasoning_block()
         aname = agent_label(item.agent)
         tname, args = tool_name_and_arguments(item)
-        if self._live is not None:
-            self._live.add_tool_call(aname, tname, args)
-        else:
-            self._console.print()
-            self._console.print(ToolInvocation(aname, tname, args).render())
+        self._finish_reasoning_block()
+        self._end_assistant_line_if_needed()
+        print_tool_call_panel(self._console, aname, tname, args, border_style="cyan")
 
     def handle(self, event: Any) -> None:
         if isinstance(event, RawResponsesStreamEvent):
@@ -155,6 +145,7 @@ class _StreamLayout:
             name = agent_label(event.new_agent)
             if name != self._state.current_agent:
                 self._state.current_agent = name
+                self._state.last_prefixed_prose_agent = None
         elif isinstance(event, RunItemStreamEvent):
             if event.name == "tool_output":
                 return
@@ -166,13 +157,10 @@ class _StreamLayout:
                 if not self._state.streamed_assistant_text:
                     text = ItemHelpers.text_message_output(event.item) or ""
                     if text:
-                        self._end_reasoning_block()
-                        agent = self._state.current_agent
-                        if self._live is not None:
-                            self._live.add_assistant_block(agent, text)
-                        else:
-                            self._console.print()
-                            self._console.print(AssistantStream(agent, text).render())
+                        self._finish_reasoning_block()
+                        self._ensure_prose_leader()
+                        self._console.print(text, end="", highlight=False)
+                        self._state.assistant_line_open = True
                         self._state.message_emitted = True
                 return
             if isinstance(event.item, ToolCallItem):
@@ -181,13 +169,13 @@ class _StreamLayout:
     def emit_fallback_final(self, text: str) -> None:
         if not text.strip():
             return
-        self._end_reasoning_block()
-        agent = self._state.current_agent
-        if self._live is not None:
-            self._live.add_assistant_block(agent, text)
-        else:
-            self._console.print()
-            self._console.print(AssistantStream(agent, text).render())
+        self._finish_reasoning_block()
+        self._ensure_prose_leader()
+        self._console.print(text)
+
+    def finalize(self) -> None:
+        self._finish_reasoning_block()
+        self._end_assistant_line_if_needed()
 
     def assistant_body_emitted(self) -> bool:
         return self._state.streamed_assistant_text or self._state.message_emitted
@@ -200,15 +188,15 @@ async def drain_stream(
     stream_text: bool = False,
     root_agent_name: str = "agent",
 ) -> None:
-    """Consume ``stream.stream_events()``; with ``stream_text=True`` render assistant + tool progress."""
-    layout = _StreamLayout(
-        console, root_agent_name=root_agent_name, use_live=stream_text
-    )
-    with layout:
-        async for event in stream.stream_events():
-            if not stream_text and isinstance(event, RawResponsesStreamEvent):
-                continue
-            layout.handle(event)
+    """Consume ``stream.stream_events()``; with ``stream_text=True`` print assistant + tool progress."""
+    printer = _StreamEventPrinter(console, root_agent_name=root_agent_name)
+
+    async for event in stream.stream_events():
+        if not stream_text and isinstance(event, RawResponsesStreamEvent):
+            continue
+        printer.handle(event)
+
+    printer.finalize()
 
 
 async def run_stream_until_settled(
@@ -220,29 +208,25 @@ async def run_stream_until_settled(
 ) -> RunResultStreaming:
     """Run one streamed turn. Nested subagent ``run_streamed`` calls share ``interactive_stream_consumer``."""
     root = binding._runner._agent_name
-    layout = _StreamLayout(console, root_agent_name=root, use_live=stream_text)
+    printer = _StreamEventPrinter(console, root_agent_name=root)
 
     def forward(ev: Any) -> None:
         if not stream_text and isinstance(ev, RawResponsesStreamEvent):
             return
-        layout.handle(ev)
+        printer.handle(ev)
 
-    with layout:
-        token = interactive_stream_consumer.set(forward)
-        try:
-            stream = binding.run_streamed(inp)
-            async for event in stream.stream_events():
-                forward(event)
-            fo = stream.final_output
-            if (
-                fo is not None
-                and str(fo).strip()
-                and not layout.assistant_body_emitted()
-            ):
-                layout.emit_fallback_final(str(fo))
-            return stream
-        finally:
-            interactive_stream_consumer.reset(token)
+    token = interactive_stream_consumer.set(forward)
+    try:
+        stream = binding.run_streamed(inp)
+        async for event in stream.stream_events():
+            forward(event)
+        printer.finalize()
+        fo = stream.final_output
+        if fo is not None and str(fo).strip() and not printer.assistant_body_emitted():
+            printer.emit_fallback_final(str(fo))
+        return stream
+    finally:
+        interactive_stream_consumer.reset(token)
 
 
 async def _stream_turn(

@@ -1,0 +1,8 @@
+Repository URL: https://github.com/astral-sh/rye
+Last 2024 release: 0.43.0
+Minor version number: 43
+Next filename: 43.txt
+
+Citations:
+https://github.com/astral-sh/rye
+https://github.com/astral-sh/rye/releases/tag/0.43.0

@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:36:41.672920+00:00",
+  "input": {
+    "command": "tvly search \"astral-sh rye 0.43.0 published 2024 site:github.com\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 1726,
+  "output": "exit_code=0\n{\n  \"query\": \"astral-sh rye 0.43.0 published 2024\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://github.com/astral-sh/rye/issues/1446\",\n      \"title\": \"InvalidDistribution: Metadata is missing required fields: Name, Version.\",\n      \"content\": \"I do have name and version defined in my pyproject.toml (see Steps). Version Info. rye 0.43.0 commit: unknown (d67cac134 2024-12-09) platform\",\n      \"score\": 0.7940821,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://github.com/astral-sh/uv/issues/10204\",\n      \"title\": \"Add a non-package-mode \u00b7 Issue #10204 \u00b7 astral-sh/uv - GitHub\",\n      \"content\": \"This pyproject.toml works with Rye 0.43.0: [project] dependencies = [ \\\"mkdocs<1.5\\\", ] requires-python = \\\">= 3.8\\\" [tool.rye] managed = true\",\n      \"score\": 0.6194488,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://github.com/astral-sh/uv/issues/5090\",\n      \"title\": \"`uv`'s tool installation feature breaks on Wine \u00b7 Issue #5090 - GitHub\",\n      \"content\": \"... 0.43.0 Caused by: Failed to read from the distribution cache ... Run wget \\\"https://github.com/astral-sh/rye/releases/latest/download\",\n      \"score\": 0.604703,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://github.com/python-poetry/poetry/issues/6409?timeline_page=1\",\n      \"title\": \"Instructions for installing PyTorch \u00b7 Issue #6409 \u00b7 python ... - GitHub\",\n      \"content\": \"Instructions for installing PyTorch astral-sh/rye#460. Hemanthkumar2112 commented on Oct 4, 2023. @Hemanthkumar2112.\",\n      \"score\": 0.17267382,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.73,\n  \"request_id\": \"17d2a182-a31f-4f06-8378-7e0dc16f0bff\"\n}\n",
+  "call_id": "20"
+}

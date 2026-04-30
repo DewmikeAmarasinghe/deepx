@@ -1,0 +1,5 @@
+Topic: Web Search (Technical Specification)
+Locate the GitHub repository for the 'Rye' Python package manager. 
+Find the version number of the last release made in the year 2024. 
+Extract the 'minor' version number (the Y in X.Y.Z). 
+The result is your next filename.

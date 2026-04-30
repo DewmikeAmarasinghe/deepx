@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/problem=987",
+      "title": "#987 Straight Eight - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n![projecteuler.net](images/clipart/print_page_logo.png)\n\n## Straight Eight\n\n![](images/icons/file_html.png \"Show HTML problem content\")\n![](images/icons/info.png)\n\n### Problem 987\n\nIn Poker a **straight** is exactly five cards of sequential rank NOT all of the same suit.\nIn this problem an ace can rank either high as in A-K-Q-J-10 or low as in 5-4-3-2-A, but cannot simultaneously rank both high and low, so Q-K-A-2-3 is not allowed.\n\nThere are $10200$ ways of choosing a straight from a normal $52$ card deck.  \nThere are $31832952$ ways of choosing two disjoint straights from a single $52$ card deck.\n\nFind the number of ways of choosing eight disjoint straights from a single $52$ card deck.  \nIn this the order of choosing the straights does not matter.\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 1.03,
+  "request_id": "15995fc5-7617-4114-91f3-2d7e28c63f34"
+}

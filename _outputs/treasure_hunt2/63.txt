@@ -1,0 +1,8 @@
+Topic: Programming (JavaScript)
+What is the integer value of 'x' after this JavaScript code executes?
+The result is your next filename.
+
+const logic = (a, b) => (a << b) | (a >> b);
+let x = [1, 2, 3].reduce((acc, curr) => acc + curr, -1);
+x = x ** 2 - (x * 3);
+console.log(x);

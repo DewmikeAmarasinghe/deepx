@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/problem=992",
+      "title": "#992 Another Frog Jumping - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n![projecteuler.net](images/clipart/print_page_logo.png)\n\n## Another Frog Jumping\n\n![](images/icons/file_html.png \"Show HTML problem content\")\n![](images/icons/info.png)\n\n### Problem 992\n\nThere are $n+1$ stones in a pond, numbered $0$ to $n$.\n\nA frog starts by jumping onto stone $0$. It then jumps between the stones, only ever jumping to adjacent ones. For fixed $k$, it makes exactly $k+i$ visits to each stone $i$ for $0 \\le i \\lt n$; however, there are no restrictions on the number of times stone $n$ is visited. The frog can finish on any stone.\n\nIf $n=3$ and $k=2$ it would visit stone $0$ two times, stone $1$ three times and stone $2$ four times.  \nOne way of achieving this is:  \n$0 \\to 1 \\to 0 \\to 1 \\to 2 \\to 3 \\to 2 \\to 1 \\to 2 \\to 3 \\to 2$.\n\nLet $J(n,k)$ be the number of ways the frog can make such a journey.\nFor example, $J(3,2) = 17$, $J(6,1) = 1320$ and $J(6,5) = 16793280$.\n\nFind $\\displaystyle \\sum\\_{s=0}^4 J(500,10^s)$. Give your answer modulo $987898789$.\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 1.05,
+  "request_id": "7175866f-b486-4487-b3ce-28dbd78a1a3c"
+}

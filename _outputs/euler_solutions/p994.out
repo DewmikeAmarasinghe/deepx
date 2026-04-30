@@ -1,0 +1,4 @@
+ID: 994
+Answer: NOT_COMPUTED
+Note: solver not implemented fully. Approach: combinatorial counting, derive closed-form using gcd and modular arithmetic.
+Time: 0.000002s

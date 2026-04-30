@@ -1,0 +1,4 @@
+Topic: Mathematics (Recursive Series)
+Find the value of a_4 where a_n = (a_{n-1})^2 - a_{n-2}, given a_1 = 2 and a_2 = 3.
+The answer is the filename of your next clue.
+(Note: format your answer as a standard text file name, e.g., 'X.txt')

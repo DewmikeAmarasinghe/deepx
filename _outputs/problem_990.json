@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/problem=990",
+      "title": "#990 Addition Equations - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n![projecteuler.net](images/clipart/print_page_logo.png)\n\n## Addition Equations\n\n![](images/icons/file_html.png \"Show HTML problem content\")\n![](images/icons/info.png)\n\n### Problem 990\n\nA string forms an *addition equation* if it consists of\n\nMost importantly, the equality must hold.\n\nExample of strings of length 7 forming addition equations:\n  \n1+1+1=3\n  \n100=100\n  \n77=7+70\n  \n1+2=2+1\n\nNote that strings are considered different even if they form equivalent equations, so for example here are three unique strings:\n  \n1+2=3\n  \n2+1=3\n  \n3=1+2\n\nThe following strings do not form valid addition equations:\n  \n1+1=3\n  \n1+1=02\n  \n0+1=1\n  \n+1=1\n  \n2-1=1\n\nLet $A(n)$ be the number of strings of length not larger than $n$ forming addition equations.\n\nYou are given $A(3) = 9$, $A(5)=171$ and $A(7)=4878$.\n\nFind $A(50)$. Give your answer modulo $10^9 + 7$.\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 1.0,
+  "request_id": "a4b4c6d9-2642-4281-80c0-d354687180ea"
+}

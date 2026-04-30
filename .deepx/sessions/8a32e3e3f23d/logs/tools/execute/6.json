@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "8a32e3e3f23d",
+  "timestamp": "2026-04-29T12:10:31.824233+00:00",
+  "input": {
+    "command": "python3 - << 'PY'\nimport json,glob\npaths = sorted(glob.glob('_outputs/problem_*.json'), reverse=True)  # descending\nout = []\nfor p in paths:\n    j = json.load(open(p,'r'))\n    res = j['results'][0]\n    url = res.get('url','')\n    title = res.get('title','').strip()\n    # get id from url\n    import re\n    m = re.search(r'problem=(\\d+)', url)\n    pid = m.group(1) if m else 'UNKNOWN'\n    raw = res.get('raw_content','').strip()\n    # extract statement: between '### Problem ' and 'Copied to Clipboard' if present\n    stmt = raw\n    a = stmt.find('### Problem')\n    if a!=-1:\n        stmt = stmt[a:]\n    # cut off at 'Copied to Clipboard'\n    b = stmt.find('Copied to Clipboard')\n    if b!=-1:\n        stmt = stmt[:b]\n    stmt = stmt.strip()\n    out.append(f\"ID: {pid}\\nTitle: {title}\\nStatement:\\n{stmt}\\nAnswer: NOT_COMPUTED\\n---\\n\")\nopen('_outputs/problems.txt','w',encoding='utf-8').write('\\n'.join(out))\nprint('WROTE', '_outputs/problems.txt')\nPY",
+    "timeout_seconds": 120
+  },
+  "output_chars": 40,
+  "output": "exit_code=0\nWROTE _outputs/problems.txt\n",
+  "call_id": "6"
+}

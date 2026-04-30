@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "0893bd959716",
+  "timestamp": "2026-04-29T12:46:09.860811+00:00",
+  "input": {
+    "command": "tvly extract \"https://tothemoon.im-ldi.com/gallery/Apollo/17/6#AS17-148-22727\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 1046,
+  "output": "exit_code=0\n{\n  \"results\": [\n    {\n      \"url\": \"https://tothemoon.im-ldi.com/gallery/Apollo/17/6#AS17-148-22727\",\n      \"title\": \"March to the Moon\",\n      \"raw_content\": \"![]()\\n\\n#### Image Details\\n\\n\\n\\n#### Jump to Magazine\\n\\n#### Keyboard Controls\\n\\n![](/assets/nav-pgnext-cb0726626c0518eef0ac6cf7357ea9129aa4c968455bef6aface4883b14fc370.svg)\\n![](/assets/nav-pgprev-9d84eb335343636cc9fb43b5b0d1bc0b538da6278dfafaa5349df7d255996e84.svg)\\n![](/assets/nav-next-3d9f40a5aaf58f0392f3504353fb919d71e2ad0b47e38556e067ddd5d059f318.svg)\\n![](/assets/nav-prev-38d69f3db46e6913f31bbb62d60985ab3f6c5447f11b901af6e8496b601cd23c.svg)\\n![](/assets/ftr_johnson-01c4119420091c3d8dccf74356eee61862829ad34488b98d88dc50b00ec32da6.png)\\n![](/assets/ftr_ser-4dfebe84fc80a938c36c2341120802cfeccccce46d1ca04dbd96bc6ad5ab6cff.svg)\\n![](/assets/ftr_sese-370e1543e2a2d29c1d619582dd704ca5bd1bf3eb670f3a608a135272a4a19894.png)\",\n      \"images\": []\n    }\n  ],\n  \"failed_results\": [],\n  \"response_time\": 2.15,\n  \"request_id\": \"a0f1666a-8a14-41bd-a35a-d6fa542f21d7\"\n}\n",
+  "call_id": "20"
+}

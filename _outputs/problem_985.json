@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/problem=985",
+      "title": "#985 Telescoping Triangles - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n![projecteuler.net](images/clipart/print_page_logo.png)\n\n## Telescoping Triangles\n\n![](images/icons/file_html.png \"Show HTML problem content\")\n![](images/icons/info.png)\n\n### Problem 985\n\nGiven a triangle $T\\_k$, it is sometimes possible to construct a triangle $T\\_{k+1}$ inside $T\\_k$ such that\n\n![0985_telescoping_triangles.png](resources/images/0985_telescoping_triangles.png?1770589857)\n\nIllustrated above is such a sequence of three triangles starting with $T\\_0$ (in blue) having side lengths $(8,9,10)$. Then $T\\_1$ is shown in green and $T\\_2$ in red. However, no triangle can be drawn inside $T\\_2$ that satisfies the requirements. In other words, $T\\_3$ does not exist.\n\nAmongst all integer-sided triangles $T\\_0$ such that $T\\_2$ exists but $T\\_3$ does not exist, the smallest possible perimeter is $10$ when $T\\_0$ has side lengths $(3, 3, 4)$.\n\nSuppose another triangle $T\\_0$ has integer side lengths, and $T\\_{20}$ exists, but $T\\_{21}$ does not exist. What is the smallest possible perimeter of $T\\_0$?\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 1.01,
+  "request_id": "d6d433a9-9389-40b9-8086-95feeb62b712"
+}

@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/recent",
+      "title": "Recent Problems - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n\n## Recent Problems\n\nThe recent problems table shows the 10 most recent problems published by Project Euler. If you are new to Project Euler, you may wish to start with the problems [Archives](archives).\n\n| ID | Title | Solved By |\n| --- | --- | --- |\n| 994 | [Counting Triangles](problem=994 \"Published on Sunday, 26th April 2026, 02:00 am\") | 93 |\n| 993 | [Banana Beaver](problem=993 \"Published on Saturday, 18th April 2026, 11:00 pm\") | 122 |\n| 992 | [Another Frog Jumping](problem=992 \"Published on Saturday, 11th April 2026, 08:00 pm\") | 142 |\n| 991 | [Fruit Salad](problem=991 \"Published on Saturday, 4th April 2026, 05:00 pm\") | 286 |\n| 990 | [Addition Equations](problem=990 \"Published on Saturday, 28th March 2026, 01:00 pm\") | 117 |\n| 989 | [Fibonacci Sum](problem=989 \"Published on Sunday, 22nd March 2026, 10:00 am\") | 87 |\n| 988 | [Non-attacking Frogs](problem=988 \"Published on Sunday, 15th March 2026, 07:00 am\") | 154 |\n| 987 | [Straight Eight](problem=987 \"Published on Sunday, 8th March 2026, 04:00 am\") | 141 |\n| 986 | [Another Infinite Game](problem=986 \"Published on Sunday, 1st March 2026, 01:00 am\") | 101 |\n| 985 | [Telescoping Triangles](problem=985 \"Published on Saturday, 21st February 2026, 10:00 pm\") | 303 |\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.92,
+  "request_id": "1898bc05-97eb-4c9b-b902-dc4575f56de9"
+}

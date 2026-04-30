@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:35:44.502044+00:00",
+  "input": {
+    "command": "tvly search \"Grand Silver Ray Ratnapura address\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 2194,
+  "output": "exit_code=0\n{\n  \"query\": \"Grand Silver Ray Ratnapura address\",\n  \"follow_up_questions\": null,\n  \"answer\": null,\n  \"images\": [],\n  \"results\": [\n    {\n      \"url\": \"https://housity.net/hotel/grand-silver-ray/\",\n      \"title\": \"Grand Silver Ray | Hotel in Ratnapura, Sri Lanka - Housity\",\n      \"content\": \"Grand Silver Ray. Share Hotel. Hotel Address Lellopitiya Dipitigala, 70056 Ratnapura ... About Grand Silver Ray. Location. Location Address Lellopitiya\",\n      \"score\": 0.9073207,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://silverray.lk/\",\n      \"title\": \"Grand Silver Ray | Luxury Hotel, Wedding & Banquet Hall in ...\",\n      \"content\": \"Grand Silver Ray Logo. Grand Silver Ray. Lellopitiya Dipitigala, Ratnapura, Sri Lanka. reservation@silverray.lk. +94 71 910 7700 / +94 71 362 6200. Outlet\",\n      \"score\": 0.89030397,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://destinia.com/en/hotels/asia/sri-lanka/sabaragamuwa/ratnapura/grand-silver-ray/ho-3654447\",\n      \"title\": \"Hotel Grand Silver Ray, Ratnapura - Destinia\",\n      \"content\": \"Hotel Grand Silver Ray ... Where is the accommodation establishment? ... Lellopitiya Dipitigala, 70056 Ratnapura, Sri Lanka - Ratnapura. Where is the accommodation\",\n      \"score\": 0.84027237,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://in.trip.com/hotels/ratnapura-hotel-detail-101239867/grand-silver-ray/\",\n      \"title\": \"Grand Silver Ray, Ratnapura - Book with Updated Prices 2026\",\n      \"content\": \"Grand Silver Ray is at the prime location of Ratnapura. The nearby landmarks include Athugala Kanda Aranya Senasanaya, and it is 2.5 km from your search (\",\n      \"score\": 0.74785584,\n      \"raw_content\": null\n    },\n    {\n      \"url\": \"https://en.planetofhotels.com/sri-lanka/ratnapura/grand-silver-ray\",\n      \"title\": \"Grand Silver Ray - Ratnapura, Sri Lanka - Planet of Hotels\",\n      \"content\": \"Escape to the serene landscapes of Ratnapura and enjoy a relaxing stay at Grand Silver Ray, conveniently located just 9.1 km from the city center.\",\n      \"score\": 0.7343678,\n      \"raw_content\": null\n    }\n  ],\n  \"response_time\": 0.97,\n  \"request_id\": \"b997ab4d-fa9d-4f7d-bed9-7b1c356fcb66\"\n}\n",
+  "call_id": "9"
+}

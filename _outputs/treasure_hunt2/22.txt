@@ -1,0 +1,4 @@
+Topic: Programming (Data Structures)
+In a standard Binary Search Tree, if you insert the keys [15, 10, 20, 8, 12] in order (starting with 15 as root), what is the depth of the node with value 12? (Root depth = 0). 
+Multiply this depth by 14. 
+The result is your next filename.

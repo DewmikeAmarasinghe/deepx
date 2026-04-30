@@ -1,0 +1,15 @@
+{
+  "tool_name": "grep",
+  "agent_name": "web_agent",
+  "session_id": "5f90d76f92ea",
+  "timestamp": "2026-04-29T12:35:49.057956+00:00",
+  "input": {
+    "pattern": "published\\\\_at\\\": \\\"2024",
+    "path": "/_outputs/large_tool_results/execute_tvly_extract_https_api_githu_20260429T123525Z_865521.txt",
+    "glob_pattern": null,
+    "output_mode": "content"
+  },
+  "output_chars": 11,
+  "output": "No matches.",
+  "call_id": "4"
+}

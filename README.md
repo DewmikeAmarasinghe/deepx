@@ -12,12 +12,12 @@ A **backend** defines what the agent can touch (`root_dir`, optional shell, in-m
 
 ## Documentation map
 
-| File | Contents |
-|------|----------|
-| **[`README.md`](README.md)** (this file) | Install, env vars, repo layout, quick start |
-| **[`src/deepx/README.md`](src/deepx/README.md)** | Framework: factory, backends, middleware, tools, sessions, prompts |
-| **[`src/deepx_cli/README.md`](src/deepx_cli/README.md)** | Terminal chat, HITL policy, REPL internals |
-| **[`test_demo/README.md`](test_demo/README.md)** | Demo orchestrator + specialists |
+| File                                                     | Contents                                                           |
+| -------------------------------------------------------- | ------------------------------------------------------------------ |
+| **[`README.md`](README.md)** (this file)                 | Install, env vars, repo layout, quick start                        |
+| **[`src/deepx/README.md`](src/deepx/README.md)**         | Framework: factory, backends, middleware, tools, sessions, prompts |
+| **[`src/deepx_cli/README.md`](src/deepx_cli/README.md)** | Terminal chat, HITL policy, REPL internals                         |
+| **[`test_demo/README.md`](test_demo/README.md)**         | Demo orchestrator + specialists                                    |
 
 ---
 
@@ -54,16 +54,15 @@ Use **`runner.bind(session_id, resume=..., hitl=...)`** with **`binding.run`** /
 
 ### Interactive chat (demo)
 
-From the **repository root** (the directory that contains **`test_demo/`**), each demo runner accepts the same flags: **`--chat`** (streaming; default when **`--chat_sync`** is not set), **`--chat_sync`**, and **`--session`** to resume.
+The **maintained** entrypoint with **`--chat`** / **`--session`** is the orchestrator:
 
 ```bash
-python test_demo/orchestrator.py --chat
-python test_demo/sql_agent.py --chat
-python test_demo/web_agent.py --chat_sync
-python test_demo/pdf_agent.py --chat --session <session_id>
+python -m test_demo.orchestrator --chat
+python -m test_demo.orchestrator --chat_sync
+python -m test_demo.orchestrator --chat --session <session_id>
 ```
 
-If you **`cd`** into another directory first, use paths relative to that cwd (or pass absolute paths to the scripts). **`hf_agent`** uses the same CLI when **`HF_TOKEN`** is set; otherwise **`main`** exits with an error. See [`test_demo/README.md`](test_demo/README.md).
+Individual specialist modules (**`web_agent.py`**, etc.) are imported as libraries by the orchestrator; they do not all define the same CLI flags—check each file if you run it directly.
 
 ---
 
@@ -99,17 +98,16 @@ If you **`cd`** into another directory first, use paths relative to that cwd (or
 
 Human-facing artifacts under agent path **`/_outputs/`**; **`large_tool_results/`** holds evicted oversized tool returns (see middleware **`tool_pipeline`**).
 
-
 ---
 
 ## Environment variables
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| **`OPENAI_API_KEY`** | For OpenAI models | API access |
-| **`LANGSMITH_API_KEY`** | Optional | LangSmith tracing (`setup_observability`) |
-| **`HF_TOKEN`** | Optional | Hugging Face Hub demo agent |
-| **`TAVILY_API_KEY`** / CLI | Optional | Tavily / `tvly` for web demo |
+| Variable                   | Required          | Purpose                                   |
+| -------------------------- | ----------------- | ----------------------------------------- |
+| **`OPENAI_API_KEY`**       | For OpenAI models | API access                                |
+| **`LANGSMITH_API_KEY`**    | Optional          | LangSmith tracing (`setup_observability`) |
+| **`HF_TOKEN`**             | Optional          | Hugging Face Hub demo agent               |
+| **`TAVILY_API_KEY`** / CLI | Optional          | Tavily / `tvly` for web demo              |
 
 ---
 

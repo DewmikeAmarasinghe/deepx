@@ -1,0 +1,13 @@
+{
+  "results": [
+    {
+      "url": "https://projecteuler.net/problem=991",
+      "title": "#991 Fruit Salad - Project Euler",
+      "raw_content": "![Project Euler](themes/logo_default.png)\n![Search Problems](images/icons/search_engine.png \"Search Problems\")\n![RSS Feed](images/icons/news_feed.png \"RSS Feed\")\n![projecteuler.net](images/clipart/print_page_logo.png)\n\n## Fruit Salad\n\n![](images/icons/file_html.png \"Show HTML problem content\")\n![](images/icons/info.png)\n\n### Problem 991\n\nFind the sum of $\\unicode{x1F34E} + \\unicode{x1F34C} + \\unicode{x1F34D}$ for all triples of positive integers $\\unicode{x1F34E}, \\unicode{x1F34C}, \\unicode{x1F34D}$ which satisfy\n\nand $\\unicode{x1F34E} + \\unicode{x1F34C} + \\unicode{x1F34D} \\le 10^7$.\n\nIn case your device cannot display emoji properly, [here](resources/images/0991_fruits.png) is a rendered image of the problem statement.\n\nThe page has been left unattended for too long and that link/button is no longer active. Please refresh the page.",
+      "images": []
+    }
+  ],
+  "failed_results": [],
+  "response_time": 0.93,
+  "request_id": "6664ef61-49fd-4f67-88d8-a74c29eacf47"
+}

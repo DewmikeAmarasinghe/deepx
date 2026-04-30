@@ -1,0 +1,4 @@
+ID: 993
+Answer: NOT_COMPUTED
+Note: requires analytic derivation for N=1e18; only small-N simulation possible.
+Time: 0.000002s

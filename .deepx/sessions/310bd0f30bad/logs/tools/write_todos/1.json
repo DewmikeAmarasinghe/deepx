@@ -1,0 +1,25 @@
+{
+  "tool_name": "write_todos",
+  "agent_name": "web_agent",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:38:07.325832+00:00",
+  "input": {
+    "todos": [
+      {
+        "content": "Data gathering: compile Rathnapura casual dining restaurants and collect addresses/owner data with citations (through Tavily results).",
+        "status": "completed"
+      },
+      {
+        "content": "Create CSV deliverable /_outputs/rathnapura_casual_dining.csv with headers: Restaurant Name, Address, Owner Name, Owner's Telephone and one row per restaurant (up to/including Corundum).",
+        "status": "in_progress"
+      },
+      {
+        "content": "Create Markdown summary deliverable /_outputs/rathnapura_casual_dining_summary.md following write-report structure (Executive Summary, Background, Key Findings, Analysis, Next Steps, Sources).",
+        "status": "pending"
+      }
+    ]
+  },
+  "output_chars": 562,
+  "output": "Plan saved:\n(completed) Data gathering: compile Rathnapura casual dining restaurants and collect addresses/owner data with citations (through Tavily results).\n(in_progress) Create CSV deliverable /_outputs/rathnapura_casual_dining.csv with headers: Restaurant Name, Address, Owner Name, Owner's Telephone and one row per restaurant (up to/including Corundum).\n(pending) Create Markdown summary deliverable /_outputs/rathnapura_casual_dining_summary.md following write-report structure (Executive Summary, Background, Key Findings, Analysis, Next Steps, Sources).",
+  "call_id": "1"
+}

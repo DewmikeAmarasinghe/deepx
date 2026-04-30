@@ -1,0 +1,15 @@
+{
+  "tool_name": "render_files",
+  "agent_name": "orchestrator",
+  "session_id": "310bd0f30bad",
+  "timestamp": "2026-04-29T11:39:18.408956+00:00",
+  "input": {
+    "paths": [
+      "/_outputs/rathnapura_casual_dining.csv",
+      "/_outputs/rathnapura_casual_dining_summary.md"
+    ]
+  },
+  "output_chars": 95,
+  "output": "Rendered: /_outputs/rathnapura_casual_dining.csv; /_outputs/rathnapura_casual_dining_summary.md",
+  "call_id": "1"
+}

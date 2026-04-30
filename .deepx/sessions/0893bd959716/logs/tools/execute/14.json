@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "0893bd959716",
+  "timestamp": "2026-04-29T12:45:13.273518+00:00",
+  "input": {
+    "command": "tvly extract \"https://kenrockwell.com/hasselblad/80mm-f28-c.htm\" --json",
+    "timeout_seconds": 120
+  },
+  "output_chars": 935,
+  "output": "Tool result too large, the result of this tool call call_Fsq7uGQ84XDx4vvoWQ4suz9r was saved in the filesystem at this path: /_outputs/large_tool_results/execute_tvly_extract_https_kenrockwe_20260429T124513Z_6f34ed.txt\n\nYou can read the result from the filesystem by using the read_file tool, but make sure to only read part of the result at a time.\n\nYou can do this by specifying an offset and limit in the read_file tool call. For example, to read the first 100 lines, you can use the read_file tool with offset=0 and limit=100.\n\nHere is a preview showing the head and tail of the result (lines of the form `... [N lines truncated] ...` indicate omitted lines in the middle of the content):\n\nexit_code=0\n{\n  \"results\": [\n    {\n      \"url\": \"https://kenrockwell.com/hasselblad/80mm-f28-c.htm\",\n\n... [4 lines truncated] ...\n\n  ],\n  \"failed_results\": [],\n  \"response_time\": 2.89,\n  \"request_id\": \"fe3befc6-4542-436f-80b5-001d565fa874\"\n}\n",
+  "call_id": "14"
+}
