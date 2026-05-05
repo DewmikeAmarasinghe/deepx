@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "3fa221055501",
+  "timestamp": "2026-05-05T04:50:51.608301+00:00",
+  "input": {
+    "command": "/bin/bash -lc 'ts=$(date -u +\"%Y-%m-%dT%H:%M:%SZ\"); echo \"COMMAND: tvly status\"; echo \"TIMESTAMP: $ts\"; echo \"---- OUTPUT ----\"; tvly status 2>&1; rc=$?; echo \"---- END OUTPUT ----\"; echo \"EXIT_CODE:$rc\"; echo \"ENV_VARS:\"; env | grep -E \"TVLY|TAVILY|TAVILY_API|TVLY_TOKEN|TVLY_CONFIG|TAVILY_API_KEY\" || true; echo \"---- END\"; exit 0'",
+    "timeout_seconds": 120
+  },
+  "output_chars": 310,
+  "output": "exit_code=0\nCOMMAND: tvly status\nTIMESTAMP: 2026-05-05T04:50:51Z\n---- OUTPUT ----\nUsage: tvly [OPTIONS] COMMAND [ARGS]...\nTry 'tvly --help' for help.\n\nError: No such command 'status'.\n---- END OUTPUT ----\nEXIT_CODE:2\nENV_VARS:\nTAVILY_API_KEY=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\n---- END\n",
+  "call_id": "1"
+}

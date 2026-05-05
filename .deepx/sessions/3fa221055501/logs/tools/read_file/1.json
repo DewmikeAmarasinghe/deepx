@@ -1,0 +1,15 @@
+{
+  "tool_name": "read_file",
+  "agent_name": "orchestrator",
+  "session_id": "3fa221055501",
+  "timestamp": "2026-05-05T04:49:54.311189+00:00",
+  "input": {
+    "path": "/test_demo/skills/tavily/SKILL.md",
+    "offset": 0,
+    "limit": 200,
+    "max_line_chars": 2000
+  },
+  "output_chars": 53,
+  "output": "Error: '/test_demo/skills/tavily/SKILL.md' not found.",
+  "call_id": "1"
+}

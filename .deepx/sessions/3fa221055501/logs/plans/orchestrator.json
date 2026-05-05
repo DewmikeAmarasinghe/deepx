@@ -1,0 +1,16 @@
+{
+  "session_id": "3fa221055501",
+  "agent_name": "orchestrator",
+  "tasks": [],
+  "todos": [
+    {
+      "content": "Run 'tvly status' using the Tavily CLI and capture its output to files under /_outputs/",
+      "status": "completed"
+    },
+    {
+      "content": "Render the resulting output files to the user once produced",
+      "status": "completed"
+    }
+  ],
+  "updated_at": "2026-05-05T04:51:37.915776+00:00"
+}

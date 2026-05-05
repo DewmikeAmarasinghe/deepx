@@ -1,0 +1,21 @@
+{
+  "tool_name": "write_todos",
+  "agent_name": "orchestrator",
+  "session_id": "3fa221055501",
+  "timestamp": "2026-05-05T04:51:31.096890+00:00",
+  "input": {
+    "todos": [
+      {
+        "content": "Run 'tvly status' using the Tavily CLI and capture its output to files under /_outputs/",
+        "status": "completed"
+      },
+      {
+        "content": "Render the resulting output files to the user once produced",
+        "status": "in_progress"
+      }
+    ]
+  },
+  "output_chars": 185,
+  "output": "Plan saved:\n(completed) Run 'tvly status' using the Tavily CLI and capture its output to files under /_outputs/\n(in_progress) Render the resulting output files to the user once produced",
+  "call_id": "4"
+}

@@ -1,0 +1,28 @@
+{
+  "session_id": "3fa221055501",
+  "agent_name": "web_agent",
+  "tasks": [],
+  "todos": [
+    {
+      "content": "Capability assessment — read relevant skills (tavily-cli, write-report)",
+      "status": "completed"
+    },
+    {
+      "content": "Run `tvly status` in project environment and capture stdout/stderr, exit code, timestamp, and relevant TVLY environment variables",
+      "status": "completed"
+    },
+    {
+      "content": "Write raw output to /_outputs/tvly_status_raw.txt",
+      "status": "completed"
+    },
+    {
+      "content": "Produce diagnostic report /_outputs/tvly_status_report.md (<=200 words) answering whether TVLY is configured, evidence, errors/warnings, and recommended next steps",
+      "status": "completed"
+    },
+    {
+      "content": "Finalize and return artifact paths and one-line summary",
+      "status": "in_progress"
+    }
+  ],
+  "updated_at": "2026-05-05T04:51:16.327866+00:00"
+}

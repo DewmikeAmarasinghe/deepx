@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "3896b757f601",
+  "timestamp": "2026-05-05T04:44:36.913945+00:00",
+  "input": {
+    "command": "tvly --status",
+    "timeout_seconds": 120
+  },
+  "output_chars": 66,
+  "output": "exit_code=0\n  tavily v0.1.2\n\n  > Authenticated via TAVILY_API_KEY\n",
+  "call_id": "2"
+}

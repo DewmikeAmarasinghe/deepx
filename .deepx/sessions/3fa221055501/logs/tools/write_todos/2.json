@@ -1,0 +1,33 @@
+{
+  "tool_name": "write_todos",
+  "agent_name": "web_agent",
+  "session_id": "3fa221055501",
+  "timestamp": "2026-05-05T04:50:30.664833+00:00",
+  "input": {
+    "todos": [
+      {
+        "content": "Capability assessment \u2014 read relevant skills (tavily-cli, write-report)",
+        "status": "completed"
+      },
+      {
+        "content": "Run `tvly status` in project environment and capture stdout/stderr, exit code, timestamp, and relevant TVLY environment variables",
+        "status": "in_progress"
+      },
+      {
+        "content": "Write raw output to /_outputs/tvly_status_raw.txt",
+        "status": "pending"
+      },
+      {
+        "content": "Produce diagnostic report /_outputs/tvly_status_report.md (<=200 words) answering whether TVLY is configured, evidence, errors/warnings, and recommended next steps",
+        "status": "pending"
+      },
+      {
+        "content": "Finalize and return artifact paths and one-line summary",
+        "status": "pending"
+      }
+    ]
+  },
+  "output_chars": 539,
+  "output": "Plan saved:\n(completed) Capability assessment \u2014 read relevant skills (tavily-cli, write-report)\n(in_progress) Run `tvly status` in project environment and capture stdout/stderr, exit code, timestamp, and relevant TVLY environment variables\n(pending) Write raw output to /_outputs/tvly_status_raw.txt\n(pending) Produce diagnostic report /_outputs/tvly_status_report.md (<=200 words) answering whether TVLY is configured, evidence, errors/warnings, and recommended next steps\n(pending) Finalize and return artifact paths and one-line summary",
+  "call_id": "2"
+}

@@ -1,0 +1,8 @@
+{
+  "allow_always": [
+    {
+      "agent_name": "web_agent",
+      "tool_name": "execute"
+    }
+  ]
+}

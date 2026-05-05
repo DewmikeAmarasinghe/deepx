@@ -1,0 +1,13 @@
+{
+  "tool_name": "execute",
+  "agent_name": "web_agent",
+  "session_id": "3896b757f601",
+  "timestamp": "2026-05-05T04:44:46.382348+00:00",
+  "input": {
+    "command": "tvly search \"May 5 2026 news\" --json -n 10",
+    "timeout_seconds": 120
+  },
+  "output_chars": 111,
+  "output": "exit_code=2\nUsage: tvly search [OPTIONS] [QUERY]\nTry 'tvly search --help' for help.\n\nError: No such option: -n\n",
+  "call_id": "3"
+}

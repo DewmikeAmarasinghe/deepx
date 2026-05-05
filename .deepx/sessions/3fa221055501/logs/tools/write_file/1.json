@@ -1,0 +1,13 @@
+{
+  "tool_name": "write_file",
+  "agent_name": "web_agent",
+  "session_id": "3fa221055501",
+  "timestamp": "2026-05-05T04:51:05.993146+00:00",
+  "input": {
+    "path": "/_outputs/tvly_status_raw.txt",
+    "content": "COMMAND: tvly status\nTIMESTAMP: 2026-05-05T04:50:51Z\n---- OUTPUT ----\nUsage: tvly [OPTIONS] COMMAND [ARGS]...\nTry 'tvly --help' for help.\n\nError: No such command 'status'.\n---- END OUTPUT ----\nEXIT_CODE:2\nENV_VARS:\nTAVILY_API_KEY=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\n---- END\n"
+  },
+  "output_chars": 42,
+  "output": "Updated file /_outputs/tvly_status_raw.txt",
+  "call_id": "1"
+}
