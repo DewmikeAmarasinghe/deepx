@@ -1,12 +1,18 @@
-"""SQLite demo subagent: multi-database tools under ``test_demo/dbs/test_dbs``."""
+"""SQL specialist subagent: query, design, migrate, and manage databases.
+
+Run standalone::
+
+    python test_demo/sql_agent.py --chat
+    python test_demo/sql_agent.py --chat_sync
+    python test_demo/sql_agent.py --chat --session <id>
+"""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-_DEMO_DIR = Path(__file__).resolve().parent
-_REPO_ROOT = _DEMO_DIR.parent
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
@@ -14,53 +20,72 @@ from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
-from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
-from deepx.factory import DeepAgentRunner, create_deep_agent  # noqa: E402
-from test_demo.sql_tools import create_sql_tools  # noqa: E402
+from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
+from deepx.factory import create_deep_agent  # noqa: E402
 
-DEMO_DIR = _DEMO_DIR
-REPO_ROOT = _REPO_ROOT
-TEST_DBS = DEMO_DIR / "dbs" / "test_dbs"
-demo_backend = FilesystemBackend(REPO_ROOT)
-agent_dbs_dir = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
-agent_dbs_dir.mkdir(parents=True, exist_ok=True)
-sql_session_db = str(agent_dbs_dir / "sql_agent.db")
-
-available_db_names = (
-    ", ".join(sorted(p.name for p in TEST_DBS.glob("*.db")))
-    if TEST_DBS.is_dir()
-    else ""
+_TEST_DBS = _REPO_ROOT / "test_demo" / "dbs" / "test_dbs"
+_available_dbs = (
+    ", ".join(sorted(p.name for p in _TEST_DBS.glob("*.db")))
+    if _TEST_DBS.is_dir()
+    else "(none found — run the orchestrator once to create the directory)"
 )
 
-sql_tools = create_sql_tools(TEST_DBS, tool_prefix="sql")
+sql_sys = f"""\
+You are the SQL specialist. You handle all SQL work: writing and running queries, schema
+design, migrations, indexing, and performance tuning.
 
-_sql_prompt = f"""\
-You answer using **sql_*** tools only against files under **test_demo/dbs/test_dbs**.
-Each tool requires **`db_name`**: a filename present there (now: {available_db_names or "(scan folder)"}).
-Default demos: **chinook.db** (music retail), **northwind.db** (classic retail) unless the user picks another file.
-For non-trivial tasks, follow skills under the sql skill folder.
-For multi-part work, use write_todos and refresh the list as steps complete.
-Return explicit SQL and readable tables.
-When the orchestrator asks for a saved report or digest, write it under **`/_outputs/`** and return that path.
+Use **`sqlite3`** on the host for SQLite (always available in this demo). For **PostgreSQL**
+or **MySQL**, use `psql` / `mysql` only when those clients exist — see the **sql-toolkit**
+skill for patterns.
+
+## Before starting any task
+
+Read the skill files under `/test_demo/skills/sql/` — they document helpers, dialect notes,
+and layouts you should follow.
+
+## How to run SQL
+
+You execute SQL through the shell via `execute` — there is no interactive session.
+You can also write Python or shell scripts and execute them.
+
+You may also write shell scripts (`.sh`) or Python scripts for more complex workflows —
+if user hasn't specified a path, write them to `/_outputs/`, then execute them.
+
+## Demo databases
+
+SQLite files under `/test_demo/dbs/test_dbs/`: {_available_dbs}.
+Default to `chinook.db` (music retail) or `northwind.db` (classic ERP) when the user
+does not specify a file.
+
+## Output
+
+Always show the SQL and the result together. For aggregations or joins, add one sentence
+explaining what the query does.
+
+Choose the output path as follows:
+- If the orchestrator specified a path in its brief, write there.
+- Otherwise write results or reports to `/_outputs/<descriptive_name>.md` (or `.csv`, `.sql`).
+
+Return only: the output file path(s) and a two-to-three sentence summary. Do not paste
+large result sets in the reply — write them to a file and return the path.
 """
 
-sql_agent_runner: DeepAgentRunner = create_deep_agent(
+sql_agent_runner = create_deep_agent(
     name="sql_agent",
     memory=[".deepx/AGENTS.md"],
     description=(
-        "SQLite analyst for **demo databases** under `test_demo/dbs/test_dbs`. "
-        "chinook.db and northwind.db are configured there."
-        "Tools: **sql_db_list_tables**, **sql_db_schema** (DDL + small samples; BLOBs summarized), "
-        "**sql_db_query** (SELECT-only). **Every** tool call needs **db_name** (e.g. `chinook.db`, "
-        "`northwind.db`). Best for aggregations, joins, and explaining schema; returns SQL + readable "
-        "tables. If no `*.db` files exist, the runner is a no-op stub—say so clearly."
-        "Writes outputs to agreed paths (typically **/_outputs/**). and returns paths plus a short summary."
+        "SQL specialist: write and run queries, design schemas, build migrations, optimise "
+        "performance, and manage relational databases (SQLite via `sqlite3`; Postgres/MySQL when "
+        "host tools exist). Demo SQLite files "
+        f"are at `/test_demo/dbs/test_dbs/` ({_available_dbs}). "
+        "Writes reports and query results to `/_outputs/` when requested."
     ),
-    tools=sql_tools,
+    tools=None,
     skills=["./test_demo/skills/sql"],
-    system_prompt=_sql_prompt,
-    backend=demo_backend,
-    checkpointer=sql_session_db,
+    system_prompt=sql_sys,
+    backend=LocalShellBackend(_REPO_ROOT),
+    checkpointer=str(_REPO_ROOT / "test_demo" / "dbs" / "agent_dbs" / "sql_agent.db"),
     debug=True,
     subagents=None,
+    interrupt_on=["execute"],
 )

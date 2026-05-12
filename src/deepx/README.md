@@ -68,7 +68,7 @@ src/deepx/
 
 1. **Backend** — All file I/O goes through **`BackendProtocol`**. Agent paths start with **`/`** under **`root_dir`**; metadata uses **`/.deepx/...`** (on disk: usually `<root_dir>/.deepx/...`).
 2. **Tools** — Built-ins + your **`tools=`** + **subagent** `function_tool`s; **`apply_tool_pipeline`** adds **large-result eviction** and **HITL** for **`interrupt_on`** names.
-3. **Prompt** — **`system_prompt`** is only the **ROLE** slice; **`build_system_prompt`** fills CORE BEHAVIOR, CONTEXT, planning roster, skills, memory, filesystem rules—on **every** LLM call via **`Agent.instructions`**.
+3. **Prompt** — **`system_prompt`** is the **INSTRUCTIONS** slice; **`build_system_prompt`** fills CORE BEHAVIOR, CONTEXT, optional **CURRENT PLAN**, planning roster, skills, memory, filesystem rules—on **every** LLM call via **`Agent.instructions`**.
 4. **Sessions** — **`checkpointer`** is a SQLite path (or `":memory:"`); **`create_session`** wraps **`SQLiteSession`** in **`OpenAIResponsesCompactionSession`** (compaction near **90%** of context window using **`gpt-5-nano`** in `sessions.py`).
 5. **Subagents** — Each **`DeepAgentRunner`** in **`subagents=`** becomes a **`function_tool`** running nested **`Runner.run`** with the **child’s** backend/memory/debug and the **parent’s** `session_id` + **`Hitl`**.
 
@@ -85,7 +85,7 @@ runner = create_deep_agent(
     model="gpt-5-mini",
     name="orchestrator",
     description="…",                    # subagent tool description when this runner is a tool
-    system_prompt="…",                # ROLE only; framework appends the rest
+    system_prompt="…",                # Instructions only; framework appends the rest
     tools=[…],                        # extra FunctionTool / Tool (MCP wrappers, etc.)
     subagents=[web_runner, sql_runner],
     skills=["./test_demo/skills/pdf"],
@@ -185,7 +185,9 @@ Tools receive **`RunContextWrapper[AgentContext]`** as **`ctx`**; the LLM never 
 
 ## `system_prompt.py` — dynamic prompt assembly
 
-**`build_system_prompt`** is used as **`Agent.instructions`** (dynamic callback), so it runs **before each LLM call**. Sections (see **`system_prompt.py`**): **ROLE** ← `system_prompt`, **CORE BEHAVIOR**, **CONTEXT** (UTC time, project root when known), **PLANNING & DELEGATION** (subagent roster + interrupt list), optional **SKILLS**, optional **MEMORY**, **FILESYSTEM** (and LocalShell extra block when applicable).
+**`build_system_prompt`** is used as **`Agent.instructions`** (dynamic callback), so it runs **before each LLM call**. Sections (see **`system_prompt.py`**): **INSTRUCTIONS** ← `system_prompt`, **CORE BEHAVIOR**, **CONTEXT** (UTC time, project root when known), optional **CURRENT PLAN** (when `write_todos` has populated `ctx.context.plan.todos`), **PLANNING & DELEGATION** (subagent roster + interrupt list), optional **SKILLS**, optional **MEMORY**, **FILESYSTEM** (and LocalShell extra block when applicable).
+
+**Plans across REPL turns:** **`FilesystemHooks`** reloads the last saved plan from the backend when **`AgentContext.resume`** is **True** (so a **new** `deepx_cli` message starts with an **empty** todo list unless you launched with **`--session`** to resume and reload debug plan files). Each **`write_todos`** call still replaces the full list for the remainder of that agent run.
 
 ---
 
@@ -234,7 +236,7 @@ Use **`run_hooks`** for run-level middleware behavior. These are composed and fo
 
 ### `filesystem.py` — `FilesystemHooks`
 
-**Why:** Keep **`agent_name`** / **`plan.agent_name`** in sync and **reload plan JSON** on **`resume=True`** from **`/.deepx/sessions/<id>/logs/plans/<agent>.json`** (requires those files to have been written with **`debug=True`** previously).
+**Why:** Keep **`agent_name`** / **`plan.agent_name`** in sync and **reload plan JSON** on **`resume=True`** from **`/.deepx/sessions/<id>/logs/plans/<agent>.json`** (requires those files to have been written with **`debug=True`** previously). The **deepx_cli** REPL sets **`resume`** only when the user passed **`--session`** so ordinary follow-up messages do not re-inject the previous turn’s **CURRENT PLAN** into the prompt.
 
 ### `logs.py` — `SessionToolLogHooks`
 

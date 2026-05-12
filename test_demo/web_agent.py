@@ -1,4 +1,11 @@
-"""Web research subagent: Tavily via host CLI + skills (demo)."""
+"""Web research subagent: Tavily via host CLI + skills.
+
+Run standalone::
+
+    python test_demo/web_agent.py --chat
+    python test_demo/web_agent.py --chat_sync
+    python test_demo/web_agent.py --chat --session <id>
+"""
 
 from __future__ import annotations
 
@@ -11,56 +18,68 @@ if str(_REPO_ROOT) not in sys.path:
 
 from dotenv import load_dotenv  # noqa: E402
 
+load_dotenv()
+
 from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.factory import create_deep_agent  # noqa: E402
 
-load_dotenv()
+web_sys = """\
+You are the web research specialist. The Tavily CLI (`tvly`) is your only supported tool
+for fetching the open web — do not use curl, requests, or BeautifulSoup.
 
-REPO_ROOT = _REPO_ROOT
+## Before starting any task
 
-_DEMO_BACKEND = LocalShellBackend(REPO_ROOT)
-_AGENT_DBS = REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
-_AGENT_DBS.mkdir(parents=True, exist_ok=True)
-_WEB_DB = str(_AGENT_DBS / "web_agent.db")
+Read the relevant skill files under `/test_demo/skills/` (tavily for web related tasks and write-report when drafting long reports).
+
+Run `tvly --status` first to confirm authentication. If it fails, report the error and stop.
+
+If the result is very large it will be written to `/_outputs/large_tool_results/` — read it from there
+with `read_file`.
+
+## Report structure
+
+For every written deliverable, apply the write-report skill structure:
+  Executive Summary → Background → Findings → Analysis → Recommendations → Sources
+
+Omit sections only if the caller explicitly says so. Keep sections concise.
+
+## Output
+
+Choose the output path as follows:
+- If the orchestrator specified a path in its brief, write there.
+- Otherwise write to `/_outputs/<descriptive_slug>.md`.
+
+Return only: the output file path(s) and a two-to-three sentence summary of the findings.
+Do not paste the report body in the reply.
+"""
 
 web_agent_runner = create_deep_agent(
     name="web_agent",
     memory=[".deepx/AGENTS.md"],
     description=(
-        "Open-web research and reporting specialist: runs the **Tavily CLI (`tvly`)** under "
-        "`test_demo/skills/tavily` and follows **`write-report`** for final written deliverables "
-        "(structure, tone, sections). Use for live pages, news, docs, and long-form markdown under "
-        "**/_outputs/**. Requires a logged-in **`tvly`** (see `tavily-cli` skill)."
+        "Open-web research and reporting specialist. Runs the Tavily CLI (`tvly`) for live "
+        "search, news, and documentation. Produces structured markdown reports under `/_outputs/` "
+        "following the write-report skill. Requires a logged-in `tvly` on the host."
     ),
     tools=None,
     skills=[
         "./test_demo/skills/tavily",
         "./test_demo/skills/write-report",
     ],
-    system_prompt=(
-        "You are the **web_agent** internal service. **Assume the Tavily CLI (`tvly`) is installed** "
-        "on the host; you have **no** Tavily HTTP API tools in-process.\n\n"
-        "**Skills first:** use **`read_file`** on the relevant **tavily** skills (e.g. "
-        "`tavily-cli/SKILL.md`) and on **`write-report/SKILL.md`** before planning multi-step work. "
-        "Apply **write-report** standards to any report, memo, analysis, or stakeholder-facing "
-        "markdown you produce.\n\n"
-        "**Web research path:** use **`execute`** with a single **`command`** string to run **`tvly ...`** "
-        "(add **`--json`** when you need structured data). Do **not** use "
-        "`curl`, ad-hoc Python scraping, **BeautifulSoup**, or generic `requests` HTML parsing for "
-        "open-web work — **Tavily is the supported stack** for fetching and researching the public web.\n\n"
-        "Run **`tvly --status`** (or follow the skill) to confirm the CLI is logged in; if auth fails, "
-        "say so briefly and stop.\n\n"
-        "**Planning:** for any multi-step brief, **`write_todos` is mandatory** after skilling up; "
-        "refresh the list as steps complete.\n\n"
-        "Oversized **`execute`** output may be evicted to **`/_outputs/large_tool_results/`** — use "
-        "**`read_file`** on the path from the tool message.\n\n"
-        "For human-facing deliverables, use **`write_file`** under **`/_outputs/`**, following "
-        "**write-report** structure (Executive Summary through Sources) unless the user specifies otherwise.\n\n"
-        "Return final **artifact paths** plus a **tight summary** only — never paste large reports or raw CLI dumps."
-    ),
-    backend=_DEMO_BACKEND,
-    checkpointer=_WEB_DB,
+    system_prompt=web_sys,
+    backend=LocalShellBackend(_REPO_ROOT),
+    checkpointer=str(_REPO_ROOT / "test_demo" / "dbs" / "agent_dbs" / "web_agent.db"),
     debug=True,
     subagents=None,
     interrupt_on=["execute"],
 )
+
+
+def main() -> None:
+    from deepx_cli import run_interactive_cli
+    run_interactive_cli(web_agent_runner, description="web_agent — Tavily research REPL.")
+
+
+if __name__ == "__main__":
+    (_REPO_ROOT / "test_demo" / "dbs" / "agent_dbs").mkdir(parents=True, exist_ok=True)
+    main()

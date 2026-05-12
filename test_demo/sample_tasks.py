@@ -18,6 +18,56 @@ Return that path and a one-line summary.
 Combine **cron-scheduling** and **skill-creator**: document a daily housekeeping job (what it runs, log path idea) in **/_outputs/daily_job_notes.md**, then create **test_demo/skills/daily-housekeeping/SKILL.md** that points to those notes and summarizes the schedule.
 Return both paths.
 """,
+    """\
+Research the current state of open-source vector databases — focusing on Qdrant, Weaviate, and
+Milvus — and produce a structured comparison report.
+
+Use the web research specialist to gather the following for each database:
+- Core architecture and indexing approach
+- Performance benchmarks (where available from official or third-party sources)
+- Deployment options (cloud-managed vs self-hosted)
+- Notable production use cases or adopters
+- Licensing model
+
+Save the research findings to **/_outputs/vector_db_research/report.md**.
+
+Then also produce a professionally formatted PDF
+at **/_outputs/vector_db_research/vector_databases_comparison.pdf** from that markdown file.
+
+Return both output paths and a two-sentence executive summary of the findings.
+""",
+    """\
+Using the **cron-scheduling** skill, design a production-grade scheduled maintenance system
+for a hypothetical web application. The system should include:
+
+1. A nightly database backup job at 01:00 UTC — document the crontab entry and a matching
+   systemd timer unit (`.service` + `.timer`) with `OnFailure=` alerting configured.
+2. A weekly log-rotation and cleanup job at 03:00 UTC every Sunday.
+3. A monthly report-generation job on the 1st of each month at 06:00 UTC.
+
+For each job: document the cron expression, explain timezone handling, describe what the
+`ExecStart` command would do, and note the log path convention.
+
+Save the full schedule specification to **/_outputs/maintenance_schedule/schedule.md**
+and the systemd unit file examples to **/_outputs/maintenance_schedule/units/**.
+
+Return all output paths and a brief summary of the scheduling decisions made.
+""",
+    """\
+Using the **skill-creator** guidance, audit the existing **write-report** skill bundle located
+at **test_demo/skills/write-report/SKILL.md**.
+
+Review it for:
+- Completeness: does it cover all standard report sections and when to omit them?
+- Clarity: are the structure guidelines unambiguous and easy for an agent to follow?
+- Gaps: is there guidance for handling citations, tables, executive summaries, or multi-source
+  synthesis that is currently missing or underdeveloped?
+
+Write your findings to **/_outputs/write-report-audit/audit_notes.md** and then produce an
+improved version of the skill at **/_outputs/write-report-audit/SKILL.md**.
+
+Return both paths and a short summary of the most significant improvements made.
+""",
 ]
 
 WEB_AGENT_TASKS: list[str] = [

@@ -120,17 +120,24 @@ Remember: If you only need to make a few tool calls to complete a task, and it i
 """
 
 THINK_TOOL_DESCRIPTION = """\
-Use this tool to reason explicitly before a large plan change, after a surprising tool result, or
-when you are uncertain which branch to take next.
+Use this tool for structured mid-task reflection. Call it when:
 
-**What to put in `reflection` (short, structured):**
+- A tool result is **unexpected** and you need to decide how it changes remaining steps.
+- You discover a **new constraint** (missing dependency, access error, scope change) that may
+  invalidate part of the current plan.
+- You are about to **pivot to a different approach** and want to reason before acting.
+
+The tool returns your **current plan state** alongside the reflection — use this view to decide
+whether `write_todos` needs updating.
+
+**Keep the reflection short and structured:**
 - What you observed and whether it matched expectations
-- New constraints or blockers
-- Whether the current todo list should change
-- The next concrete action (not a full rehash of the whole run)
+- New constraints or blockers discovered
+- How this changes remaining steps (if at all)
+- The single next concrete action
 
-Afterwards, if the plan should change, call `write_todos` with a **full replace** of the list. \
-This tool is optional; do not call it on every step.\
+Afterwards, if the plan must change, call `write_todos` with a full replace of the list.
+This tool is optional — do not call it on every step.\
 """
 
 

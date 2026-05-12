@@ -3,31 +3,23 @@
 Run from the **repository root** so paths like ``./test_demo/skills/...`` resolve correctly.
 
 Setup::
+
     uv sync --extra demo
 
-    python -m test_demo.orchestrator                    # streaming chat (default)
-    python -m test_demo.orchestrator --chat             # same: stream assistant tokens
-    python -m test_demo.orchestrator --chat_sync        # chat without token streaming
-    python -m test_demo.orchestrator --chat --session <id>     # resume (``--chat_sync`` also ok)
-
-**Resume:** pass **``--session <id>``** together with **``--chat``** or **``--chat_sync``**.
-
-In the REPL: **Enter** sends the message; **/bye** exits and prints how to resume with the same id.
-
-Installing the ``deepx`` distribution exposes ``deepx`` and ``deepx_cli``; this orchestrator
-lives under ``test_demo`` for deepx demonstration purposes only.
+    python -m test_demo.orchestrator --chat
+    python -m test_demo.orchestrator --chat_sync
+    python -m test_demo.orchestrator --chat --session <id>
 """
 
 from __future__ import annotations
 
-import argparse
 import mimetypes
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
 
@@ -39,90 +31,90 @@ from rich.panel import Panel  # noqa: E402
 from rich.text import Text  # noqa: E402
 
 from deepx import create_deep_agent  # noqa: E402
-from deepx.backends.filesystem import FilesystemBackend  # noqa: E402
-from deepx.backends.protocol import BackendProtocol  # noqa: E402
+from deepx.backends.local_shell import LocalShellBackend  # noqa: E402
 from deepx.context import AgentContext  # noqa: E402
 from test_demo.hf_agent import hf_agent_runner  # noqa: E402
 from test_demo.pdf_agent import pdf_agent_runner  # noqa: E402
 from test_demo.sql_agent import sql_agent_runner  # noqa: E402
 from test_demo.web_agent import web_agent_runner  # noqa: E402
 
-_PREVIEW_HEAD_LINES = 70
-_PREVIEW_TAIL_LINES = 35
-_MAX_PDF_PAGES_PREVIEW = 2
+_PREVIEW_HEAD = 35
+_PREVIEW_TAIL = 35
+_MAX_PDF_PAGES = 2
 _render_console = Console(highlight=False)
 
+_AGENT_DBS = _REPO_ROOT / "test_demo" / "dbs" / "agent_dbs"
+_TEST_DBS = _REPO_ROOT / "test_demo" / "dbs" / "test_dbs"
 
-def _line_preview_body(text: str, *, head: int, tail: int) -> str:
+
+# ---------------------------------------------------------------------------
+# File preview helpers
+# ---------------------------------------------------------------------------
+
+
+def _truncated_preview(text: str) -> str:
     lines = text.splitlines()
     n = len(lines)
-    if n <= head + tail:
+    if n <= _PREVIEW_HEAD + _PREVIEW_TAIL:
         return text
-    mid_omitted = n - head - tail
+    omitted = n - _PREVIEW_HEAD - _PREVIEW_TAIL
     return (
-        "\n".join(lines[:head])
-        + f"\n\n… ({mid_omitted} lines omitted) …\n\n"
-        + "\n".join(lines[-tail:])
+        "\n".join(lines[:_PREVIEW_HEAD])
+        + f"\n\n… ({omitted} lines omitted) …\n\n"
+        + "\n".join(lines[-_PREVIEW_TAIL:])
     )
 
 
-def _preview_plain_file(backend: BackendProtocol, sid: str, agent_path: str) -> str:
-    rr = backend.read(sid, agent_path, 0, _PREVIEW_HEAD_LINES)
+def _read_plain_file(backend: LocalShellBackend, sid: str, path: str) -> str:
+    rr = backend.read(sid, path, 0, _PREVIEW_HEAD)
     if rr.error:
         return rr.error
     total = rr.total_lines
     head = rr.content or ""
     if total is None:
-        return _line_preview_body(
-            head, head=_PREVIEW_HEAD_LINES, tail=_PREVIEW_TAIL_LINES
-        )
-    if total <= _PREVIEW_HEAD_LINES:
+        return _truncated_preview(head)
+    if total <= _PREVIEW_HEAD:
         return head
-    tail_start = max(_PREVIEW_HEAD_LINES, total - _PREVIEW_TAIL_LINES)
-    rr2 = backend.read(sid, agent_path, tail_start, total - tail_start)
+    tail_start = max(_PREVIEW_HEAD, total - _PREVIEW_TAIL)
+    rr2 = backend.read(sid, path, tail_start, total - tail_start)
     tail = rr2.content or ""
-    omitted = tail_start - _PREVIEW_HEAD_LINES
+    omitted = tail_start - _PREVIEW_HEAD
     if omitted > 0:
         return head + f"\n\n… ({omitted} lines omitted) …\n\n" + tail
     return head + "\n\n" + tail
 
 
-def render_pdf_as_text(
-    ctx: RunContextWrapper[AgentContext], sid: str, agent_path: str
-) -> str:
-    """Extract text from a PDF using pdfplumber (bounded for terminal display)."""
+def _read_pdf_file(ctx: RunContextWrapper[AgentContext], sid: str, path: str) -> str:
     try:
         import pdfplumber
     except ImportError:
         return "[pdfplumber not installed — cannot render PDF as text]"
 
-    resolved = ctx.context.backend.resolve_path(sid, agent_path)
+    resolved = ctx.context.backend.resolve_path(sid, path)
     if resolved is None or not Path(resolved).exists():
-        return f"File not found: {agent_path}"
+        return f"File not found: {path}"
 
     try:
         pages: list[str] = []
         with pdfplumber.open(resolved) as pdf:
             n_pages = len(pdf.pages)
             for i, page in enumerate(pdf.pages, start=1):
-                if i > _MAX_PDF_PAGES_PREVIEW:
-                    rest = n_pages - _MAX_PDF_PAGES_PREVIEW
-                    pages.append(f"… ({rest} more pages omitted from preview) …")
+                if i > _MAX_PDF_PAGES:
+                    pages.append(f"… ({n_pages - _MAX_PDF_PAGES} more pages omitted) …")
                     break
                 text = (page.extract_text() or "").strip()
                 if text:
                     pages.append(f"── Page {i} ──\n{text}")
-
         if not pages:
             return "(PDF has no extractable text — may be scanned/image-only)"
-
-        full = "\n\n".join(pages)
-        return _line_preview_body(
-            full, head=_PREVIEW_HEAD_LINES, tail=_PREVIEW_TAIL_LINES
-        )
-
+        return _truncated_preview("\n\n".join(pages))
     except Exception as exc:
         return f"PDF render error: {exc}"
+
+
+# ---------------------------------------------------------------------------
+# render_files tool
+# ---------------------------------------------------------------------------
 
 
 @function_tool
@@ -132,166 +124,137 @@ async def render_files(
 ) -> str:
     """Show finished file contents to the human in the terminal (Rich panels).
 
-    The user sees the **full** rendered content for each path in their terminal. Call **once**
-    when work is **complete** (or when they should see final outputs), with **every** relevant path.
-    Do **not** use this for exploratory reading while delegating.
+    The user sees the full rendered content for each path. Call once when work is complete,
+    passing every relevant path. Do not use this for mid-task browsing.
 
-    After this returns, **do not** tell the user you "rendered" or "displayed" the file, **do not**
-    repeat the file body or long excerpts in chat, and **do not** offer to paste or open the same
-    paths unless the user asks — they already saw it in the panel.
+    After this returns: do not repeat the file body, do not say you "rendered" it, and do not
+    offer to open the same paths again unless the user asks.
     """
     sid = ctx.context.session_id
-    parts: list[str] = []
-    w = _render_console.size.width or 120
+    backend = ctx.context.backend
+    width = _render_console.size.width or 120
+    rendered: list[str] = []
 
-    for path in paths:
-        p = (path or "").strip()
-        if not p:
+    for raw_path in paths:
+        path = (raw_path or "").strip()
+        if not path:
             continue
 
-        mime, _ = mimetypes.guess_type(p)
-        is_pdf = (mime == "application/pdf") or p.lower().endswith(".pdf")
+        mime, _ = mimetypes.guess_type(path)
+        is_pdf = (mime == "application/pdf") or path.lower().endswith(".pdf")
 
         if is_pdf:
-            panel_content = render_pdf_as_text(ctx, sid, p)
+            content = _read_pdf_file(ctx, sid, path)
         else:
-            panel_content = _preview_plain_file(ctx.context.backend, sid, p)
+            if isinstance(backend, LocalShellBackend):
+                content = _read_plain_file(backend, sid, path)
+            else:
+                content = f"[Unsupported backend type for plain file reading: {type(backend).__name__}]"
 
         _render_console.print(
             Panel(
-                Text(panel_content),
-                title=Text(f"render_files · {p}"),
+                Text(content),
+                title=Text(f"render_files · {path}"),
                 border_style="yellow",
                 expand=True,
-                width=w,
+                width=width,
             )
         )
-        parts.append(p)
+        rendered.append(path)
 
-    return "Rendered: " + "; ".join(parts) if parts else "No paths provided."
+    return "Rendered: " + "; ".join(rendered) if rendered else "No paths provided."
 
 
-DBS_DIR = REPO_ROOT / "test_demo" / "dbs"
-TEST_DBS = DBS_DIR / "test_dbs"
-AGENT_DBS = DBS_DIR / "agent_dbs"
-for d in (TEST_DBS, AGENT_DBS):
-    d.mkdir(parents=True, exist_ok=True)
+# ---------------------------------------------------------------------------
+# System prompt
+# ---------------------------------------------------------------------------
 
-DEMO_BACKEND = FilesystemBackend(REPO_ROOT)
+orch_sys = """\
+You are a personal assistant.
 
-ORCH_DB = str(AGENT_DBS / "orchestrator.db")
+When a task requires web research, SQL, PDF work, or Hugging Face Hub access, coordinate
+the appropriate specialists below.
 
-orch_tools = [render_files]
+**Act, don't ask.** If the user's request gives you enough to act on, pick sensible
+defaults and start — do not ask for confirmation. Only ask when something objectively
+required is missing (e.g. which database when several apply and the user gave no hint).
 
-DEMO_ORCHESTRATOR_SYS = """\
-**Coordinate specialists when the task matches the routing table below.** For those tasks you do **not**
-run web/Tavily, SQL, PDF, or HF work yourself — you delegate with a **single, self-contained brief**
-(including output paths, `db_name` when needed, and reasonable defaults like “top 3 with ties” if the user
-already implied them).
+**Keep scope tight.** Do the smallest useful thing that directly addresses the request.
+Do not expand into broader analysis unless the user asks for it.
 
-**General work (no matching specialist):** answer from context, use your file tools, or guide the user.
-Examples: skill/marketplace setup, LobeHub install steps, chit-chat, or anything that is **not** purely
-web research, SQL on demo DBs, PDF workflows, or HF Hub MCP. This demo orchestrator has **no** host `execute`
-tool — you cannot run shell commands yourself; use `read_file` / planning tools and clear instructions, or
-route web execution to **`web_agent`** when the user needs live fetching.
+**File-based pipelines — chain specialists through paths, not pasted content.**
+When one specialist's output feeds the next, pass the file paths in the second brief.
+Example: user asks for research compiled into a PDF →
+  1. Brief web_agent: research the topic, write a markdown report to `/_outputs/report.md`.
+  2. Brief pdf_agent: read `/_outputs/report.md` and produce `/_outputs/report.pdf` from it.
+  3. Call render_files with `/_outputs/report.pdf`.
+Apply this pattern for any multi-specialist workflow: SQL → report, research → slides, etc.
 
-**Delegate first; almost never ask the user to “confirm” the task shape.** If the user already stated
-constraints (e.g. “top three genres and top three artists”), **do not** re-ask or paraphrase into clarifying
-questions — pick sound defaults, state them in the brief, and call the specialist. Ask the user **only** when
-something **objectively required** is missing (e.g. which `*.db` when several apply and the user gave none).
+**After a specialist returns:** trust its paths and short summary. Do not read those files
+yourself unless you need them for a downstream task. When work is complete, call render_files
+once with all final output paths.
 
-**Do not overcomplicate the task**. Limit the response to the smallest useful action that directly addresses the user’s request. Avoid expanding into broader analysis, multiple steps, or extra context unless the user asks for it.
+**After render_files:** the user has already seen the files. Reply with a compact summary,
+the paths, and any recommendation — nothing more.
 
-**Specialist outputs:** In every delegation brief, tell the specialist to **write deliverables to files**
-under **`/_outputs/`** (exact paths you agree on, e.g. `/_outputs/diffusion_models_summary.md`) and to
-return **only paths plus a short summary** — not full file bodies.
+**If a specialist replies with a question for the user:** relay it briefly; do not add
+your own questions on top.
 
-**After a specialist tool returns:** trust its **paths** and **short summary**. Do **not** `read_file` those
-files. To return those outputs to the user, call **`render_files`** once with **all** final paths.
+## Specialist routing
 
-**After `render_files`:** the user has seen the **full** files in the terminal. Reply with a **compact**
-shortlist, **paths**, and **recommendation** only — **no** “I showed you the file”, **no** repeating the
-digest, **no** offering to paste or open the same paths unless the user explicitly asks.
-
-**If a specialist’s reply contains a question for the user:** relay it briefly; do not stack your own
-extra questions on top.
-
-## Routing
-
-| Goal | Use |
-|------|-----|
-| Live web research, citations, long-form markdown from the open web | **`web_agent` tool** — one self-contained brief; specialist uses `tvly`, tavily skills, and **write-report** for deliverables. |
-| Authoring, auditing, or extending **SKILL.md** bundles (structure, frontmatter, discovery) | Use bundled **skill-creator** skill — write skills under **`test_demo/skills/...`** unless the user specifies otherwise; you may draft content with file tools without delegating. |
-| **Cron** expressions, **`crontab`** snippets, scheduling explanations, timezone pitfalls | Use bundled **cron-scheduling** skill — save drafts under **`/_outputs/...`** when the user wants a saved artifact. |
-| Read-only SQL on sample ``*.db`` files under `test_demo/dbs/test_dbs` | **`sql_agent` tool** — self-contained brief; every query needs **`db_name`** (e.g. `chinook.db`). |
-| PDF workflows | **`pdf_agent` tool**. |
-| Hugging Face Hub | **`hf_agent` tool** when configured (**HF_TOKEN**); keep delegation brief. |
-| Show finished text to the user | **`render_files`** once, with every relevant path — not for mid-task browsing. |
-
-**Delegation:** one strong **`tool` call per specialist** when possible; pass **paths** between
-steps, not pasted bodies.
+| Goal | Specialist |
+|------|-----------|
+| Live web research, news, documentation, long-form markdown reports | web_agent |
+| SQL queries, schema design, migrations, database management | sql_agent |
+| PDF creation, extraction, merging, form filling | pdf_agent |
+| Hugging Face Hub: model/dataset/space search, Hub docs | hf_agent (when HF_TOKEN is set) |
+| Skill authoring or SKILL.md structure | skill-creator skill (handle directly) |
+| Cron expressions, scheduling, crontab snippets | cron-scheduling skill (handle directly) |
+| Show finished output to the user | render_files — once, with all final paths |
 """
 
-_ORCH_SUBAGENTS = [
-    web_agent_runner,
-    sql_agent_runner,
-    pdf_agent_runner,
-]
-if hf_agent_runner is not None:
-    _ORCH_SUBAGENTS.append(hf_agent_runner)
+# ---------------------------------------------------------------------------
+# Agent setup
+# ---------------------------------------------------------------------------
 
+_TEST_DBS.mkdir(parents=True, exist_ok=True)
+_AGENT_DBS.mkdir(parents=True, exist_ok=True)
+
+subagents = [web_agent_runner, sql_agent_runner, pdf_agent_runner]
+if hf_agent_runner is not None:
+    subagents.append(hf_agent_runner)
 
 orchestrator_runner = create_deep_agent(
     name="orchestrator",
-    description=(
-        "Coordinates **web_agent** (Tavily CLI + report standards), **sql_agent**, **pdf_agent**, and "
-        "optional **hf_agent**. Delegates with self-contained briefs; specialists write under **/_outputs/**. "
-        "You plan, route, and use **render_files**—you do not replace specialists for their domains."
-    ),
-    subagents=_ORCH_SUBAGENTS,
     memory=[".deepx/AGENTS.md"],
-    tools=orch_tools,
+    description=(
+        "Personal assistant that coordinates web_agent (live research), sql_agent (SQLite "
+        "queries), pdf_agent (PDF creation and extraction), and optionally hf_agent (Hugging "
+        "Face Hub). Delegates with self-contained briefs, chains specialist outputs through "
+        "file paths, and surfaces final results via render_files."
+    ),
+    subagents=subagents,
+    tools=[render_files],
     skills=[
         "./test_demo/skills/skill-creator",
         "./test_demo/skills/cron-scheduling",
     ],
-    system_prompt=DEMO_ORCHESTRATOR_SYS,
-    checkpointer=ORCH_DB,
+    system_prompt=orch_sys,
+    backend=LocalShellBackend(_REPO_ROOT),
+    checkpointer=str(_AGENT_DBS / "orchestrator.db"),
     debug=True,
-    backend=DEMO_BACKEND,
+    interrupt_on=["execute"],
 )
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Deepx orchestrator demo (terminal).")
-    parser.add_argument(
-        "--session",
-        default=None,
-        metavar="ID",
-        help="Resume this session id (must be used with --chat or --chat_sync).",
-    )
-    parser.add_argument(
-        "--chat",
-        action="store_true",
-        help="Interactive multi-turn session with streaming (default if --chat_sync not set).",
-    )
-    parser.add_argument(
-        "--chat_sync",
-        action="store_true",
-        help="Interactive multi-turn session without token streaming.",
-    )
-    args, _rest = parser.parse_known_args()
-
-    if args.session is not None and not args.chat and not args.chat_sync:
-        parser.error("--session requires --chat or --chat_sync")
-
-    from deepx_cli.chat_stream import run_chat_stream
-    from deepx_cli.chat_sync import run_chat_sync
-
-    if not args.chat_sync:
-        run_chat_stream(orchestrator_runner)
-    else:
-        run_chat_sync(orchestrator_runner)
+    from deepx_cli import run_interactive_cli
+    run_interactive_cli(orchestrator_runner, description="Deepx orchestrator demo.")
 
 
 if __name__ == "__main__":

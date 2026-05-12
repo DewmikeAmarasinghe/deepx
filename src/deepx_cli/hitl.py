@@ -1,4 +1,4 @@
-"""Terminal policy for :class:`deepx.middleware.hitl.Hitl` (Rich + blocking input)."""
+"""Terminal Human-in-the-Loop policy for :class:`deepx.middleware.hitl.Hitl`."""
 
 from __future__ import annotations
 
@@ -12,25 +12,30 @@ from deepx.middleware.hitl import Hitl, HitlDecision, HitlRequest
 
 
 def create_terminal_hitl(console: Console) -> Hitl:
-    """Reject / allow once / allow always (sticky per tool name for this :class:`Hitl` instance)."""
+    """Return a :class:`~deepx.middleware.hitl.Hitl` with an interactive terminal policy.
+
+    The user is presented with three choices per tool invocation:
+
+    1. **Reject** — block this call.
+    2. **Allow once** — permit this single invocation.
+    3. **Allow always** — skip approval for this tool name for the rest of the session.
+    """
 
     async def policy(req: HitlRequest) -> HitlDecision:
         def sync_prompt() -> HitlDecision:
-            console.print("\n")
             raw = req.arguments_json or ""
             if raw.strip():
                 try:
-                    parsed = json.loads(raw)
-                    body = json.dumps(parsed, indent=3, ensure_ascii=False)
+                    body = json.dumps(json.loads(raw), indent=3, ensure_ascii=False)
                 except json.JSONDecodeError:
                     body = raw
             else:
                 body = "(no arguments)"
-            title = f"{req.agent_name} · approval · {req.tool_name}"
+
             console.print(
                 Panel(
                     body,
-                    title=title,
+                    title=f"{req.agent_name} · approval · {req.tool_name}",
                     title_align="left",
                     border_style="yellow",
                     highlight=False,
@@ -38,11 +43,12 @@ def create_terminal_hitl(console: Console) -> Hitl:
             )
             console.print("  [1] Reject")
             console.print("  [2] Allow once")
-            console.print("  [3] Allow for rest of this session (this tool name)")
+            console.print("  [3] Allow for rest of session (this tool)")
+
             while True:
                 choice = input("Choice [1-3]: ").strip().lower()
                 if not choice:
-                    console.print("[dim](empty — type 1, 2, or 3)[/dim]")
+                    console.print("[dim](type 1, 2, or 3)[/dim]")
                     continue
                 if choice in ("1", "r", "reject", "n", "no"):
                     return HitlDecision.REJECT

@@ -62,7 +62,9 @@ python -m test_demo.orchestrator --chat_sync
 python -m test_demo.orchestrator --chat --session <session_id>
 ```
 
-Individual specialist modules (**`web_agent.py`**, etc.) are imported as libraries by the orchestrator; they do not all define the same CLI flags—check each file if you run it directly.
+With **`--chat`**, token streaming is shown inside **Rich** panels titled **`{agent} · thinking`** (reasoning summaries) and **`{agent} · response`** (assistant text). Tool calls use **`{agent} · {tool}`** panels.
+
+Each **new line you send** in the REPL starts a **fresh todo plan** in the prompt (empty until the model calls **`write_todos`**). Passing **`--session`** sets **`resume=True`** on the binding so the last saved plan file under **`/.deepx/sessions/<id>/logs/plans/`** may be reloaded when **`debug=True`**.
 
 ---
 

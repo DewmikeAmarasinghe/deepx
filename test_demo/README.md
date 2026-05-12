@@ -20,7 +20,6 @@ test_demo/
 ├── sql_agent.py
 ├── pdf_agent.py
 ├── hf_agent.py
-├── sql_tools.py
 ├── sample_tasks.py
 ├── __init__.py
 ├── dbs/
@@ -47,9 +46,9 @@ Session metadata (logs, HITL approvals, `AGENTS.md`, etc.) lives under **`/.deep
 
 ## Entrypoint: `orchestrator.py`
 
-- **`REPO_ROOT`** — `Path(__file__).resolve().parents[1]`; used for `sys.path`, DB paths, and **`DEMO_BACKEND = FilesystemBackend(REPO_ROOT)`** (see **`orchestrator.py`**) so agent paths map to real files under the repo.
+- **`REPO_ROOT`** — `Path(__file__).resolve().parents[1]`; used for `sys.path`, DB paths, and **`LocalShellBackend(REPO_ROOT)`** in **`orchestrator.py`** so agent paths map to real files under the repo.
 - **`create_deep_agent`** — Builds the **`orchestrator`** runner with **`subagents`** (web, sql, pdf, optional hf), **`tools`** (e.g. **`render_files`**), **`memory`**, **`checkpointer`** SQLite paths under **`test_demo/dbs/agent_dbs/`**, **`interrupt_on`** as configured per agent, and **`debug`** as set in code.
-- **CLI** — **`--chat`** / **`--chat_sync`**, **`--session`** for resume; uses **`deepx_cli`** streaming or sync REPL.
+- **CLI** — **`--chat`** (streamed panels: **`{agent} · thinking`** / **`{agent} · response`** plus tool rows), **`--chat_sync`**, **`--session`** to resume with plan reload when **`debug=True`**. See [`src/deepx_cli/README.md`](../src/deepx_cli/README.md).
 
 Run examples (from repo root):
 
@@ -65,7 +64,7 @@ python -m test_demo.orchestrator --chat --session <id>
 | Module             | Role                                                                                       |
 | ------------------ | ------------------------------------------------------------------------------------------ |
 | **`web_agent.py`** | Web / Tavily-oriented runner; often paired with **`LocalShellBackend`** for **`execute`**. |
-| **`sql_agent.py`** | Read-only SQL over sample DBs under **`test_demo/dbs/test_dbs/`**.                         |
+| **`sql_agent.py`** | SQL specialist (`sqlite3` on host; Postgres/MySQL when clients exist); sample DBs under **`test_demo/dbs/test_dbs/`**.                         |
 | **`pdf_agent.py`** | PDF workflows + skills under **`test_demo/skills/pdf/`**.                                  |
 | **`hf_agent.py`**  | Optional HF Hub runner when **`HF_TOKEN`** / config allows.                                |
 
